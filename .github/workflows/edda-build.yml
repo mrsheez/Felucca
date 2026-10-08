@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # EDDA OS: build the FM-1 package on GitHub's Linux runners (no Mac, no Linux machine, no toolchain at home),
 # run the host test suites against the real package, and publish the web installer + editor + package as a
-# GitHub Pages site. Install from any computer with Chrome or Edge (WebMIDI), the FM-1 on USB:
+# GitHub Pages site (from the default branch). Install from any computer with Chrome or Edge (WebMIDI), the FM-1 on
+# USB:
 #   https://<user>.github.io/<repo>/            (Settings > Pages > Source: GitHub Actions, once)
 # The package is also kept as a workflow artifact (Actions > the run > Artifacts > edda-os-fwsc) for the
 # offline installer (python3 tools/fm1_install.py felucca-*.fwsc) or the installer page's own file picker.
@@ -18,7 +19,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: edda-${{ github.ref }}       # (a branch's runs one after another; edda and main side by side)
   cancel-in-progress: false
 
 env:
@@ -49,14 +50,25 @@ jobs:
         if: steps.tc.outputs.cache-hit != 'true'
         run: sh tools/get_toolchain.sh "$HOME/.jieli"
 
-      - name: Build the package (tools/build.py; the AC79 SDK files are vendored)
+      - name: The AC79 SDK's three files from JieLi's own tag (checked against build.py; else the vendored copies)
+        id: sdk
+        shell: bash
+        run: |
+          echo "JIELI_TOOLCHAIN=$HOME/.jieli/toolchain" >> "$GITHUB_ENV"
+          if sh tools/get_sdk_files.sh "$HOME/ac79-sdk"; then
+            echo "AC79_SDK=$HOME/ac79-sdk" >> "$GITHUB_ENV"
+            echo "sdk=JieLi's AC79NN_SDK_V1.2.1 files (the reference: the package is built as Felucca's are)" >> "$GITHUB_OUTPUT"
+          else
+            echo "AC79_SDK=$PWD/third_party/ac79-sdk-tools" >> "$GITHUB_ENV"
+            echo "sdk=the vendored copies (gitee not reachable; uboot.boot and eq_cfg_hw.bin differ from the reference)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the package (tools/build.py)
         id: build
         shell: bash
         run: |
-          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain"
-          export AC79_SDK="$PWD/third_party/ac79-sdk-tools"
           # the whole of EDDA OS first; if the image does not fit the FM-1's app slot or the pool's headroom
-          # (tools/build.py says so), the same build without the visualisers (EDDA_VIZ=0: ~9 KB less code, 2.8 KB
+          # (tools/build.py says so), the same build without the visualisers (EDDA_VIZ=0: ~17 KB less code, 3.5 KB
           # less pool): the run's summary says which shipped
           if ./build.sh --release "$EDDA_VERSION" 2>&1 | tee build-full.log; then
             echo "variant=full" >> "$GITHUB_OUTPUT"
@@ -93,7 +105,8 @@ jobs:
       - name: Host test suites (tests/run_tests.sh against the real package; builds and checks the emulator)
         id: tests
         continue-on-error: true           # (a failed check is reported below; the package and the site still ship)
-        run: SANITIZE=1 sh tests/run_tests.sh 2>&1 | tee build/tests.log | tail -60; test "${PIPESTATUS[0]}" -eq 0
+        run: |
+          SANITIZE=1 sh tests/run_tests.sh 2>&1 | tee build/tests.log | tail -60; test "${PIPESTATUS[0]}" -eq 0
         shell: bash
 
       - name: Site (installer, editor, the package, the emulator)
@@ -112,6 +125,7 @@ jobs:
             echo
             echo "- package: **felucca-$EDDA_VERSION.fwsc** (this run's artifact *edda-os-fwsc*, and firmware/ on the site)"
             echo "- variant: **${{ steps.build.outputs.variant }}**"
+            echo "- SDK files: ${{ steps.sdk.outputs.sdk }}"
             echo "- $(cat build-size.txt 2>/dev/null || echo 'size: see the build step') (app slot 581564 B)"
             echo "- host tests: **${{ steps.tests.outcome }}** (tests.log on the site; the device build above is what ships)"
             echo "- install: open the site's webapp/installer/ in Chrome or Edge with the FM-1 on USB (Settings > Pages > Source: GitHub Actions, once)"
@@ -120,7 +134,9 @@ jobs:
               echo
               echo "### checks that did not pass"
               echo '```'
-              grep -E "FAIL|OVER BUDGET" build/tests.log | head -20
+              grep -E "FAIL|OVER BUDGET" build/tests.log | head -20 || true
+              echo "(the log's last lines:)"
+              tail -5 build/tests.log || true
               echo '```'
               echo "(tests/target_budget.py's OVER BUDGET on drum_render or fm1_alnk0_irq is EDDA OS's added audio work: the user kits,"
               echo "SEQ OUT, the run, the exact grid; the host CPU check in tests/regress.c is the one that bounds it. After a good"
@@ -141,20 +157,20 @@ jobs:
           rm -rf ci-out && mkdir -p ci-out
           cp build-*.log build-size.txt ci-out/ 2>/dev/null || true
           cp build/felucca-*.fwsc build/tests.log ci-out/ 2>/dev/null || true
-          { echo "run ${{ github.run_id }} ${{ github.sha }} $(date -u +%FT%TZ)"; echo "build: ${{ steps.build.outcome }}"; ls -la ci-out; } > ci-out/RUN.txt
+          { echo "run ${{ github.run_id }} ${{ github.sha }} $(date -u +%FT%TZ)"; echo "build: ${{ steps.build.outcome }}"
+            echo "tests: ${{ steps.tests.outcome }}"; echo "sdk: ${{ steps.sdk.outputs.sdk }}"; ls -la ci-out; } > ci-out/RUN.txt
           cd ci-out && git init -q && git checkout -q -b ci-out && git add -A && \
             git -c user.name=edda-ci -c user.email=ci@users.noreply.github.com commit -q -m "run ${{ github.run_id }}: build ${{ steps.build.outcome }}" && \
             git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" ci-out:ci-out
 
-  pages:
+  pages:                            # (the default branch only: GitHub Pages deploys from it)
     needs: build
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/configure-pages@v5     # (turns Pages on for the repository the first time: Source: GitHub Actions)
-        with:
-          enablement: true
+      - uses: actions/configure-pages@v5     # (needs Pages on, Source: GitHub Actions: a repository setting, once)
       - id: deployment
         uses: actions/deploy-pages@v4

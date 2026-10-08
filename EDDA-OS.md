@@ -12,7 +12,7 @@ section below says otherwise.
 | Base | Felucca 1.1.5.1 (hugelton/Felucca `main`, merged); EDDA OS's commits sit on top (`git log main..edda`) |
 | Licence | GPL-3.0-only, as Felucca |
 | Verified | 3,517 host checks pass (Felucca's suites and `tests/edda_test.c`, under ASan/UBSan); the whole firmware compiles for a 32-bit target |
-| Not yet | built with JieLi's compiler and flashed onto an FM-1 (section 7) |
+| Not yet | flashed onto an FM-1 (section 7); the package itself builds with JieLi's compiler on GitHub |
 | Install | from a Windows laptop with Chrome or Edge; no Mac or Linux needed (section 1) |
 
 ---
@@ -92,8 +92,9 @@ Close every other app that uses MIDI first (DAWs, the editor tab).
 
 ### 1.4 Going back
 
-- **To Felucca:** install it from `hugelton.github.io/Felucca`. EDDA OS keeps the package identity
-  `FM-1_900` and Felucca's flash layout, so either installs over the other. Projects, presets and user
+- **To Felucca:** install it from `hugelton.github.io/Felucca`. EDDA OS keeps Felucca's update loader (it
+  answers as `FM-1_900`), its release identity (`FM-1_911` for 1.1.x) and its flash layout, so either installs
+  over the other. Projects, presets and user
   samples stay (EDDA's 4th sample slot sits in flash Felucca leaves unused); Felucca opens EDDA projects
   without their nudges and fill flags, and settings Felucca does not know are kept as they are.
 - **To M-VAVE's firmware:** the installer's **Return to official V15** (with M-VAVE's `FM-1.fwsc`).
@@ -102,10 +103,14 @@ Close every other app that uses MIDI first (DAWs, the editor tab).
 
 Installing firmware is at your own risk.
 
-### 1.5 Pushing for you
+### 1.5 Your fork (github.com/mrsheez/Felucca)
 
-This session had no GitHub account linked. With GitHub connected (claude.ai settings), the branch can be
-pushed to your fork directly and steps 3–4 of Route A disappear.
+Steps 1–4 of Route A are done: the fork exists, its workflows run, `edda` is pushed and `main` carries the
+same commits (a fast-forward, so Pages publishes from the default branch without changing it). Every push
+builds the package with JieLi's compiler, runs the suites and pushes the run's logs and package to the
+`ci-out` branch. One setting is left, because a workflow's own token may not turn Pages on: **Settings →
+Pages → Build and deployment → Source: GitHub Actions**. Then **Actions → EDDA OS → Run workflow** (branch
+`main`), and the installer is at `https://mrsheez.github.io/Felucca/webapp/installer/`.
 
 ---
 
@@ -379,19 +384,17 @@ external clock), the settings round trip, VIZ navigation and the spectrum's band
 keys. Every screen, in every palette, passes Felucca's layout lint (0 findings over 163 screens × 11 palettes).
 The web editor's protocol and kit builder tests pass; the browser emulator's source builds and runs natively.
 
-**Checked by a model of the target**: the whole firmware compiles for a 32-bit freestanding target with no
-warnings. Built the way `tools/build.py` builds it (main-loop code for size), a RISC-V model puts the image
-at ~538,000 bytes of the 581,564-byte app slot (Felucca 1.1.5: ~512,000), RAM (.data + .bss) at ~93,500 of
-98,304 bytes, and the pool's spare at ~10,300 bytes (the build requires 8,192). JieLi's pi32v2 code is a
-different size: the CI build prints the real figures, and if the image does not fit it ships the build
-without the visualisers.
+**Built with JieLi's compiler** (GitHub Actions, run 37803676056, every visualiser in): the image is 472,580
+bytes of the 581,564-byte app slot, RAM (.data + .bss) 93,688 of 98,304 bytes, the pool 334,788 of 344,064
+bytes (9,276 spare; the build requires 8,192), register access in `hal/` only. The whole firmware also compiles
+for a 32-bit RISC-V target with no new warnings. The package carries JieLi's own SDK files when the run can
+reach gitee (its summary says which; `tools/get_sdk_files.sh` checks them against `tools/build.py`).
 
-**Not yet:** a build with JieLi's compiler (its package server is not reachable from where this was written;
-Route A does it), a flash onto an FM-1, listening tests of the voices and kits, and the browser emulator's
-WebAssembly build (Route A builds it). On the first CI run, `tests/target_budget.py` may report the drum
-render and the audio interrupt over Felucca's budget: that is EDDA's added audio work (the kits, SEQ OUT, the
-run, the exact grid), bounded by the host CPU check that passes; after a good test on the FM-1,
-`BUDGET_UPDATE=1 python3 tests/target_budget.py build/felucca.dis tests/target_budget.txt` re-bases it.
+**Not yet:** a flash onto an FM-1 and listening tests of the voices and kits. On a CI run,
+`tests/target_budget.py` may report the drum render and the audio interrupt over Felucca's budget: that is
+EDDA's added audio work (the kits, SEQ OUT, the run, the exact grid), bounded by the host CPU check that
+passes; after a good test on the FM-1, `BUDGET_UPDATE=1 python3 tests/target_budget.py build/felucca.dis
+tests/target_budget.txt` re-bases it.
 
 ---
 
