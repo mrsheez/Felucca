@@ -483,6 +483,37 @@ static void grid_edit(uint32_t slot, int32_t steps)
 
 /* the keys on the grid (presses): a white key toggles the selected lane at its step of the page (its accent
  * while ACC is held) and puts the cursor there; a lane key selects the lane (seq.c plays it); the page keys */
+/* EDDA OS, the SONG page's quick entry (SLOOP's "tap A B B C"): the first four white keys (F3 G3 A3 B3) are the
+ * patterns A B C D: a tap appends a row of that pattern (x1), the same pattern again plays it once more (its REPS up to
+ * 16); the row just entered is the one selected (KNOB 2 / 3 adjust it, OCT+ deletes). The keys sound as they do while
+ * entering steps. Stopped only (a playing song: STOP TO EDIT) */
+static void song_keys(uint32_t pressed)
+{
+    uint32_t k;
+    for (k = 0; k < 27u; k++) {
+        uint32_t slot;
+        if (!((pressed >> k) & 1u) || key_black(k) || key_place(k) >= 4u)
+            continue;
+        slot = key_place(k);
+        if (chain_busy()) {
+            ui_message("STOP TO EDIT");
+            return;
+        }
+        if (chain_config.count && chain_config.row[chain_config.count - 1u].slot == slot &&
+            chain_config.row[chain_config.count - 1u].repeat < 16u) {
+            chain_config.row[chain_config.count - 1u].repeat++;
+        } else if (chain_config.count < CHAIN_ROWS) {
+            chain_config.row[chain_config.count].slot = (uint8_t)slot;
+            chain_config.row[chain_config.count].repeat = 1;
+            chain_config.count++;
+        } else {
+            ui_message("SONG FULL");
+            return;
+        }
+        ui.song_row = (uint8_t)(chain_config.count - 1u);
+        ui.force = 1;
+    }
+}
 static void grid_keys(uint32_t pressed)
 {
     uint32_t k, len = (uint32_t)TSEL->p[P_SLEN];
@@ -1292,6 +1323,9 @@ static void ui_input(void)
     lock_keys();                                        /* (a grid key on a hit let go: the hit goes) */
     if (song.grid) {
         grid_keys(notes);
+    } else if (song.seq_mode && cur_page()->graph == GR_SONG) {   /* SONG: the first four white keys enter sections */
+        if (notes)
+            song_keys(notes);
     } else if (song.seq_mode && cur_page()->graph == GR_ROLL) {   /* STEP (not CHANCE: its knobs only) */
         if (live_rec_sel() || !((song.rec >> song.sel) & 1u))   /* armed and playing: the keys record live, not
                                                          * into the cursor step too; not armed (1.2, #133): they
@@ -1312,7 +1346,9 @@ static void ui_input(void)
     if (!lay && (s = panel_enc(EN_ALGO)) != 0)     /* ALGORITHM: the selected track, on every page */
         track_select((uint32_t)clamp((int32_t)song.sel + (s > 0 ? 1 : -1), 0, NTRK - 1));
     if ((s = glo ? sel : panel_enc(EN_SELECT)) != 0) {   /* SELECT knob = global tempo; */
-        if (glo || !(ui_prefs & PREF_BPM_LOCK)) {
+        if (!glo && (ui_rec_prefs & (PREF_SEL_PAGES >> 8))) {   /* MENU > SELECT PAGES (EDDA OS): the pages; the tempo */
+            page_turn(s);                               /* with GLO held (ui.c page_turn) */
+        } else if (glo || !(ui_prefs & PREF_BPM_LOCK)) {
             song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + accel(EN_SELECT, s, 200), GP[G_BPM].min, GP[G_BPM].max);
             ui.bpm_t = 40;                              /* the header's BPM lights up; no message over the header */
         } else {                                        /* MENU > BPM LOCK ON (#58): only with GLO held (and on GLO >

@@ -1480,7 +1480,7 @@ static void graph_song(void)
 {
     uint32_t first = ui.song_row > 2u ? ui.song_row - 2u : 0u, i;
     if (!chain_config.count) {
-        panel_note("PAT A x4 > B x1", "[K2] ADD PATTERN", "[SAVE] PROJECT A-D");
+        panel_note("PAT A x4 > B x1", "[K2] OR KEYS 1-4: ADD A-D", "[SAVE] PROJECT A-D");   /* (EDDA OS: the keys) */
         return;
     }
     for (i = first; i < CHAIN_ROWS && i < first + 7u; i++) {

@@ -59,6 +59,8 @@ static uint32_t up_gen;                      /* bumped on every user bank change
 #define ui_rec_prefs (favorites.factory[15][28])
 #define PREF_REC 0xFF00u                       /* (menu_items.c MENU_FLAGS: a bit of ui_rec_prefs, << 8) */
 #define PREF_SCALE_LEDS (0x40u << 8)
+#define PREF_SEL_PAGES (0x80u << 8)            /* EDDA OS: MENU > CONTROL > SELECT PAGES (SLOOP's): the SELECT knob turns
+                                                * the pages, GLO + SELECT sets the tempo (ui_input.c page_turn) */
 enum { RP_CLICK, RP_LEVEL, RP_COUNTIN };
 static uint32_t rp_get(uint32_t f)                     /* a field as the MENU steps it: 0..2 */
 {
@@ -599,6 +601,26 @@ static void open_global(void)
     page_entered();
 }
 
+/* EDDA OS, MENU > SELECT PAGES: the SELECT knob turns the pages (SLOOP's way): from HOME the first page (right) or the
+ * last (left), then every visible page in order, past either end HOME again */
+static void go_home(void);
+static void page_turn(int32_t dir)
+{
+    int32_t i = ui.home ? (dir > 0 ? -1 : (int32_t)NPAGES) : (int32_t)ui.page;
+    for (;;) {
+        i += dir > 0 ? 1 : -1;
+        if (i < 0 || i >= (int32_t)NPAGES) {
+            go_home();
+            return;
+        }
+        if (page_visible((uint32_t)i))
+            break;
+    }
+    ui.home = 0;
+    ui.page = (uint8_t)i;
+    ui.fam_last[PAGES[i].fam] = ui.page;
+    page_entered();
+}
 static void go_home(void)
 {
     ui.home = 1;

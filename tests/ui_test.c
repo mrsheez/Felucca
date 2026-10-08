@@ -1385,9 +1385,9 @@ static int test_menu_tabs(void)
             }
     }
     ui_prefs = 0;
-    bad += check("MENU tabs: DISPLAY CONTROL AUDIO EDDA SYSTEM (6 5 5 6 4 rows), 1..6 each in a run, fit the page; tab gaps constant (S, LARGE)",
+    bad += check("MENU tabs: DISPLAY CONTROL AUDIO EDDA SYSTEM (6 6 5 6 4 rows), 1..6 each in a run, fit the page; tab gaps constant (S, LARGE)",
                  ok && MTAB_COUNT == 5u && str_eq(MTAB_NAME[0], "DISPLAY") && mtab_rows(MTAB_DISPLAY) == 6u &&
-                 mtab_rows(MTAB_CONTROL) == 5u && mtab_rows(MTAB_AUDIO) == 5u && mtab_rows(MTAB_SYSTEM) == 4u &&
+                 mtab_rows(MTAB_CONTROL) == 6u && mtab_rows(MTAB_AUDIO) == 5u && mtab_rows(MTAB_SYSTEM) == 4u &&
                  mtab_rows(MTAB_EDDA) == 6u && str_eq(MTAB_NAME[MTAB_EDDA], "EDDA"));
 
     ui_power_on();
@@ -5042,6 +5042,72 @@ static int test_viz(void)
     ui_power_on();
     return bad;
 }
+/* EDDA OS: MENU > CONTROL > SELECT PAGES: the SELECT knob turns the pages (GLO + SELECT the tempo); and the SONG
+ * page's quick entry: the first four white keys append sections A B C D, a repeat bumps REPS */
+static int test_select_pages(void)
+{
+    int bad = 0, ok;
+    uint32_t n, i;
+    ui_power_on();
+    ok = str_eq(MI_NAME[MI_SELKNOB], "SELECT") && MI_TAB[MI_SELKNOB] == MTAB_CONTROL && menu_n(MI_SELKNOB) == 2u &&
+         str_eq(menu_vname(MI_SELKNOB, 0), "TEMPO") && str_eq(menu_vname(MI_SELKNOB, 1), "PAGES") && !menu_get(MI_SELKNOB) &&
+         MI_SELKNOB == MI_SCLLED + 1u;
+    turn(EN_SELECT, 1); frame();
+    ok &= song.g[G_BPM] == 121 && ui.home;              /* TEMPO (the default): as always */
+    menu_put(MI_SELKNOB, 1);
+    ok &= (ui_rec_prefs & 0x80u) && menu_get(MI_SELKNOB) == 1u && menu_step(MI_SELKNOB, -1) == 0u;
+    turn(EN_SELECT, 1); frame();
+    ok &= !ui.home && ui.page == 0u && song.g[G_BPM] == 121;   /* PAGES: HOME -> the first page */
+    turn(EN_SELECT, 1); frame();
+    ok &= !ui.home && ui.page == 1u;
+    turn(EN_SELECT, -1); frame(); turn(EN_SELECT, -1); frame();
+    ok &= ui.home;                                      /* back past the first: HOME */
+    turn(EN_SELECT, -1); frame();
+    ok &= !ui.home && ui.page == NPAGES - 1u;           /* HOME left: the last page */
+    for (n = 0, i = 0; i < NPAGES + 2u && !ui.home; i++, n++) { turn(EN_SELECT, 1); frame(); }
+    ok &= ui.home && n == 1u;                           /* (the last page right: HOME) */
+    for (n = 0, i = 0; i < NPAGES + 2u; i++) {          /* right through every visible page */
+        turn(EN_SELECT, 1); frame();
+        if (ui.home) break;
+        ok &= page_visible(ui.page);
+        n++;
+    }
+    ok &= ui.home && n >= 30u && n < NPAGES;            /* (the hidden ones skipped: LANES, SLICES, OP ENV..) */
+    btn_down(B_GLO); frames(100); turn(EN_SELECT, 1); frame(); btn_up(B_GLO); frames(48);
+    ok &= song.g[G_BPM] == 122 && ui.home;              /* GLO + SELECT: the tempo still */
+    menu_put(MI_SELKNOB, 0);
+    turn(EN_SELECT, 1); frame();
+    ok &= song.g[G_BPM] == 123 && ui.home;
+    bad += check("MENU > CONTROL > SELECT PAGES: SELECT turns the pages (HOME, every visible page, HOME); GLO + SELECT the tempo", ok);
+
+    ui_power_on();
+    for (i = 0; i < NPAGES; i++) if (PAGES[i].graph == GR_SONG) break;
+    ui.home = 0; ui.page = (uint8_t)i; page_entered(); frame();
+    ok = !chain_config.count && song.seq_mode;
+    key_down(white(0)); frame(); key_up(white(0)); frame();        /* A */
+    ok &= chain_config.count == 1u && chain_config.row[0].slot == 0u && chain_config.row[0].repeat == 1u && ui.song_row == 0u;
+    key_down(white(1)); frame(); key_up(white(1)); frame();        /* B */
+    key_down(white(1)); frame(); key_up(white(1)); frame();        /* B again: x2 */
+    key_down(white(2)); frame(); key_up(white(2)); frame();        /* C */
+    ok &= chain_config.count == 3u && chain_config.row[1].slot == 1u && chain_config.row[1].repeat == 2u &&
+          chain_config.row[2].slot == 2u && chain_config.row[2].repeat == 1u && ui.song_row == 2u;
+    key_down(white(5)); frame(); key_up(white(5)); frame();        /* the 6th white key: a note, no row */
+    key_down(black(0)); frame(); key_up(black(0)); frame();
+    ok &= chain_config.count == 3u;
+    for (i = 0; i < 17u; i++) { key_down(white(3)); frame(); key_up(white(3)); frame(); }   /* D x16, then D x1 */
+    ok &= chain_config.count == 5u && chain_config.row[3].slot == 3u && chain_config.row[3].repeat == 16u &&
+          chain_config.row[4].slot == 3u && chain_config.row[4].repeat == 1u && ui.song_row == 4u;
+    for (i = 0; i < 11u; i++) { key_down(white(i & 1u)); frame(); key_up(white(i & 1u)); frame(); }   /* A B A B ..: 16 rows */
+    ok &= chain_config.count == 16u && !str_eq(ui.msg, "SONG FULL");
+    key_down(white(2)); frame(); key_up(white(2)); frame();
+    ok &= chain_config.count == 16u && str_eq(ui.msg, "SONG FULL");
+    go_home(); frame();
+    key_down(white(0)); frame(); key_up(white(0)); frame();        /* HOME: the keys play, nothing appended */
+    ok &= chain_config.count == 16u;
+    bad += check("SONG: the first four white keys append A B C D (tap A B B C: A, B x2, C); past x16 a new row; 16 rows: SONG FULL; elsewhere the keys only play", ok);
+    ui_power_on();
+    return bad;
+}
 static int test_screen_off(void)
 {
     int bad = 0, ok;
@@ -7449,6 +7515,7 @@ int main(void)
     bad += test_scale_leds();
     bad += test_screen_off();
     bad += test_viz();
+    bad += test_select_pages();
     bad += test_fm6_charts();
 #if FELUCCA_FM4
     bad += test_fm_charts();                        /* (DIGITAL's charts: built with FELUCCA_FM4=1 only) */

@@ -155,7 +155,7 @@ at 1..3 and hides 6 5 8: what it sets still plays the right kit, and the device 
 
 | cmd | Request args | Reply args |
 | --- | --- | --- |
-| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18, EDDA OS: 24) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) (below); older firmware ends earlier |
+| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18, EDDA OS: 25) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) (below); older firmware ends earlier |
 | 2 GET | scope, id | scope, id, v14 |
 | 3 SET | scope, id, v14 | scope, id, v14 (the value after clamping). Setting global `G_ENGSEL` (id from DESC label "ENG") changes the engine: its defaults, then its first preset (as on the device) |
 | 4 DUMP | — | engine, preset, then P_COUNT × v14 (the selected track), then G_COUNT × v14 (globals) |
@@ -779,7 +779,7 @@ is told: no list of settings is fixed in the editor. INFO advertises `4E 01 coun
   A tab may hold items with no value that are not offered (this firmware: SYSTEM also holds CALIBRATION and ABOUT).
   For a kind it does not know, an editor cannot find the tab (it does not know that kind's bytes).
 
-This firmware (count 24; tabs 0 DISPLAY, 1 CONTROL, 2 AUDIO, 3 EDDA, 4 SYSTEM; 1.0.5 had the first 12, 1.1 the first
+This firmware (count 25; tabs 0 DISPLAY, 1 CONTROL, 2 AUDIO, 3 EDDA, 4 SYSTEM; 1.0.5 had the first 12, 1.1 the first
 15, 1.2 before SCALE LEDS the first 16, before SCREEN OFF the first 17, Felucca 1.1.5 the first 18 and tabs 0..3 with
 3 SYSTEM: EDDA OS shows its tab before SYSTEM, so SYSTEM's index is 4 here; group by the tab names, as above):
 
@@ -809,12 +809,17 @@ This firmware (count 24; tabs 0 DISPLAY, 1 CONTROL, 2 AUDIO, 3 EDDA, 4 SYSTEM; 1
 | 21 | 21 | RUN | 0 | 0 SHORT, 1 LONG (EDDA OS) | SHORT | 3 EDDA |
 | 22 | 22 | REVEAL | 0 | 0 OFF, 1 ON (EDDA OS) | OFF | 3 EDDA |
 | 23 | 23 | SEQ OUT | 0 | 0 OFF, 1 NOTES, 2 +CLOCK (EDDA OS) | OFF | 3 EDDA |
+| 24 | 24 | SELECT | 0 | 0 TEMPO, 1 PAGES (EDDA OS) | TEMPO | 1 CONTROL |
 
 EDDA OS's EDDA tab shows KEY, SHOW CUES, SEQ OUT, ACT, RUN, REVEAL (index 18, 19, 23, 20, 21, 22; EDDA-OS.md). KEY sets
 ROOT and SCALE of every synth track (the project keeps them); ACT is the show's act (from 1 at power-on); SHOW CUES,
 SEQ OUT, RUN and REVEAL are kept with the settings. SEQ OUT: NOTES sends what the sequencer plays on USB MIDI OUT
 (each track on its channel, 1..4, as its keys; drum lanes as their GM notes), +CLOCK adds MIDI clock (24 a beat),
 START and STOP on the internal clock. Applied at once; OFF ends every note it started.
+
+SELECT (id 24, EDDA OS; the CONTROL tab shows HOLD, KNOB ACCEL, FX LATCH, BPM LOCK, SCALE LEDS and SELECT, index 5..8,
+16 and 24): PAGES makes the SELECT knob turn the pages (every page in order, HOME past either end) and GLO + SELECT
+the tempo; TEMPO (the default) is the knob as before (BPM LOCK applies). Applied at once.
 
 The device's AUDIO tab shows SPEAKER EQ, USB LEVEL, CLICK, CLICK LEVEL, COUNT-IN (index 9, 10, 12, 13, 14).
 CLICK: the metronome while the transport runs: OFF, REC (while a track is armed), ON (always); CLICK LEVEL its

@@ -20,6 +20,7 @@ static const uint8_t ED_MENU[][2] = {
     {MI_SCROFF, 17},                                   /* 1.1.5, a row of DISPLAY */
     {MI_KEY, 18}, {MI_CUES, 19}, {MI_ACT, 20}, {MI_RUNLEN, 21}, {MI_REVEAL, 22},   /* EDDA OS (edda.c): the EDDA tab */
     {MI_SEQOUT, 23},                                   /* EDDA OS: SEQ OUT (seq.c seq_mo_*), a row of EDDA */
+    {MI_SELKNOB, 24},                                  /* EDDA OS: SELECT TEMPO / PAGES, a row of CONTROL */
 };
 #define ED_MENU_N NELEM(ED_MENU)
 

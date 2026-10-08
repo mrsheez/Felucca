@@ -162,7 +162,7 @@ static int preferences(void)
         host_wire[n - 17] == 0 &&                        /* (no bank since 1.0.3) */
         host_wire[n - 16] == 0x53 && host_wire[n - 15] == 1 && host_wire[n - 14] == 3 &&
         host_wire[n - 13] == 0x50 && host_wire[n - 12] == 1 && host_wire[n - 11] == 3 &&   /* FM6 v2: no bank, preset patches */
-        host_wire[n - 10] == 0x4E && host_wire[n - 9] == 1 && host_wire[n - 8] == 24 &&   /* MENU settings: 24 items (1.2 + EDDA OS) */
+        host_wire[n - 10] == 0x4E && host_wire[n - 9] == 1 && host_wire[n - 8] == 25 &&   /* MENU settings: 25 items (1.2 + EDDA OS) */
         host_wire[n - 7] == 0x52 && host_wire[n - 6] == 1 && host_wire[n - 5] == 4 &&   /* RATCH */
         host_wire[n - 4] == 0x4C && host_wire[n - 3] == 1 && host_wire[n - 2] == 1);   /* 1.1 parameter locks */
     request(ED_UI_SET, a, 2);
@@ -800,9 +800,9 @@ static uint32_t menu_set(uint32_t id, int32_t v)            /* -> rc; host_wire[
 }
 static int menu_protocol(void)
 {
-    /* EDDA OS: 24 items; 1.0.4's 12, 1.1's and 1.2's six, then KEY SHOW CUES ACT RUN REVEAL (the EDDA tab between AUDIO and SYSTEM),
-     * SEQ OUT (appended: its row is between SHOW CUES and ACT) */
-    static const char *const WANT[24][2] = {
+    /* EDDA OS: 25 items; 1.0.4's 12, 1.1's and 1.2's six, then KEY SHOW CUES ACT RUN REVEAL (the EDDA tab between AUDIO and SYSTEM),
+     * SEQ OUT (appended: its row is between SHOW CUES and ACT), SELECT (a row of CONTROL) */
+    static const char *const WANT[25][2] = {
         {"COLOR", 0}, {"STYLE", "FLAT,LINE"}, {"LARGE", "OFF,ON"}, {"ANIM", "ON,OFF"}, {"LEDS", "OFF,DIM LO,DIM HI,INV"},
         {"HOLD", "0.3 s,0.4 s,0.5 s,0.6 s"}, {"KNOB ACCEL", "OFF,ON"}, {"FX LATCH", "OFF,ON"}, {"BPM LOCK", "OFF,ON"},
         {"SPEAKER EQ", "FLAT,LOWCUT,BASS+"}, {"USB LEVEL", "MASTER,FIXED"}, {"USB SERIAL", "ON,OFF"},
@@ -811,9 +811,9 @@ static int menu_protocol(void)
         {"SCREEN OFF", "NEVER,5 MIN,15 MIN,30 MIN,60 MIN"},
         {"KEY", "OFF,1A,1B,2A,2B,3A,3B,4A,4B,5A,5B,6A,6B,7A,7B,8A,8B,9A,9B,10A,10B,11A,11B,12A,12B"},
         {"SHOW CUES", "OFF,ON"}, {"ACT", "1 BULB,2 BULBS,3 BULBS,4 BULBS,5 BULBS"}, {"RUN", "SHORT,LONG"}, {"REVEAL", "OFF,ON"},
-        {"SEQ OUT", "OFF,NOTES,+CLOCK"}};
-    static const int32_t DEF[24] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
-    static const uint8_t TAB[24] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 4, 2, 2, 2, 4, 1, 0, 3, 3, 3, 3, 3, 3};      /* DISPLAY CONTROL AUDIO EDDA SYSTEM */
+        {"SEQ OUT", "OFF,NOTES,+CLOCK"}, {"SELECT", "TEMPO,PAGES"}};
+    static const int32_t DEF[25] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
+    static const uint8_t TAB[25] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 4, 2, 2, 2, 4, 1, 0, 3, 3, 3, 3, 3, 3, 1};      /* DISPLAY CONTROL AUDIO EDDA SYSTEM */
     static const char *const TABN[5] = {"DISPLAY", "CONTROL", "AUDIO", "EDDA", "SYSTEM"};
     int bad = 0, ok = 1;
     uint32_t i, k, n;
@@ -823,7 +823,7 @@ static int menu_protocol(void)
     FILE *jf = json ? fopen(json, "w") : 0;
     reset();
     if (jf) fprintf(jf, "[");
-    for (i = 0; i < 24u; i++) {
+    for (i = 0; i < 25u; i++) {
         n = menu_desc(i, &it);
         joined[0] = 0;
         for (k = 0; k < it.nnames; k++) { if (k) strcat(joined, ","); strcat(joined, it.names[k]); }
@@ -843,7 +843,7 @@ static int menu_protocol(void)
         }
     }
     if (jf) { fprintf(jf, "]\n"); fclose(jf); }
-    bad += check("MENU_DESC: 24 items (1.0.4's 12 in the menu's order, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, EDDA OS's KEY, SHOW CUES, ACT, RUN, REVEAL, SEQ OUT), ids 0..23, names, defaults", ok);
+    bad += check("MENU_DESC: 25 items (1.0.4's 12 in the menu's order, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, EDDA OS's KEY, SHOW CUES, ACT, RUN, REVEAL, SEQ OUT, SELECT), ids 0..24, names, defaults", ok);
     bad += check("MENU_DESC (1.0.5): after the names each item's tab, index and name (DISPLAY CONTROL AUDIO EDDA SYSTEM)", ok);
     {   /* an older editor reads the names and stops: the tab is past them, nothing it reads moved */
         uint32_t m = menu_desc(4, &it), p = 14, q;
@@ -853,12 +853,12 @@ static int menu_protocol(void)
         bad += check("MENU_DESC: the tab comes after every byte of the 1.0.4 reply (older editors ignore it)", ok);
     }
     ok = 1;
-    for (i = 0; i < 24u; i++) {
+    for (i = 0; i < 25u; i++) {
         menu_desc(i, &it);
         ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "ABOUT");
     }
-    n = menu_desc(24, &it);
-    ok &= n == 2u && it.index == 24 && it.id == 127;
+    n = menu_desc(25, &it);
+    ok &= n == 2u && it.index == 25 && it.id == 127;
     n = menu_desc(127, &it);
     bad += check("MENU_DESC: no CALIBRATION / ABOUT; an index past the list answers index, 127 (no item)",
                  ok && n == 2u && it.index == 127 && it.id == 127);
@@ -895,8 +895,9 @@ static int menu_protocol(void)
     ok &= menu_set(19, 1) == 3 && edda.cues == 1u;   /* SHOW CUES ON (the default is OFF) */
     ok &= menu_set(20, 2) == 3 && edda.act == 3u && menu_set(22, 1) == 3 && edda.reveal == 1u;
     ok &= menu_set(23, 2) == 3 && edda.seq_out == 2u && edda_prefs == (1u | 2u << 1 | 1u << 4);   /* SEQ OUT +CLOCK, kept */
-    for (i = 0; i < 24u; i++) {                         /* MENU_DESC reads them back */
-        static const int32_t SET[24] = {2, 1, 1, 1, 1, 3, 1, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 15, 1, 2, 0, 1, 2};
+    ok &= menu_set(24, 1) == 3 && (ui_rec_prefs & 0x80u) && click_mode == CLICK_ON && cin_bars == 2u;   /* SELECT PAGES (its own bit) */
+    for (i = 0; i < 25u; i++) {                         /* MENU_DESC reads them back */
+        static const int32_t SET[25] = {2, 1, 1, 1, 1, 3, 1, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 15, 1, 2, 0, 1, 2, 1};
         menu_desc(i, &it);
         ok &= it.value == SET[i];
     }
@@ -920,7 +921,7 @@ static int menu_protocol(void)
         static uint8_t fav0[sizeof favorites], set0[sizeof settings];
         uint8_t hold0 = settings_hold, leds0 = settings_leds;
         memcpy(fav0, &favorites, sizeof favorites); memcpy(set0, &settings, sizeof settings);
-        ok = menu_set(24, 1) == 1 && host_wire[6] == 24 && ed_rv(host_wire + 7) == 1;   /* (18..23: EDDA OS's ids) */
+        ok = menu_set(25, 1) == 1 && host_wire[6] == 25 && ed_rv(host_wire + 7) == 1;   /* (18..24: EDDA OS's ids) */
         ok &= menu_set(126, -3) == 1 && host_wire[6] == 126 && ed_rv(host_wire + 7) == -3;
         ok &= menu_set(127, 0) == 1 && host_wire[6] == 127;
         ok &= !memcmp(fav0, &favorites, sizeof favorites) && !memcmp(set0, &settings, sizeof settings) &&
