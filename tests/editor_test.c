@@ -770,7 +770,7 @@ static int menu_protocol(void)
         {"SCREEN OFF", "NEVER,5 MIN,15 MIN,30 MIN,60 MIN"},
         {"KEY", "OFF,1A,1B,2A,2B,3A,3B,4A,4B,5A,5B,6A,6B,7A,7B,8A,8B,9A,9B,10A,10B,11A,11B,12A,12B"},
         {"SHOW CUES", "OFF,ON"}, {"ACT", "1 BULB,2 BULBS,3 BULBS,4 BULBS,5 BULBS"}, {"RUN", "SHORT,LONG"}, {"REVEAL", "OFF,ON"}};
-    static const int32_t DEF[23] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 1, 0, 0, 0};   /* (COLOR: the default palette) */
+    static const int32_t DEF[23] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
     static const uint8_t TAB[23] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 4, 2, 2, 2, 4, 1, 0, 3, 3, 3, 3, 3};      /* DISPLAY CONTROL AUDIO EDDA SYSTEM */
     static const char *const TABN[5] = {"DISPLAY", "CONTROL", "AUDIO", "EDDA", "SYSTEM"};
     int bad = 0, ok = 1;
@@ -850,6 +850,7 @@ static int menu_protocol(void)
     ok &= menu_set(17, 0) == 3 && scr_get() == 0u && menu_set(17, 9) == 3 && scr_get() == 4u &&   /* (clamped) */
           menu_set(17, 2) == 3 && scr_get() == 2u && ui_scr == 1u;
     ok &= menu_set(18, 15) == 3 && edda.camelot == 15u && trk[0].p[P_ROOT] == 9;   /* EDDA: KEY 8A over the editor */
+    ok &= menu_set(19, 1) == 3 && edda.cues == 1u;   /* SHOW CUES ON (the default is OFF) */
     ok &= menu_set(20, 2) == 3 && edda.act == 3u && menu_set(22, 1) == 3 && edda.reveal == 1u;
     for (i = 0; i < 23u; i++) {                         /* MENU_DESC reads them back */
         static const int32_t SET[23] = {2, 1, 1, 1, 1, 3, 1, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 15, 1, 2, 0, 1};

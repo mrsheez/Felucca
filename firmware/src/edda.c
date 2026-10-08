@@ -384,7 +384,8 @@ static void edda_defaults(void)
 {
     uint32_t i;
     edda.camelot = 0;
-    edda.cues = 1;
+    edda.cues = 0;                                    /* (opt-in: a lighting rig is a deliberate setup; nothing
+                                                       * leaves MIDI OUT a DAW did not ask for) */
     edda.act = 1;
     edda.run_len = 0;
     edda.reveal = 0;

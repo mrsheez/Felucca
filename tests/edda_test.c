@@ -20,6 +20,7 @@ static void reset(void)
     ui_power_on();
     usb.config = 1;
     edda_defaults();
+    edda.cues = 1;                                    /* (the default is OFF; most checks read the cues) */
     song.g[G_BPM] = 120;                              /* a beat 22050 samples, a bar 88200 */
     mo_w = mo_r = 0;
 }
@@ -242,8 +243,8 @@ int main(void)
         ok = !song.playing && edda.phase == ED_IDLE && trk[1].p[P_LEVEL] == 100 && edda_lane_mute == 0;
         for (i = 0; i < NTRK; i++) ok &= trk[i].p[P_MUTE] == 0;
         ck("a stop in the middle of a run: the mix comes back at once", ok);
-        reset(); edda.cues = 0; seq_start(); m0 = mo_w; beats(5);
-        ck("SHOW CUES OFF: not one byte on MIDI OUT", mo_w == m0);
+        reset(); edda_defaults(); seq_start(); m0 = mo_w; beats(5);
+        ck("SHOW CUES OFF (the default): not one byte on MIDI OUT", mo_w == m0 && !edda.cues);
         reset(); seq_start(); beats(5);
         ok = cues_cc(0, ED_CUE_CC_BAR, &m) >= 2u && m == 1u && cues_cc(0, ED_CUE_CC_BEAT, 0) >= 5u &&
              cues_cc(0, ED_CUE_CC_ACT, &m) == 1u && m == 1u;
