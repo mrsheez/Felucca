@@ -69,13 +69,14 @@ WSL2 runs Ubuntu inside Windows 10/11, and JieLi's toolchain runs there natively
 
    ```
    sudo apt update && sudo apt install -y git python3-pil python3-fonttools python3-numpy curl xz-utils
-   git clone ./edda-os.bundle edda-os -b edda       # or unzip edda-os-fork.zip
+   git clone -b edda https://github.com/mrsheez/Felucca edda-os   # (or from edda-os.bundle / edda-os-fork.zip)
    cd edda-os && sh edda-build.sh                     # -> build/felucca.fwsc
    python3 web/make_site.py build/felucca.fwsc 1.1.5-EDDA /tmp/edda-site
    cd /tmp/edda-site && python3 -m http.server 8000
    ```
 
-   (Copy the bundle into Ubuntu first, e.g. `cp /mnt/c/Users/<you>/Downloads/edda-os.bundle ~`.)
+   (With the bundle instead: copy it into Ubuntu first, e.g. `cp /mnt/c/Users/<you>/Downloads/edda-os.bundle ~`,
+   and `git clone ./edda-os.bundle edda-os -b edda`.)
 3. In Windows Chrome or Edge open `http://localhost:8000/webapp/installer/` (Web MIDI is allowed on
    localhost) and install as in Route A.
 
@@ -111,6 +112,19 @@ builds the package with JieLi's compiler, runs the suites and pushes the run's l
 `ci-out` branch. One setting is left, because a workflow's own token may not turn Pages on: **Settings →
 Pages → Build and deployment → Source: GitHub Actions**. Then **Actions → EDDA OS → Run workflow** (branch
 `main`), and the installer is at `https://mrsheez.github.io/Felucca/webapp/installer/`.
+
+Without Pages, the latest run's package is at
+`https://github.com/mrsheez/Felucca/raw/ci-out/felucca-1.1.5-EDDA.fwsc` (its SHA-256 in the run's summary). Install
+it with the command-line installer (1.3), or serve the installer page from the laptop: with Python 3 on Windows,
+download the repository (**Code → Download ZIP**, branch `edda`), put the package in its folder, and run there
+
+```
+py web\make_site.py felucca-1.1.5-EDDA.fwsc 1.1.5-EDDA site
+cd site
+py -m http.server 8000
+```
+
+then open `http://localhost:8000/webapp/installer/` in Chrome or Edge (Web MIDI is allowed on localhost).
 
 ---
 
