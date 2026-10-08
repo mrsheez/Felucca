@@ -144,10 +144,13 @@ static int test_timing(void)
         slicer_track(t, out + f, CTL);
         f += CTL;
     }
-    for (k = 0; k < steps; k++) {                 /* the step lengths as seq.c step_samples has them */
-        uint32_t base = (uint32_t)FS * 60u / 97u / 4u, len, idx = k & 15u, on = (SL_PAT[pat - 1u] >> idx) & 1u;
+    for (k = 0; k < steps; k++) {                 /* the step lengths as seq.c seq_len has them: EDDA OS, the exact grid
+                                                   * (step k: floor((k+1) 60 FS / (97 * 4)) - floor(k ..)), swung by the
+                                                   * nominal step's amount */
+        uint32_t base = (uint32_t)((uint64_t)(k + 1u) * FS * 60u / (97u * 4u) - (uint64_t)k * FS * 60u / (97u * 4u));
+        uint32_t nom = (uint32_t)FS * 60u / 97u / 4u, len, idx = k & 15u, on = (SL_PAT[pat - 1u] >> idx) & 1u;
         uint32_t non = (SL_PAT[pat - 1u] >> ((idx + 1u) & 15u)) & 1u;
-        int32_t sw = (20 + 10) * (int32_t)base / 250;
+        int32_t sw = (20 + 10) * (int32_t)nom / 250;
         len = base + (uint32_t)((idx & 1u) ? -sw : sw);
         if (b0 + len >= f)
             break;

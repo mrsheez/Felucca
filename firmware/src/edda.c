@@ -399,8 +399,10 @@ static void edda_defaults(void)
 }
 
 /* every block from events_block, before the steps play, with the samples the beat clock is about to move by (n):
- * beats and bars (predicted from beat_pos / beat_n, which events_block advances after the steps), the run's phases,
- * the ramps. A phase that begins on the one is in force for the one's own step */
+ * beats and bars, the run's phases, the ramps. A phase that begins on the one is in force for the one's own step: on
+ * the exact grid (fx.c grid_div) the beat clock (beat_pos / beat_n, advanced at the end of each block) has turned over
+ * by the start of the block the step on the beat fires in (seq_tick: the first block that starts at or past it), so
+ * this block's beat is beat_n itself (no look-ahead: that was for the truncated steps, which came a block early) */
 static void edda_block(uint32_t n)
 {
     uint32_t beat_now, new_beat, new_bar;
@@ -422,7 +424,8 @@ static void edda_block(uint32_t n)
         new_bar = 1;
         edda_reveal_bar(1);
     } else {
-        beat_now = beat_pos + n >= beat_samples() ? (beat_n + 1u) & 3u : beat_n & 3u;   /* (after this block) */
+        beat_now = beat_n & 3u;
+        (void)n;
         new_beat = beat_now != edda.beat;
         new_bar = new_beat && beat_now == 0u;
         if (new_beat) {

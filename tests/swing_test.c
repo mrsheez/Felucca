@@ -111,7 +111,8 @@ static int test_slicer(void)
         s.idx = 15;
         for (k = 0; k < 32u; k++) {
             sl_enter(&trk[0], &s);
-            lens += s.len != step_samples(&trk[0], s.base, s.idx);
+            lens += s.len != swing_grid_len(&trk[0], s.base, beat_samples() / SL_DEN[1], s.idx);   /* (EDDA OS: the exact
+                                                       * step, swung by the nominal one's amount: seq.c seq_len's helper) */
         }
     }
     bad += check("SLICER step lengths == the sequencer's (one helper) at 100+100, 100+0, 0+100, 80+70, 0+0", !lens);

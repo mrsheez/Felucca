@@ -2031,12 +2031,13 @@ static int test_chain(void)
     events_block(n);
     bad += check("SONG starts all tracks at source step 0, recording paused", chain.running && song.playing &&
         !song.rec && trk[0].seq_idx == 0 && seq_steps(&trk[0])[0].note[0] == 60 && trk[0].seq_notes[0] == 60);
-    period = div_samples((uint32_t)trk[0].p[P_SDIV]);
-    events_block(period);
-    events_block(period);
+    period = div_samples((uint32_t)trk[0].p[P_SDIV]);   /* (EDDA OS: each call one step as the sequencer counts it:
+                                                          * seq_len, the exact grid's length; the nominal is a sample short) */
+    events_block(seq_len(&trk[0], period));
+    events_block(seq_len(&trk[0], period));
     bad += check("SONG first row repeats without a gap", chain.row == 0 && chain.remaining == 1 && trk[0].seq_idx == 0);
-    events_block(period);
-    events_block(period);
+    events_block(seq_len(&trk[0], period));
+    events_block(seq_len(&trk[0], period));
     ok = chain.row == 1 && chain.remaining == 1;
     for (i = 0; i < NTRK; i++) {
         ok &= trk[i].seq_idx == 0 && trk[i].p[P_SLEN] == 3 && seq_steps(&trk[i])[0].note[0] == 65;
@@ -2048,9 +2049,9 @@ static int test_chain(void)
     for (k = 0; k < NPAGES && cur_page()->scope != SC_STEP; k++) open_family(FAM_SEQ);
     turn(EN_K2, 1); press(B_EDIT); hold(B_REC); hold(B_SAVE);
     bad += check("SONG playing: step edits, clears, recording and undo are blocked", !memcmp(trk[0].step, before[0], sizeof before[0]) && !ui.confirm);
-    events_block(period);
-    events_block(period);
-    events_block(period);
+    events_block(seq_len(&trk[0], period));
+    events_block(seq_len(&trk[0], period));
+    events_block(seq_len(&trk[0], period));
     ok = !song.playing && !chain.running && song.rec == 3;
     for (i = 0; i < NTRK; i++) ok &= !trk[i].seq_n && !memcmp(trk[i].step, before[i], sizeof before[i]) &&
         !memcmp(&trk[i].p[P_SLEN], timing[i], sizeof timing[i]);
@@ -2059,7 +2060,7 @@ static int test_chain(void)
     chain_config.row[0].repeat = 1;
     chain_prepare(); events_block(n);
     trk[0].seq_idx = 1;
-    last = step_samples(&trk[0], div_samples((uint32_t)trk[0].p[P_SDIV]), 1);
+    last = seq_len(&trk[0], div_samples((uint32_t)trk[0].p[P_SDIV]));   /* (step 2 as the sequencer counts it) */
     trk[0].seq_pos = last - n + 19u;
     events_block(n);
     ok = chain.row == 1;

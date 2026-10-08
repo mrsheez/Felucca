@@ -24,6 +24,7 @@ static void seq_release(track_t *t);
 static void seq_stop(void);
 static uint32_t div_samples(uint32_t div);
 static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx);
+static uint32_t seq_len(const track_t *t, uint32_t period);
 
 static void chain_defaults(chain_config_t *c)
 {
@@ -58,6 +59,7 @@ static void chain_apply(void)
         memcpy(&t->p[P_SLEN], chain.source[chain.slot].timing[i], sizeof chain.timing[i]);
         t->seq_idx = (uint16_t)(t->p[P_SLEN] - 1);
         t->seq_pos = 0x7FFFFFFFu;
+        t->seq_base = 0;                        /* (EDDA OS: the exact grid from the slot's step 0) */
         t->rh_n = t->rskip_n = 0;
     }
 }
@@ -95,7 +97,7 @@ static void chain_tick(uint32_t n)
     uint32_t length;
     if (!chain.running || t->seq_pos >= 0x7FFFFFFFu || t->seq_idx + 1u != (uint32_t)t->p[P_SLEN])
         return;
-    length = step_samples(t, div_samples((uint32_t)t->p[P_SDIV]), t->seq_idx);
+    length = seq_len(t, div_samples((uint32_t)t->p[P_SDIV]));   /* (EDDA OS: the step as the sequencer counts it) */
     if (t->seq_pos + n < length)
         return;
     if (chain.remaining > 1u) {

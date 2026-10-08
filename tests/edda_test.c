@@ -197,6 +197,44 @@ static void mt_track(track_t *t, uint32_t base, const int8_t *nudge)   /* 4 step
         step_set_nudge(&t->step[i], nudge ? nudge[i] : 0);
     }
 }
+/* ---- the exact grid: the block each beat's note starts in, per track (0..2), and EDDA's beat changes (3) */
+#define GRID_MAX 1400u
+static uint32_t grid_blk[4][GRID_MAX], grid_n[4];
+static void grid_run(uint32_t nblocks)
+{
+    uint32_t b, i, k, top[3] = {0, 0, 0}, eb = edda.beat;
+    for (k = 0; k < 4u; k++)
+        grid_n[k] = 0;
+    for (k = 0; k < 3u; k++)
+        for (i = 0; i < NVOICE; i++)
+            top[k] = trk[k].v[i].age > top[k] ? trk[k].v[i].age : top[k];
+    for (b = 0; b < nblocks; b++) {
+        events_block(CTL);
+        for (k = 0; k < 3u; k++) {
+            uint32_t nt = top[k];
+            for (i = 0; i < NVOICE; i++)
+                if (trk[k].v[i].age > top[k]) {
+                    if (grid_n[k] < GRID_MAX && (!grid_n[k] || grid_blk[k][grid_n[k] - 1u] != b))
+                        grid_blk[k][grid_n[k]++] = b;
+                    nt = trk[k].v[i].age > nt ? trk[k].v[i].age : nt;
+                }
+            top[k] = nt;
+        }
+        if (edda.beat != eb || (!b && edda.playing)) {
+            if (grid_n[3] < GRID_MAX)
+                grid_blk[3][grid_n[3]++] = b;
+            eb = edda.beat;
+        }
+    }
+}
+static void grid_track(track_t *t, uint32_t div, uint32_t len, uint32_t every, uint32_t note)   /* a note on every beat */
+{
+    uint32_t i;
+    track_defaults_steps(t);
+    t->p[P_SLEN] = (int16_t)len; t->p[P_SDIV] = (int16_t)div; t->p[P_SSWING] = 0; t->p[P_AMODE] = 0; t->p[P_SGATE] = 32;
+    for (i = 0; i < len; i += every)
+        t->step[i] = (step_t){{(uint8_t)note, 0, 0, 0}, 1, ST_NOTE, 0, 96, 0, 0};
+}
 static void mt_quiet(void)                            /* the other tracks: empty, LEN 4 */
 {
     uint32_t i;
@@ -859,6 +897,63 @@ int main(int argc, char **argv)
             ok = r.note[0] == 60 && !(r.flags[0] & 4u) && r.note[1] == 62;
             ck("a user preset keeps an early-nudged step a note (SF_EARLY is not its tie)", ok);
         }
+    }
+    /* ------------------------------------------------------ the exact grid */
+    {
+        static const int32_t BPMS[3] = {128, 97, 173};
+        static const uint32_t MINUTES[3] = {10, 2, 2};
+        uint32_t bi;
+        int ok = 1, okd = 1;
+        for (bi = 0; bi < 3u; bi++) {
+            uint32_t beats = (uint32_t)BPMS[bi] * MINUTES[bi], nb, m;
+            reset(); mt_quiet();
+            song.g[G_BPM] = (int16_t)BPMS[bi];
+            grid_track(&trk[0], 2, 16, 4, 36);             /* 1/16: a note every 4 steps */
+            grid_track(&trk[1], 4, 12, 3, 60);             /* 8T: every 3 (a 12/8 timeline's beat) */
+            grid_track(&trk[2], 1, 8, 2, 72);              /* 1/8: every 2 */
+            nb = (uint32_t)((uint64_t)beats * FS * 60u / (uint32_t)BPMS[bi] / CTL) + 2u;
+            seq_start();
+            grid_run(nb);
+            seq_stop();
+            if (grid_n[0] < beats || grid_n[1] < beats || grid_n[2] < beats || grid_n[3] < beats)
+                okd = 0;
+            for (m = 0; m < beats && m < GRID_MAX && okd; m++) {
+                uint32_t want = (uint32_t)(((uint64_t)m * FS * 60u / (uint32_t)BPMS[bi] + CTL - 1u) / CTL);
+                if (grid_blk[0][m] != want || grid_blk[1][m] != want || grid_blk[2][m] != want || grid_blk[3][m] != want) {
+                    printf("  %d BPM beat %u: 1/16 %u, 8T %u, 1/8 %u, EDDA %u, the exact beat %u\n", BPMS[bi], m, grid_blk[0][m],
+                           grid_blk[1][m], grid_blk[2][m], grid_blk[3][m], want);
+                    okd = 0;
+                }
+            }
+        }
+        ck("the exact grid: 1/16, 8T and 1/8 tracks and EDDA's beat on every beat, 10 min at 128 BPM, 2 at 97 and 173, no drift", okd);
+        {   /* the ARP: its steps at the exact grid's lengths from its key, the remainder kept (before: 0.4 % slow) */
+            track_t *t = &trk[0];
+            uint32_t b, i, top = 0, n0 = 0, cnt = 0, first = 0, last = 0, c = 256;
+            reset(); mt_quiet();
+            song.g[G_BPM] = 128;
+            track_defaults_steps(t);
+            t->p[P_AMODE] = 1; t->p[P_ARATE] = 2; t->p[P_AOCT] = 1; t->p[P_ASWING] = 0; t->p[P_APROB] = 127;
+            arp_add(t, 60);
+            for (i = 0; i < NVOICE; i++)
+                top = t->v[i].age > top ? t->v[i].age : top;
+            for (b = 0; b < 400000u && cnt <= c; b++) {
+                uint32_t nt = top;
+                events_block(CTL);
+                for (i = 0; i < NVOICE; i++)
+                    if (t->v[i].age > top) {
+                        if (!cnt) first = b;
+                        if (cnt == c) last = b;
+                        cnt++;
+                        nt = t->v[i].age > nt ? t->v[i].age : nt;
+                    }
+                top = nt;
+            }
+            n0 = (uint32_t)(((uint64_t)c * FS * 60u / (128u * 4u) + CTL - 1u) / CTL);   /* 256 sixteenths */
+            ok = cnt > c && last - first >= n0 - 1u && last - first <= n0 + 1u;
+            if (!ok) printf("  ARP: %u steps in %u blocks, the exact grid %u\n", c, last - first, n0);
+        }
+        ck("the ARP at 1/16, 128 BPM: 256 steps in the exact grid's time from its key (the remainder kept)", ok);
     }
     /* ------------------------------------------------------ dotted echoes */
     {

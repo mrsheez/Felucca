@@ -118,7 +118,12 @@ static void clicks(uint32_t from)
         quiet = 0;
     }
 }
-#define QB 22048u                                      /* a beat at 120 BPM: four 1/16 steps of 5512 samples */
+#define QB 22048u                                      /* the count-in's beat at 120 BPM: four 1/16 steps of 5512 samples */
+#define QX 22050u                                      /* EDDA OS: the transport's beat at 120 BPM, on the exact grid */
+static uint32_t beat_at(uint32_t k, int32_t bpm)       /* EDDA OS: beat k of the transport, floor(k FS 60 / BPM) */
+{
+    return (uint32_t)((uint64_t)k * FS * 60u / (uint32_t)bpm);
+}
 static uint32_t ceil_div(uint64_t a, uint32_t b) { return (uint32_t)((a + b - 1u) / b); }
 /* a pattern-free track 1 (all rests) at DIV 1/16 (2), LEN 16: its steps mark the grid, nothing sounds */
 static void grid_track(void)
@@ -169,8 +174,9 @@ static void timing(void)
         run((uint32_t)((uint64_t)B * 33u / CTL));      /* 32 beats and a bit */
         clicks(0);
         ok &= nc == 33u; okbeat &= beats_agree(nb);
-        for (k = 0; k < nc; k++) {                     /* beat k: the first sample of block ceil(k B / CTL) */
-            ok &= c_at[k] == ceil_div((uint64_t)k * B, CTL) * CTL;
+        for (k = 0; k < nc; k++) {                     /* beat k: the first sample of block ceil(k N / D / CTL), the exact
+                                                        * beat (EDDA OS: before, k times the truncated one: it drifted) */
+            ok &= c_at[k] == ceil_div(beat_at(k, BPM[t]), CTL) * CTL;
             if (k < 8u)                                /* .. the block the 1/16 track enters step 4k in */
                 okstep &= c_at[k] == step_block(0, (4u * k) % 16u) * CTL || k >= 4u;
             okacc &= (k % 4u == 0u) == (c_hz[k] > 1600.0);
@@ -183,7 +189,7 @@ static void timing(void)
                       step_block(0, 12) * CTL == c_at[3];
         }
     }
-    check("the beats at 120, 97, 173 BPM: beat k at the first sample of block ceil(k * beat / 32), 32 beats, no drift", ok);
+    check("the beats at 120, 97, 173 BPM: beat k at the first sample of block ceil(k * 60 FS / BPM / 32), 32 beats, no drift", ok);
     check("each beat in the block a 1/16 track enters step 4k (step 1 with the first)", okstep);
     check("the bar's first beat accented (1760 Hz), the others not (1320 Hz)", okacc);
     check("USB audio silent the whole time (the click goes to the DAC only)", okusb);
@@ -193,10 +199,10 @@ static void timing(void)
     fresh(); grid_track();
     trk[0].p[P_SDIV] = 1; trk[0].p[P_SSWING] = 60; song.g[G_SWING] = 30;
     song.g[G_BPM] = 120; click_mode = CLICK_ON; transport_req = 1;
-    run(ceil_div(QB * 9u, CTL));
+    run(ceil_div(QX * 9u, CTL));
     clicks(0);
     ok = nc == 9u;
-    for (k = 0; k < nc; k++) ok &= c_at[k] == ceil_div((uint64_t)k * QB, CTL) * CTL;
+    for (k = 0; k < nc; k++) ok &= c_at[k] == ceil_div((uint64_t)k * QX, CTL) * CTL;
     check("a track at DIV 1/8 with SWING: the click on the song tempo's quarters all the same", ok);
 }
 
@@ -270,9 +276,9 @@ static void usb_clean(void)
     }
     n = nb * CTL;
     for (i = 0; i < n; i++) {
-        uint32_t ph = i % QB;                       /* a beat starts at the block ceil(k * QB / 32) */
+        uint32_t ph = i % QX;                       /* a beat starts at the block ceil(k * QX / 32) */
         same_usb &= usbo[i] == usb0[i];
-        if (dac[i] != dac0[i] && ph > 1600u && ph < QB - 64u) diff_only_clicks = 0;
+        if (dac[i] != dac0[i] && ph > 1600u && ph < QX - 64u) diff_only_clicks = 0;
     }
     check("USB audio bit for bit the same with CLICK ON (a pattern playing): the click is not in it", same_usb);
     check("the DAC: the same but for the clicks (each within 40 ms of its beat)", diff_only_clicks);
@@ -315,7 +321,7 @@ static void count_in(void)
     }
     /* CLICK REC on: the count-in's 4, then the recording's beats on, the sequencer's first with step 1 */
     fresh(); grid_track(); cin_bars = 1; click_mode = CLICK_REC; song.rec = 1u; transport_req = 1;
-    run(ceil_div(QB * 7u, CTL) + 1u);
+    run(ceil_div(QB * 4u + QX * 3u, CTL) + 1u);       /* (the count-in's 4 beats, then 3 on the exact grid) */
     clicks(0);
     start = step_block(0, 0);
     ok = nc == 8u && c_at[4] == start * CTL && c_hz[4] > 1600.0 && c_at[5] == step_block(start, 4) * CTL;

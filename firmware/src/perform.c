@@ -78,6 +78,8 @@ static const int16_t PF_SVF[64][3] = {
 
 static struct {
     uint32_t ph, P, split;             /* samples since play; the 1/16; this block: where a 1/16 starts */
+    uint32_t p16, l16;                 /* EDDA OS: samples into the 1/16 playing, its exact length (fx.c grid_div) */
+    uint16_t f16;                      /* .. the grid's remainder */
     uint32_t act, act0;                /* running after / before split */
     uint8_t busy, sync, mute;          /* sync: a 1/16 starts with the next block; mute: tracks to ramp */
     /* the buffer */
@@ -134,7 +136,18 @@ static void perf_press(uint32_t e, int down)
     }
 }
 
-static void perf_start(void) { pf.ph = 0; pf.sync = 1; }      /* seq_start: a 1/16 starts with the transport */
+static void perf_start(void) { pf.ph = 0; pf.sync = 1; pf.p16 = 0; pf.f16 = 0; pf.l16 = 0; }   /* seq_start: a 1/16
+                                                                                              * starts with the transport */
+static void pf_grid(uint32_t n)                         /* EDDA OS: the exact 1/16 clock, n samples on */
+{
+    if (!pf.l16)
+        pf.l16 = grid_div(2, &pf.f16);
+    pf.p16 += n;
+    while (pf.p16 >= pf.l16) {
+        pf.p16 -= pf.l16;
+        pf.l16 = grid_div(2, &pf.f16);
+    }
+}
 
 /* the SLICER's recordings dropped (when the buffer is taken and given back) */
 static void perf_drop_slicer(void)
@@ -235,6 +248,7 @@ static __attribute__((noinline)) int perf_begin(uint32_t n)
     if (!held && !pf.busy && !(perf_k[0] | perf_k[1] | perf_k[2])) {   /* idle: the clock only */
         pf.ph += n;
         pf.sync = 0;
+        pf_grid(n);
         perf_act = 0;
         return 0;
     }
@@ -242,10 +256,16 @@ static __attribute__((noinline)) int perf_begin(uint32_t n)
     if (pf.sync) {
         pf.ph = 0;
         pf.sync = 0;
+        pf.p16 = 0;
+        pf.f16 = 0;
+        pf.l16 = 0;
     }
-    ph0 = pf.ph % pf.P;                             /* the 1/16 in this block (n: none) */
-    bnd = ph0 ? (pf.P - ph0 < n ? pf.P - ph0 : n) : 0u;
+    if (!pf.l16)
+        pf.l16 = grid_div(2, &pf.f16);
+    ph0 = pf.p16;                                   /* the 1/16 in this block (n: none); EDDA OS: the exact one */
+    bnd = ph0 ? (pf.l16 - ph0 < n ? pf.l16 - ph0 : n) : 0u;
     pf.ph += n;
+    pf_grid(n);
     pf.act &= held;                                 /* let go: at once */
     pf.act |= held & ~PF_Q;
     pf.act0 = pf.act;

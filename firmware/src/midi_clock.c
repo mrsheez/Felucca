@@ -53,9 +53,13 @@ static __attribute__((noinline)) void midi_clock_pulse(uint32_t ms)
                         trk[i].seq_pos = (uint32_t)(((uint64_t)trk[i].seq_pos * ratio + 2048u) >> 12);
                     if (trk[i].seq_off)
                         trk[i].seq_off = (uint32_t)(((uint64_t)trk[i].seq_off * ratio + 2048u) >> 12);
+                    if (trk[i].seq_base)               /* (EDDA OS: the step's exact length with it) */
+                        trk[i].seq_base = (uint32_t)(((uint64_t)trk[i].seq_base * ratio + 2048u) >> 12);
                 }
-                if (clk_pos < (uint32_t)FS * 2u)   /* (the metronome's beat as the steps) */
+                if (clk_pos < (uint32_t)FS * 2u) {   /* (the metronome's beat as the steps) */
                     clk_pos = (uint32_t)(((uint64_t)clk_pos * ratio + 2048u) >> 12);
+                    clk_len = (uint32_t)(((uint64_t)clk_len * ratio + 2048u) >> 12);
+                }
             }
             midi_beat_samples = new_beat;
             song.g[G_BPM] = (int16_t)clamp((int32_t)((15000u + dt / 2u) / dt), 40, 240);

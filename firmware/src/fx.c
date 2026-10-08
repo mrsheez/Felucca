@@ -223,6 +223,40 @@ static uint32_t beat_samples(void)
 {
     return song.g[G_CLOCK] && midi_beat_samples ? midi_beat_samples : (uint32_t)FS * 60u / (uint32_t)song.g[G_BPM];
 }
+/* EDDA OS, the exact grid. A beat is N / D samples: the internal clock FS * 60 / BPM kept as that fraction, an external
+ * clock its measured beat (D 1). A step of m / den beats takes the floor or the ceiling of m N / (D den), the remainder
+ * carried in *frac (Bresenham), so its steps add up to their beats exactly: every clock that counts steps (the tracks,
+ * the click, the beat clock EDDA runs on, the SLICER, the FX layer's 1/16, the ARP) reaches beat k on the same sample,
+ * floor(k N / D) from its start, at any tempo, for as long as it plays. (Before, each truncated its own length: at 120
+ * BPM a 1/16 track ran 22048 samples a beat and an 8T track 22050, 54 ms apart after ten minutes.) div_samples stays
+ * the nominal length: gates, swing amounts, the delay, units */
+static const uint8_t GRID_M[10] = {1, 1, 1, 1, 1, 1, 2, 4, 8, 16}, GRID_DEN[10] = {1, 2, 4, 8, 3, 6, 1, 1, 1, 1};
+static uint32_t grid_step(uint32_t m, uint32_t den, uint16_t *frac)
+{
+    uint32_t n, d, y, num, len, f;
+    if (song.g[G_CLOCK] && midi_beat_samples) {
+        n = midi_beat_samples;
+        d = 1u;
+    } else {
+        n = (uint32_t)FS * 60u;
+        d = (uint32_t)clamp(song.g[G_BPM], 1, 1000);
+    }
+    y = d * (den ? den : 1u);
+    num = n * m;
+    len = num / y;
+    f = *frac % y + num % y;                            /* (*frac < y once the tempo holds; a change: kept inside) */
+    if (f >= y) {
+        f -= y;
+        len++;
+    }
+    *frac = (uint16_t)f;
+    return len;
+}
+static uint32_t grid_div(uint32_t div, uint16_t *frac)   /* the next step of division div (N_DIV) */
+{
+    div = div < 10u ? div : 2u;
+    return grid_step(GRID_M[div], GRID_DEN[div], frac);
+}
 static uint32_t div_samples(uint32_t div)
 {
     uint32_t quarter = beat_samples();

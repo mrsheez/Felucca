@@ -298,6 +298,8 @@ typedef struct track {
     /* arp runtime */
     uint32_t arp_pos;            /* q8 samples into the current arp step */
     uint32_t arp_idx;
+    uint32_t arp_len;            /* EDDA OS: the current arp step's exact length (fx.c grid_div), 0: not yet */
+    uint16_t arp_frac, seq_frac; /* .. the grid's remainders (the arp's, the sequencer's) */
     uint8_t arp_note;            /* sounding arp note, 0 = none */
     uint8_t arp_walk;            /* WALK: the place in the note list it stands on */
     uint8_t arp_ch[3];           /* CHORD: the other notes sounding with arp_note, 0 = none */
@@ -305,6 +307,7 @@ typedef struct track {
     /* sequencer */
     step_t step[NSTEP];
     uint32_t seq_pos;            /* q8 samples into the current step */
+    uint32_t seq_base;           /* EDDA OS: the current step's exact length before swing and nudge (fx.c grid_div) */
     uint16_t seq_idx;
     uint8_t seq_notes[4 + NLANE];   /* sounding seq notes (the step's notes, then its hits) */
     uint8_t seq_n;
@@ -372,10 +375,16 @@ static inline int32_t track_swing(const track_t *t)
     return sw < 0 ? 0 : sw > SWING_MAX ? SWING_MAX : sw;
 }
 /* the length of step idx of a straight length `base`, swung: even steps longer, odd ones shorter */
+/* EDDA OS: a step of exact length base (fx.c grid_div) swung by the amount of its division's nominal length nom, so the
+ * long and the short step of a pair add up to their two exact lengths (the sequencer's and the SLICER's one helper) */
+static inline uint32_t swing_grid_len(const track_t *t, uint32_t base, uint32_t nom, uint32_t idx)
+{
+    int32_t sw = track_swing(t) * (int32_t)nom / 250;
+    return base + (uint32_t)((idx & 1u) ? -sw : sw);
+}
 static inline uint32_t swing_step_len(const track_t *t, uint32_t base, uint32_t idx)
 {
-    int32_t sw = track_swing(t) * (int32_t)base / 250;
-    return base + (uint32_t)((idx & 1u) ? -sw : sw);
+    return swing_grid_len(t, base, base, idx);
 }
 
 /* ----------------------------------------------------------- system --- */

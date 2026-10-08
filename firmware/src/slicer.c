@@ -44,6 +44,8 @@ static const uint16_t SL_PAT[SL_NPAT] = {
     0x7597,   /* 16 xxx.x..xx.x.xxx. */
 };
 static const uint8_t SL_DEN[6] = {2, 4, 8, 3, 6, 12};   /* P_SLRATE (N_SLDIV): a step = 1 / DEN beats */
+static uint32_t grid_step(uint32_t m, uint32_t den, uint16_t *frac);   /* fx.c (EDDA OS: the exact grid) */
+static uint32_t beat_samples(void);
 
 static int16_t sl_buf[NTRK][SL_LEN] __attribute__((section(".pool")));
 typedef struct {
@@ -57,6 +59,7 @@ typedef struct {
     uint8_t idx;                 /* step 0..15 */
     uint8_t bit;                 /* this step's pattern bit (latched at its start) */
     uint8_t rec_on;              /* recording this step */
+    uint16_t frac;               /* EDDA OS: the exact grid's remainder (fx.c grid_step) */
 } sl_t;
 static sl_t sl[NTRK];
 static uint8_t sl_lent;          /* perform.c has borrowed sl_buf: STUT plays live, records nothing */
@@ -67,6 +70,7 @@ static void slicer_start(void)   /* seq_start: the next block starts step 0 of e
     for (k = 0; k < NTRK; k++) {
         sl[k].idx = 15;
         sl[k].pos = sl[k].len = 0;
+        sl[k].frac = 0;
     }
 }
 
@@ -77,8 +81,10 @@ static void sl_enter(const track_t *t, sl_t *s)
 {
     uint32_t mode = (uint32_t)t->p[P_SLCR];
     s->idx = (uint8_t)((s->idx + 1u) & 15u);
-    s->base = (uint32_t)FS * 60u / (uint32_t)song.g[G_BPM] / SL_DEN[(uint32_t)t->p[P_SLRATE] % 6u];
-    s->len = swing_step_len(t, s->base, s->idx);   /* core.h, as seq.c step_samples */
+    s->base = grid_step(1, SL_DEN[(uint32_t)t->p[P_SLRATE] % 6u], &s->frac);   /* (EDDA OS: the exact grid, the
+                                                       * tracks' beats; an external clock's too) */
+    s->len = swing_grid_len(t, s->base, beat_samples() / SL_DEN[(uint32_t)t->p[P_SLRATE] % 6u], s->idx);   /* core.h, as
+                                                       * seq.c seq_len (the swing of the nominal step) */
     s->pos = 0;
     s->bit = (uint8_t)((sl_pattern(t) >> s->idx) & 1u);
     s->rp = 0;

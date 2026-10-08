@@ -229,7 +229,7 @@ static int motion_capture(track_t *t, uint32_t id, int16_t value)
     period = div_samples((uint32_t)t->p[P_SDIV]);
     f = motion_guard();
     idx = t->seq_idx % len;
-    if (t->seq_pos < 0x7FFFFFFFu && t->seq_pos > step_samples(t, period, idx) / 2u) idx = (idx + 1u) % len;
+    if (t->seq_pos < 0x7FFFFFFFu && t->seq_pos > seq_len(t, period) / 2u) idx = (idx + 1u) % len;
     /* Mark the immediate knob value transient too, so a stop before its next
      * quantized step still restores the original patch. */
     if ((motion_base_valid >> k) & 1u) motion_active[k][id / 32u] |= 1u << (id % 32u);

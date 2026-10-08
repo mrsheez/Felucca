@@ -273,6 +273,8 @@ static volatile uint32_t beat_pos, beat_n;      /* samples into the beat, the be
  * clk_step count the 1/16 steps as seq_tick counts a 1/16 track's (and midi_clock_pulse rescales clk_pos with them when
  * an external clock's tempo moves): CLK_START at seq_start clicks the first beat in the block step 0 starts in, and
  * beat k in the block a 1/16 track's step 4k starts in (every 4th step; step 0 of 16, the bar's first, accented).
+ * EDDA OS: both on the exact grid (fx.c grid_div): clk_len the 1/16 playing, clk_frac its remainder; a beat is then
+ * exactly the beat clock's, and every DIV's track meets the click on it.
  * The count-in: with MENU > COUNT-IN on, PLAY from stop with a track armed (REC while stopped starts PLAY too) on
  * the internal clock counts cin_total beats first (1 or 2 bars, clicked whatever CLICK is), then
  * starts the sequencer at step 1 exactly that many beats later (song.playing stays 0 until then: nothing plays or
@@ -281,12 +283,17 @@ static volatile uint32_t beat_pos, beat_n;      /* samples into the beat, the be
  * never counts in (its Start starts). STOP (seq_stop) cancels it. */
 #define CLK_START 0xFFFFFFFFu
 static uint32_t clk_pos = CLK_START, clk_step;  /* samples into the 1/16 step, the step of the bar (0..15) */
+static uint32_t clk_len;                        /* EDDA OS: the 1/16 playing (grid_div), clk_frac its remainder */
+static uint16_t clk_frac;
+static uint32_t beat_len;                       /* EDDA OS: the beat playing (grid_step), beat_frac its remainder */
+static uint16_t beat_frac;
 static volatile uint8_t cin_left, cin_total;    /* the count-in's beats still to come (0: none), of how many */
 static volatile uint32_t cin_pos;               /* samples into its beat playing */
 static uint8_t cin_flush;                       /* the count-in ended in this block: record what was kept */
 static uint8_t cin_note[NTRK][4], cin_vel[NTRK][4], cin_n[NTRK], cin_up[NTRK];   /* kept notes; cin_up bit k: let go */
 static int seq_counting(void) { return cin_left != 0u; }
-static uint32_t click_beat_len(void) { return 4u * div_samples(2); }   /* DIV 2: 1/16 */
+static uint32_t click_beat_len(void) { return 4u * div_samples(2); }   /* DIV 2: 1/16 (EDDA OS: the count-in's beat only:
+                                                                         * the transport's clocks run on the exact grid) */
 static int click_wanted(void)                  /* CLICK REC: while a track is armed (not in a song: no recording) */
 {
     return click_mode == CLICK_ON || (click_mode == CLICK_REC && song.rec && !chain.running);
@@ -308,10 +315,23 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
     }
     period = div_samples((uint32_t)t->p[P_ARATE]);
     sw = t->p[P_ASWING] * (int32_t)period / 250;
-    t->arp_pos += n;
-    if (t->arp_pos < period + (uint32_t)((t->arp_idx & 1u) ? sw : -sw) && t->arp_pos != 0xFFFFFFF + n)
-        return;
-    t->arp_pos = 0;
+    {   /* EDDA OS: the step's exact length (fx.c grid_div), and the remainder kept: before, every step lost the samples
+         * past its boundary in its block (a 1/16 at 120 BPM took 5536 samples, not 5512: 0.4 % slow, 35 ms behind the
+         * drums in four bars) */
+        uint32_t cur = (t->arp_len ? t->arp_len : period) + (uint32_t)((t->arp_idx & 1u) ? sw : -sw);
+        t->arp_pos += n;
+        if (t->arp_pos < cur && t->arp_pos != 0xFFFFFFF + n)
+            return;
+        if (t->arp_pos >= 0xFFFFFFFu) {             /* the first step (a key down, arp_add): from here */
+            t->arp_pos = 0;
+            t->arp_frac = 0;
+        } else {
+            t->arp_pos -= cur;
+            if (t->arp_pos >= cur)                  /* (a jump: a tempo or RATE change, a long block): no burst */
+                t->arp_pos = 0;
+        }
+        t->arp_len = grid_div((uint32_t)t->p[P_ARATE], &t->arp_frac);
+    }
     /* build the note list: held notes (sorted or as played) over OCT octaves */
     for (i = 0; i < t->nheld; i++)
         list[i] = t->held[i];
@@ -349,14 +369,25 @@ static void arp_tick(track_t *t, uint32_t n) { arp_step(t, n, n); }
 /* -------------------------------------------------------- note input --- */
 /* the length of step idx in samples: SWING (the track's + the global, at most 100) makes the even steps longer
  * and the odd ones shorter, so every odd step starts late */
-static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
+/* EDDA OS, micro timing: the next step's start moved by its nudge, this one's by its own (samples) */
+static int32_t step_nudge_d(const track_t *t, uint32_t period, uint32_t idx)
 {
     uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, next = (idx + 1u) % len;
     const step_t *st = seq_steps(t);
-    int32_t d = (step_nudge(&st[next]) - step_nudge(&st[idx % NSTEP])) * (int32_t)(period / 16u);   /* EDDA OS: micro
-                                                                       * timing: the next step's start moved by its
-                                                                       * nudge, this one's by its own */
-    return (uint32_t)((int32_t)swing_step_len(t, period, idx) + d);   /* core.h: own + global, at most 100 */
+    return (step_nudge(&st[next]) - step_nudge(&st[idx % NSTEP])) * (int32_t)(period / 16u);
+}
+/* step idx of a track at the nominal period: swung (core.h: own + global, at most 100), nudged */
+static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
+{
+    return (uint32_t)((int32_t)swing_step_len(t, period, idx) + step_nudge_d(t, period, idx));
+}
+/* EDDA OS: the step playing, as the sequencer counts it: its exact length on the grid (seq_base, fx.c grid_div; before
+ * its first step: the nominal), swung by the nominal amount, nudged */
+static uint32_t seq_len(const track_t *t, uint32_t period)
+{
+    uint32_t idx = t->seq_idx;
+    return (uint32_t)((int32_t)swing_grid_len(t, t->seq_base ? t->seq_base : period, period, idx) +
+                      step_nudge_d(t, period, idx));
 }
 
 /* live recording: the note goes into the nearest step, as swung (the one playing, or
@@ -372,7 +403,7 @@ static void rec_note(track_t *t, uint32_t note, uint32_t vel)
 {
     uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, idx = t->seq_idx % len, k;
     uint32_t period = div_samples((uint32_t)t->p[P_SDIV]);
-    uint32_t next = t->seq_pos > step_samples(t, period, t->seq_idx) / 2u;
+    uint32_t next = t->seq_pos > seq_len(t, period) / 2u;
     step_t *s;
     if (next)
         idx = (idx + 1u) % len;
@@ -484,7 +515,7 @@ static void rec_release(track_t *t, uint32_t note)
     if (k == t->rh_n || (t->rh_n = (uint8_t)k))
         return;                                     /* not one of them, or others still held */
     if (t->rh_ties && t->seq_idx == t->rh_last &&
-        t->seq_pos < step_samples(t, div_samples((uint32_t)t->p[P_SDIV]), t->seq_idx) / 2u)
+        t->seq_pos < seq_len(t, div_samples((uint32_t)t->p[P_SDIV])) / 2u)
         t->step[t->rh_last] = t->rh_bak;            /* released early in it: not held into this step */
 }
 
@@ -673,12 +704,15 @@ static void seq_start(void)
         track_t *t = &trk[i];
         t->seq_idx = (uint16_t)(t->p[P_SLEN] - 1);
         t->seq_pos = 0x7FFFFFFF;                   /* step 0 fires on the first block */
+        t->seq_base = 0;                           /* (EDDA OS: the grid's lengths from step 0, seq_tick) */
         t->rskip_n = 0;
         t->rh_n = 0;
         t->rat_left = 0;
     }
     song.tick = 0;
     beat_pos = 0; beat_n = 0;                      /* the ARP LED's beat from the top too */
+    beat_frac = 0;
+    beat_len = grid_step(1, 1, &beat_frac);        /* (EDDA OS: the exact beat, as the tracks count it) */
     clk_pos = CLK_START;                           /* the metronome's first beat with step 0 */
     song.playing = 1;
     slicer_start();                                /* slicer.c: its step 0 with the sequencer's */
@@ -764,7 +798,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         return;
     }
     if (hits > 1u) {                                /* RATCH: the gate of a part, no slide or tie out */
-        gate = step_samples(t, period, t->seq_idx) / hits * (uint32_t)t->p[P_SGATE] / 128u;
+        gate = seq_len(t, period) / hits * (uint32_t)t->p[P_SGATE] / 128u;
         if (!(skip & SEQ_REP))
             t->rat_left = (uint8_t)(hits - 1u);
     }
@@ -821,7 +855,7 @@ static __attribute__((noinline)) void seq_ratchet(track_t *t, uint32_t period)
         t->rat_left = 0;
         return;
     }
-    if (t->seq_pos < (hits - t->rat_left) * (step_samples(t, period, t->seq_idx) / hits))
+    if (t->seq_pos < (hits - t->rat_left) * (seq_len(t, period) / hits))
         return;
     t->rat_left--;
     seq_step(t, s, period, SEQ_REP);
@@ -842,7 +876,7 @@ static void seq_tick(track_t *t, uint32_t n)
     len = (uint32_t)t->p[P_SLEN];
     t->seq_pos += n;
     for (;;) {
-        uint32_t cur_len = step_samples(t, period, t->seq_idx);
+        uint32_t cur_len = seq_len(t, period);
         if (t->seq_pos < cur_len && t->seq_pos != 0x7FFFFFFFu + n)
             break;
         if (t->seq_pos >= 0x7FFFFFFFu) {                /* a pattern starts (PLAY, the chain's next slot) */
@@ -855,9 +889,11 @@ static void seq_tick(track_t *t, uint32_t n)
             if (g < d)
                 break;
             t->seq_pos = (uint32_t)(g - d);
+            t->seq_frac = 0;                            /* (the grid from here) */
         } else
             t->seq_pos -= cur_len;
         t->seq_idx = (uint16_t)((t->seq_idx + 1u) % (len ? len : 1u));
+        t->seq_base = grid_div((uint32_t)t->p[P_SDIV], &t->seq_frac);   /* EDDA OS: this step's exact length */
         rec_hold(t, t->seq_idx, len ? len : 1u);
         {
             const step_t *s = &seq_steps(t)[t->seq_idx];
@@ -936,15 +972,18 @@ static __attribute__((noinline)) void cin_record(void)
 /* the metronome's beat: adv samples on while the transport runs (click.c sounds it in this block) */
 static void click_tick(uint32_t adv)
 {
-    uint32_t p = div_samples(2), beat = 0;
+    uint32_t beat = 0;
     if (clk_pos == CLK_START) {
         clk_pos = 0;
         clk_step = 0;
+        clk_frac = 0;
+        clk_len = grid_div(2, &clk_frac);           /* (EDDA OS: the 1/16 on the exact grid, as a track's) */
         beat = 2;
     } else {
         clk_pos += adv;
-        while (clk_pos >= p) {                      /* (as seq_tick: the remainder kept) */
-            clk_pos -= p;
+        while (clk_pos >= clk_len) {                /* (as seq_tick: the remainder kept) */
+            clk_pos -= clk_len;
+            clk_len = grid_div(2, &clk_frac);
             clk_step = (clk_step + 1u) & 15u;
             if (!(clk_step & 3u))
                 beat = clk_step ? 1u : 2u;
@@ -1082,9 +1121,12 @@ static void events_block(uint32_t n)
     for (i = 0; i < NPART; i++)
         arp_step(&trk[i], clock_mode ? seq_n : n, clock_mode && song.playing ? seq_n : n);
     beat_pos += clock_mode ? seq_n : n;               /* the beat the ARP LED flashes on (ui_leds) */
-    if (beat_pos >= beat_samples()) {
-        beat_pos -= beat_samples();
-        beat_pos = beat_pos < beat_samples() ? beat_pos : 0u;
+    if (!beat_len)
+        beat_len = beat_samples();
+    if (beat_pos >= beat_len) {                       /* (EDDA OS: the exact beat: EDDA's bars stay on the tracks') */
+        beat_pos -= beat_len;
+        beat_len = grid_step(1, 1, &beat_frac);
+        beat_pos = beat_pos < beat_len ? beat_pos : 0u;
         beat_n = (beat_n + 1u) & 3u;
     }
     if (song.playing)

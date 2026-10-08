@@ -187,7 +187,8 @@ static void seq_quant_test(void)
     t->seq_active = 1;
     t->p[P_SCALE] = 1;                             /* C major */
     t->p[P_ROOT] = 0;
-    period = div_samples((uint32_t)t->p[P_SDIV]);
+    period = div_samples((uint32_t)t->p[P_SDIV]);   /* (EDDA OS: each advance one step as the sequencer counts it,
+                                                     * seq_len: the exact grid's length) */
 
     t->p[P_QUANT] = 0;                             /* OFF and SNAP: the sequence plays as written */
     seq_start();
@@ -208,24 +209,24 @@ static void seq_quant_test(void)
            gated_note(t, 64) && !gated_note(t, 61) && gated(t) == 2);
     assert(t->step[0].note[0] == 61 && t->step[0].note[1] == 64);   /* stored as written */
     t->p[P_SCALE] = 2;                             /* C minor while C4 E4 ring: E4 would be Eb4 now */
-    events_block(period);                          /* the gate ends them, step 2 plays F#4 -> F4 */
+    events_block(seq_len(t, period));                          /* the gate ends them, step 2 plays F#4 -> F4 */
     assert(!gated_note(t, 60) && !gated_note(t, 64) && !gated_note(t, 63));
     assert(t->seq_idx == 1 && t->seq_n == 1 && t->seq_notes[0] == 65 && gated(t) == 1);
-    events_block(period);                          /* step 3: C#4 -> C4, held into the TIEs */
+    events_block(seq_len(t, period));                          /* step 3: C#4 -> C4, held into the TIEs */
     assert(t->seq_idx == 2 && t->seq_n == 1 && t->seq_notes[0] == 60 && gated_note(t, 60) && gated(t) == 1);
     t->p[P_SCALE] = 0;                             /* CHR while it is held: C#4 itself now, but C4 sounds */
-    events_block(period);
+    events_block(seq_len(t, period));
     t->p[P_ROOT] = 1;                              /* and a new root */
     t->p[P_SCALE] = 1;
-    events_block(period);
+    events_block(seq_len(t, period));
     assert(t->seq_idx == 4 && gated_note(t, 60) && gated(t) == 1);
     t->p[P_ROOT] = 0;
-    events_block(period);                          /* step 6: C#4 and C4 both C4 now: one note, C4 retriggered */
+    events_block(seq_len(t, period));                          /* step 6: C#4 and C4 both C4 now: one note, C4 retriggered */
     assert(t->seq_idx == 5 && t->seq_n == 1 && t->seq_notes[0] == 60 && gated(t) == 1);
     t->p[P_SCALE] = 5;                             /* PEN while it rings */
-    events_block(period);                          /* REST: released */
+    events_block(seq_len(t, period));                          /* REST: released */
     assert(t->seq_idx == 6 && t->seq_n == 0 && gated(t) == 0);
-    events_block(period);                          /* round again, then stop with notes sounding */
+    events_block(seq_len(t, period));                          /* round again, then stop with notes sounding */
     assert(t->seq_idx == 0 && gated(t) == 2 && gated_note(t, 60) && gated_note(t, 64));
     t->p[P_SCALE] = 2;
     seq_stop();
