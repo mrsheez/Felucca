@@ -35,7 +35,7 @@ const FW_ROOT = process.env.FELUCCA_ROOT || join(HERE, "..");
 const html = readFileSync(join(HERE, "editor.html"), "utf8");
 const proto = html.slice(html.indexOf("/*PROTO-BEGIN*/"), html.indexOf("/*PROTO-END*/"));
 const E = vm.runInNewContext(proto + `
-;({ frame, unframe, parse, req, Link, parseWav, resample, normalize, takeSample, autoTrim, zoomView, rootFromName, buildSlot, makeMockDevice, CMD, SMP,
+;({ frame, unframe, parse, req, Link, parseWav, resample, normalize, takeSample, autoTrim, zoomView, rootFromName, buildSlot, buildKit, KIT_PAD_NOTES, makeMockDevice, CMD, SMP,
    UP, bank, capturePatch, auditionPatch, startWatch, libraryFile, readLibraryFile, paramKeys, patternFromSteps, stepsFromPattern, upName,
    mixer, parseNotes, parseHits, hitsText, gridFromSteps, LANE_NOTE, LANE_OF, readDevicePreferences, devicePresetRows, engineOrder, ENGINE_ORDER, aliasOf, fmtValue, FM6, enumShown, F,
    FM4, fromDigital, fromPerc, DRUM_KIT_E,
@@ -292,11 +292,11 @@ async function editorSamplePresets() {
   const kitD = E.parse[C.DESC](await rq(E.req.desc(0, info.pe0)));
   const kitSet = [];
   for (const v of [1, 2, 3]) kitSet.push(E.parse[C.SET](await rq(E.req.set(0, info.pe0, v))).value);
-  ok(eq(kitD.names, ["STD", "66", "10", "77", "80", "10", "66", "55", "77"]) &&
-     eq([0, 1, 2, 3, 4, 5, 6, 7, 8].map((v) => E.aliasOf(kitD.names, v)), [0, 6, 5, 8, 4, 5, 6, 7, 8]) &&
-     eq(E.enumShown(kitD).filter((v) => E.aliasOf(kitD.names, v) === v).map((v) => kitD.names[v]), ["STD", "80", "10", "66", "55", "77"]) &&
+  ok(eq(kitD.names, ["STD", "66", "10", "77", "80", "10", "66", "55", "77", "USR1", "USR2", "USR3", "USR4"]) &&
+     eq([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((v) => E.aliasOf(kitD.names, v)), [0, 6, 5, 8, 4, 5, 6, 7, 8, 9, 10, 11, 12]) &&
+     eq(E.enumShown(kitD).filter((v) => E.aliasOf(kitD.names, v) === v).map((v) => kitD.names[v]), ["STD", "80", "10", "66", "55", "77", "USR1", "USR2", "USR3", "USR4"]) &&
      eq(kitSet, [6, 5, 8]),
-    "DRUM: KIT 1..3 (once HAND CYM H+CYM) named 66 10 77, aliases of 6 5 8: hidden, a SET lands there");
+    "DRUM: KIT 1..3 (once HAND CYM H+CYM) named 66 10 77, aliases of 6 5 8: hidden, a SET lands there; USR1..4 the user kits (EDDA OS)");
   const removed = E.parse[C.PRESET](await rq(E.req.preset(4, 4)));
   const kit = E.parse[C.DUMP](await rq(E.req.dump()), info);
   ok(removed.engine === 10 && removed.preset === 0 && kit.engine === 10 && eq(kit.p.slice(info.pe0), E.DRUM_KIT_E),
@@ -1395,6 +1395,28 @@ function samplesMatch() {
     const pyHdr = readFileSync(join(dir, "slot.hdr")), pyData = readFileSync(join(dir, "slot.bin"));
     ok(eq(js.hdr, pyHdr) && eq(js.data, pyData), `samples: editor == sampleio.py (${files.length} WAV formats, ${js.data.length} B)`);
   } else console.log("samples: editor == sampleio.py (no FELUCCA_TOOLS)                skip");
+  /* EDDA OS: a 16-pad kit (buildKit) == sampleio.kit_slot, on the synthetic kit of tests/edda_kit.py (16 WAVs; the two
+   * cymbals longer than the slot allows at 22050 Hz: both builders must drop the same pads to 11025 Hz) */
+  if (existsSync(join(TOOLS, "fm1_sample_upload.py")) && existsSync(join(FW_ROOT, "tests/edda_kit.py"))) {
+    const kdir = mkdtempSync(join(tmpdir(), "felucca-kit-"));
+    execFileSync("python3", [join(FW_ROOT, "tests/edda_kit.py"), join(kdir, "kit")]);
+    const pads = [];
+    for (let i = 0; i < 16; i++) {
+      const w = E.parseWav(readFileSync(join(kdir, `kit_pad${String(i + 1).padStart(2, "0")}.wav`)));
+      pads.push({ x: Float64Array.from(E.resample(w.x, w.sr, E.SMP.RATE)) });
+    }
+    const js = E.buildKit("EDDAKIT", pads);
+    const pyHdr = readFileSync(join(kdir, "kit.hdr")), pyData = readFileSync(join(kdir, "kit.bin"));
+    const v = new DataView(js.hdr.buffer);
+    ok(eq(js.hdr, pyHdr) && eq(js.data, pyData) && js.zones.length === 16 && js.zones.every((z, i) => z.lo === E.KIT_PAD_NOTES[i] && z.hi === z.lo)
+       && v.getUint32(32 + 12 * 28 + 16, true) === 16384 && v.getUint32(32 + 14 * 28 + 16, true) === 16384 && v.getUint32(32 + 16, true) === 32768,
+      `samples: a 16-pad kit: editor buildKit == sampleio.kit_slot (${js.data.length} B; the crash and the ride at 11025 Hz)`);
+    const few = E.buildKit("K", [pads[0], null, pads[2], ...new Array(13).fill(null)]);
+    ok(few.zones.length === 2 && few.zones[1].lo === 39 && few.hdr[6] === 2, "samples: a kit with empty pads keeps the pads' notes");
+    let threw = null;
+    try { E.buildKit("K", new Array(16).fill(null)); } catch (e) { threw = e.message; }
+    ok(/empty kit/.test(threw), "samples: an empty kit is refused");
+  }
   /* recording / trimming: takeSample (a cut of the raw input, faded at the cuts, normalised), autoTrim */
   const R = E.SMP.RATE, raw = new Float64Array(R);       /* 1 s: silence, a tone from 0.25 to 0.6 s, silence */
   for (let i = Math.round(R * 0.25); i < Math.round(R * 0.6); i++) raw[i] = Math.sin(i * 0.2) * 0.3;

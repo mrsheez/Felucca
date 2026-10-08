@@ -77,6 +77,12 @@
   .smp input.name { width: 80px; text-transform: uppercase; }
   .smp input.root { width: 48px; }
   .smp .bad { text-decoration: underline wavy; }
+  .smp .pads { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 6px 0; max-width: 640px; }
+  .smp .pad { border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; min-height: 48px; cursor: pointer; font-size: 12px; line-height: 1.3; }
+  .smp .pad.over, .smp .pad:hover { border-color: var(--fg); }
+  .smp .pad.set { border-color: var(--fg); border-width: 2px; padding: 3px 5px; }
+  .smp .pad b { display: block; font-weight: 600; }
+  .smp .pad .dim { display: block; }
   footer { margin-top: 24px; font-size: 11px; color: var(--dim); }
   .row.pushed .v { font-weight: 600; }
   .row.modrow { grid-template-columns: 16px 1fr 1fr 1fr 52px; }
@@ -1019,6 +1025,73 @@ function buildSlot(name, zonesIn) {
   return { hdr, data, zones };
 }
 
+/* ---- EDDA OS: user drum kits (eng_drum.c KIT USR1..4; sampleio.kit_slot): a slot whose 16 zones are pads, each
+ * pinned to one note (lo = hi = root: the pad plays as it is). The pads' notes: the DRUM grid's 8 lanes first, then 8
+ * more of the GM map. Tails trimmed, a pad up to 4 s; when the kit does not fit the slot the longest pads drop to
+ * 11025 Hz, longest first (the same choices as the Python builder, so both give the same bytes). */
+const KIT_PAD_NOTES = [36, 38, 39, 42, 46, 45, 37, 56, 41, 43, 47, 48, 49, 50, 51, 53];
+const KIT_PAD_NAMES = ["KICK", "SNARE", "CLAP", "HAT CL", "HAT OP", "TOM", "RIM", "BELL",
+                       "LO TOM", "HI TOM", "MID TOM", "CONGA", "CRASH", "HI CONGA", "RIDE", "RIDE BL"];
+const KIT_RATES = [22050, 11025], KIT_MAX_S = 4.0;
+function trimTail(x, floor = 0.002, hold = 0.02, sr = 22050) {
+  let pk = 1e-9;
+  for (const v of x) pk = Math.max(pk, Math.abs(v));
+  const thr = floor * pk;
+  let end = x.length;
+  while (end > 0 && Math.abs(x[end - 1]) < thr) end--;
+  return x.slice(0, Math.min(x.length, end + Math.round(hold * sr)));
+}
+/* pads: 16 entries of {x: mono float at 22050 Hz} or null -> {hdr, data, zones, rates: [per pad Hz]} */
+function buildKit(name, pads) {
+  if (pads.length > SMP.MAX_ZONES) throw new Error("at most 16 pads");
+  const snd = [];
+  pads.forEach((p, i) => {
+    if (!p) return;
+    const x = trimTail(Array.from(p.x), 0.002, 0.02, KIT_RATES[0]).slice(0, Math.round(KIT_MAX_S * KIT_RATES[0]));
+    if (x.length) snd.push({ i, x, ri: 0 });
+  });
+  if (!snd.length) throw new Error("an empty kit: no pad has a sound");
+  const encode = () => {
+    const zones = [], parts = [];
+    let len = 0;
+    for (const e of snd) {
+      const y = e.ri === 0 ? e.x : resample(e.x, KIT_RATES[0], KIT_RATES[e.ri]);
+      const s = normalize(y), enc = imaEncode(s, 0), note = KIT_PAD_NOTES[e.i];
+      zones.push({ off: len, n: s.length, ls: 0, le: s.length - 1, root: note, lo: note, hi: note, pred: enc.pred, idx: enc.idx,
+                   rate: pyRound(KIT_RATES[e.ri] / 44100 * 65536), pad: e.i });
+      parts.push(enc.data);
+      len += enc.data.length;
+    }
+    const data = new Uint8Array(len);
+    let o = 0;
+    for (const p of parts) { data.set(p, o); o += p.length; }
+    return { zones, data };
+  };
+  let b = encode();
+  while (b.data.length > SMP.MAX_DATA) {
+    const cand = snd.filter((e) => e.ri + 1 < KIT_RATES.length);
+    if (!cand.length) throw new Error(`too long: ${b.data.length} B at the lowest rate, a slot holds ${SMP.MAX_DATA} B`);
+    cand.reduce((m, e) => (e.x.length > m.x.length ? e : m)).ri++;
+    b = encode();
+  }
+  const hdr = new Uint8Array(SMP.HDR_LEN), v = new DataView(hdr.buffer);
+  v.setUint32(0, 0x504D5346, true);
+  v.setUint16(4, 1, true);
+  hdr[6] = b.zones.length;
+  const nm = String(name).toUpperCase().replace(/[^\x20-\x7E]/g, "").slice(0, 8);
+  for (let i = 0; i < nm.length; i++) hdr[8 + i] = nm.charCodeAt(i);
+  v.setUint32(16, b.data.length, true);
+  v.setUint32(20, crc32(b.data), true);
+  b.zones.forEach((z, j) => {
+    const o = 32 + j * 28;
+    [z.off, z.n, z.ls, z.le, z.rate].forEach((x, k) => v.setUint32(o + k * 4, x >>> 0, true));
+    v.setInt16(o + 20, z.root * 16, true);
+    v.setInt16(o + 22, z.pred, true);
+    hdr[o + 24] = z.idx; hdr[o + 25] = z.lo; hdr[o + 26] = z.hi; hdr[o + 27] = 0;
+  });
+  return { hdr, data: b.data, zones: b.zones, rates: snd.map((e) => [e.i, KIT_RATES[e.ri]]) };
+}
+
 /* -------------------------------------------------------------- librarian --- */
 /* A patch (library entry, user preset):
      {name, engine (index), engineName, p: [P_COUNT values by parameter id, null = unknown],
@@ -1817,7 +1890,7 @@ function makeMockDevice(opt = {}) {
     tracks: [0, 1, 2, 3].map(newTrack), sel: 0, rec: 0,
     g: GP.map((d) => d.def),
     slots: [null, null, null, null], songRows: [], chainPlaying: false, chainRow: 0, chainRemaining: 0,
-    smp: [0, 1, 2].map(() => ({ flash: new Uint8Array(SMP.SLOT_SIZE).fill(0xFF), zones: 0, name: "", len: 0, next: SMP.DATA_OFF })),
+    smp: [0, 1, 2, 3].map(() => ({ flash: new Uint8Array(SMP.SLOT_SIZE).fill(0xFF), zones: 0, name: "", len: 0, next: SMP.DATA_OFF })),
     bank: new Array(opt.slots || 32).fill(null),     /* user presets: {engine, name, p, pattern, grid, fm6 (FM6: its patch)} */
     uiCaps: opt.legacy || opt.v3 || opt.v5 ? 0 : opt.uiCaps ?? 9,
     palette: 0, font: 0, monitor: 0, filter: 0, bankSig: 0,
@@ -2269,7 +2342,7 @@ function makeMockDevice(opt = {}) {
         break;
       }
       case CMD.SMP_INFO:
-        b(3); b(SMP.SLOT_SIZE / 1024);
+        b(4); b(SMP.SLOT_SIZE / 1024);
         st.smp.forEach((u) => { b(u.zones); s(u.zones ? u.name : ""); b(u.zones ? Math.ceil(u.len / 1024) : 0); });
         break;
       default:
@@ -2568,6 +2641,8 @@ const TEXT = {
     preview: "試聴", autoTrim: "自動トリム", trim: "切り取り",
     smpTooBig: "大きすぎます", smpDecodeFail: "読み込めません: ", smpUploading: "書き込み中 USR", smpDone: "書き込みました USR",
     smpFail: "サンプルの書き込みに失敗しました: ", smpErased: "消去しました USR",
+    kitMode: "16パッドのキット", kitHint: "各パッドにWAVをドロップ（またはクリック）。DRUM > KIT USR{n} で鳴ります。最初の8パッドがグリッドのレーンです。",
+    kitPad: "パッド", kitEmpty: "空", kitClear: "パッドを消す", kitRate: "11 kHz",
     confirmErase: "USR{n} を消去しますか？", confirmUpload: "USR{n} に書き込みますか？ 今の内容は消えます。",
     layout: "（ファームウェアのパラメーター数が想定と違うため、簡易表示にしています）",
     ctlHelp: "スライダーはクリックしてからホイールか矢印キーで微調整（Shift で 10 ずつ）、ダブルクリックで初期値。",
@@ -2671,6 +2746,8 @@ const TEXT = {
     preview: "Play", autoTrim: "Auto trim", trim: "Trim",
     smpTooBig: "too large", smpDecodeFail: "Cannot read: ", smpUploading: "Uploading USR", smpDone: "Uploaded USR",
     smpFail: "Sample upload failed: ", smpErased: "Erased USR",
+    kitMode: "16-pad kit", kitHint: "Drop a WAV on each pad (or click it). DRUM > KIT USR{n} plays the kit: the first 8 pads are the grid's lanes.",
+    kitPad: "pad", kitEmpty: "empty", kitClear: "Clear pads", kitRate: "at 11 kHz",
     confirmErase: "Erase USR{n}?", confirmUpload: "Write to USR{n}? Its current contents will be replaced.",
     layout: "(The firmware has a different parameter count; showing a plain list.)",
     ctlHelp: "Sliders: click, then fine-tune with the wheel or arrow keys (Shift: steps of 10); double-click resets.",
@@ -3579,7 +3656,7 @@ $("clearseq").addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------- samples --- */
-const smpDraft = [0, 1, 2].map(() => ({ name: "", files: [] }));
+const smpDraft = [0, 1, 2, 3].map(() => ({ name: "", files: [], kit: false, pads: new Array(16).fill(null) }));   /* (4: USR4 on EDDA OS) */
 let smpBusy = false;
 const SMP_RC = { 1: "size", 2: "header", 3: "data CRC", 4: "flash", 5: "zones" };
 const kib = (n) => (n / 1024).toFixed(1);
@@ -3911,20 +3988,48 @@ function renderSamples() {
       if (v !== name.value) name.value = v;
       d.name = v;
     });
-    const bytes = draftBytes(d), tooBig = bytes > max;
+    const bytes = draftBytes(d), tooBig = !d.kit && bytes > max, npads = d.pads.filter((p) => p).length;
     const size = el("span", { class: tooBig ? "bad" : "dim",
-      text: d.files.length ? `${kib(bytes)} / ${kib(max)} KiB` + (tooBig ? " " + t("smpTooBig") : "") : "" });
+      text: d.kit ? (npads ? `${npads} / 16 ${t("kitPad")}` : "") :
+            d.files.length ? `${kib(bytes)} / ${kib(max)} KiB` + (tooBig ? " " + t("smpTooBig") : "") : "" });
     const prog = el("progress", { max: 1, value: 0, hidden: true });
+    const kitBox = el("input", { type: "checkbox" });
+    kitBox.checked = d.kit;
+    kitBox.addEventListener("change", () => { d.kit = kitBox.checked; renderSamples(); });
     const blk = el("div", { class: "smp", "data-k": k },
       el("div", { class: "head" }, el("b", { text: `USR${k + 1}` }), el("span", { text: status }), bar,
-        el("button", { ic: "symbol_trash", disabled: smpBusy || !u.zones, onclick: () => smpErase(k) }, t("erase"))),
+        el("button", { ic: "symbol_trash", disabled: smpBusy || !u.zones, onclick: () => smpErase(k) }, t("erase")),
+        el("label", {}, kitBox, " " + t("kitMode"))),
       el("div", { class: "head" }, el("span", { text: t("smpName") }), name,
-        el("button", { ic: "symbol_folder_open", disabled: smpBusy || recActive(), onclick: () => file.click() }, t("chooseFiles")), file,
-        el("button", { ic: "symbol_upload", disabled: smpBusy || recActive() || !d.files.length || tooBig || !d.name, onclick: () => smpUpload(k, prog) }, t("upload")),
-        d.files.length ? el("button", { text: t("clearList"), disabled: smpBusy || recActive(), onclick: () => { d.files = []; renderSamples(); } }) : "",
+        d.kit ? "" : el("button", { ic: "symbol_folder_open", disabled: smpBusy || recActive(), onclick: () => file.click() }, t("chooseFiles")), file,
+        el("button", { ic: "symbol_upload", disabled: smpBusy || recActive() || (d.kit ? !npads : !d.files.length || tooBig) || !d.name,
+          onclick: () => smpUpload(k, prog) }, t("upload")),
+        !d.kit && d.files.length ? el("button", { text: t("clearList"), disabled: smpBusy || recActive(), onclick: () => { d.files = []; renderSamples(); } }) : "",
+        d.kit && npads ? el("button", { text: t("kitClear"), disabled: smpBusy, onclick: () => { d.pads.fill(null); renderSamples(); } }) : "",
         size, prog),
-      recRow(k));
-    if (d.files.length) {
+      d.kit ? "" : recRow(k));
+    if (d.kit) {                                   /* EDDA OS: the 16 pads, one sound each (buildKit) */
+      const pads = el("div", { class: "pads" });
+      d.pads.forEach((pd, i) => {
+        const pfile = el("input", { type: "file", accept: ".wav,audio/wav,audio/x-wav,audio/*", hidden: true });
+        pfile.addEventListener("change", () => { if (pfile.files[0]) addPad(k, i, pfile.files[0]); pfile.value = ""; });
+        const cell = el("div", { class: "pad" + (pd ? " set" : ""), title: `${KIT_PAD_NAMES[i]} · ${noteName(KIT_PAD_NOTES[i])}` },
+          el("b", { text: `${i + 1} ${KIT_PAD_NAMES[i]}` }),
+          el("span", { class: "dim", text: pd ? `${pd.fname} · ${(pd.x.length / SMP.RATE).toFixed(2)} s` : t("kitEmpty") }), pfile);
+        cell.addEventListener("click", (e) => { if (!smpBusy && e.target.tagName !== "BUTTON") pfile.click(); });
+        if (pd) cell.append(el("button", { text: t("remove"), disabled: smpBusy, onclick: (e) => { e.stopPropagation(); d.pads[i] = null; renderSamples(); } }));
+        cell.addEventListener("dragover", (e) => { e.preventDefault(); e.stopPropagation(); cell.classList.add("over"); });
+        cell.addEventListener("dragleave", () => cell.classList.remove("over"));
+        cell.addEventListener("drop", (e) => {
+          e.preventDefault(); e.stopPropagation();
+          cell.classList.remove("over");
+          if (!smpBusy && e.dataTransfer.files.length) addPad(k, i, e.dataTransfer.files[0]);
+        });
+        pads.append(cell);
+      });
+      blk.append(el("div", { class: "dim", text: t("kitHint").replace("{n}", k + 1) }), pads);
+    }
+    if (!d.kit && d.files.length) {
       const keys = splitKeys(d.files);
       const tb = el("table", {}, el("tr", {}, el("th", { text: t("file") }), el("th", { text: t("root") }),
         el("th", { text: t("keys") }), el("th", { text: t("length") }), el("th")));
@@ -3957,10 +4062,26 @@ function renderSamples() {
     blk.addEventListener("drop", (e) => {
       e.preventDefault();
       blk.classList.remove("over");
+      if (d.kit) {                                 /* files dropped on the kit (not a pad): the first empty pads */
+        if (smpBusy) return;
+        let i = 0;
+        for (const f of e.dataTransfer.files) { while (i < 16 && d.pads[i]) i++; if (i >= 16) break; addPad(k, i++, f); }
+        return;
+      }
       if (!smpBusy && !recActive() && e.dataTransfer.files.length) addFiles(k, [...e.dataTransfer.files]);   /* (the recording sized itself to the slot) */
     });
     return blk;
   }));
+}
+
+async function addPad(k, i, f) {                   /* EDDA OS: a WAV onto pad i of slot k's kit */
+  const d = smpDraft[k];
+  try {
+    const z = await decodeFile(f);
+    d.pads[i] = { fname: f.name, x: Float64Array.from(z.raw) };
+    if (!d.name) d.name = "KIT" + (k + 1);
+  } catch (e) { sayK("smpDecodeFail", `${f.name} (${e.message})`); }
+  renderSamples();
 }
 
 async function smpInfo(d = dev) { d.smp = parse[CMD.SMP_INFO](await sessionRequest(d, req.smpInfo())); }
@@ -3968,7 +4089,7 @@ async function smpInfo(d = dev) { d.smp = parse[CMD.SMP_INFO](await sessionReque
 async function smpUpload(k, prog) {
   const d = smpDraft[k];
   let built;
-  try { built = buildSlot(d.name, d.files.map((f) => ({ s: f.s, root: f.root }))); }
+  try { built = d.kit ? buildKit(d.name, d.pads) : buildSlot(d.name, d.files.map((f) => ({ s: f.s, root: f.root }))); }
   catch (e) { sayK("smpFail", e.message); return; }
   if (!confirm(t("confirmUpload").replace("{n}", k + 1))) return;
   const { hdr, data } = built;
