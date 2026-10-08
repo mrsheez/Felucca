@@ -33,14 +33,42 @@
  * block) do. A released key does not end a hit.
  *
  * State: 8 lanes per part in the pool section (drum_kit: the parameters, coefficients, voice and metal
- * source of each lane). */
+ * source of each lane).
+ *
+ * EDDA OS, user kits (KIT USR1..USR4): a user sample slot (eng_sample.c) is the kit, its zones the pads: a note
+ * plays the zone holding it (the kit builder, tools/fm1_sample_upload.py kit / the editor's 16 pads, pins each
+ * WAV to one note: the 8 lanes' notes first, so the grid's lanes are pads 1..8, then 41 43 47 48 49 50 51 53), at
+ * its own pitch, one-shot, IMA ADPCM through the sample engine's decoder (smp_decode). A note with no pad of its
+ * own (a GM pattern's low tom 41 on a kit with 8 pads) plays its lane's pad, pitched by its GM semitones (DRUM_GM),
+ * so every DRUM pattern plays on every kit. TUNE +-12 semitones; TONE below 64 darkens (a one-pole low-pass);
+ * DECY below 64 shortens (an exponential decay: gone after 25 ms at 0, 0.1 s at 10, 0.8 s at 32; 64 and up: the
+ * sample whole); SNAP
+ * above 64 skips into the sound (up to 50 ms: a tighter attack), below 64 fades it in (up to 50 ms: softer);
+ * ACC the accented hits' lift (velocity scales every hit, as every engine); DRV and the lane LEVELs (the pad's
+ * lane) as the synth kit. Polyphony: a pad plays one voice at a time (a hit restarts it), a closed hat (the
+ * lane's pad) chokes the open one; the voices come from the part's budget of 8, the oldest stolen. The lane
+ * table (drum_kit) is not used: a kit voice carries its own zone (v->s[5]).
+ * Voice: s[0] the lane (as the synth kit: the LEVELs, the grid), s[1] s[2] the decoder (predictor, step index),
+ * s[3] the last two samples (the previous in the low 16 bits, the current above), s[4] the kit's own amplitude
+ * (Q24: the fade-in, DECY, the choke; kit_amp, not the ADSR's env, which env_tick moves), s[5] the zone
+ * (smp_zone), s[6] 1 playing / 2 ended / 3 choked (fading), s[7] the low-pass; ph[0] the position, ph[1] its
+ * fraction, ph[2] the fade-in: ticks left | ticks << 8, bit 16 primed, the GM semitones + 64 << 24. The engine is marked
+ * sampled: a pad hit again starts its sound over (voice.c keeps no positions), as the synth kit restarts its hit. */
 #include "drum_voice.c"
 
-enum { DK_STD, DK_HAND, DK_CYM, DK_HCYM, DK_80, DK_10, DK_66, DK_55, DK_77, DK_COUNT };   /* (stored values) */
+enum { DK_STD, DK_HAND, DK_CYM, DK_HCYM, DK_80, DK_10, DK_66, DK_55, DK_77,
+       DK_USR1, DK_USR2, DK_USR3, DK_USR4, DK_COUNT };   /* (stored values; USR1..4: EDDA OS's user kits) */
+#define DK_USR DK_USR1
 /* the kit a stored KIT value plays: HAND CYM H+CYM (retired after 1.0.4) -> 66 (a conga on TOM), 10 (a cymbal on
  * BELL), 77 (claves on RIM, a cymbal on BELL) */
-static const uint8_t DK_PLAYS[DK_COUNT] = {DK_STD, DK_66, DK_10, DK_77, DK_80, DK_10, DK_66, DK_55, DK_77};
+static const uint8_t DK_PLAYS[DK_COUNT] = {DK_STD, DK_66, DK_10, DK_77, DK_80, DK_10, DK_66, DK_55, DK_77,
+                                           DK_USR1, DK_USR2, DK_USR3, DK_USR4};
 static uint32_t drum_kit_plays(int32_t v) { return DK_PLAYS[clamp(v, 0, DK_COUNT - 1)]; }
+static uint32_t drum_user_kit(const int16_t *p)      /* the user slot of the KIT, SMP_USER_SLOTS for a synth kit */
+{
+    uint32_t kit = drum_kit_plays(p[P_E0]);
+    return kit >= DK_USR ? kit - DK_USR : SMP_USER_SLOTS;
+}
 /* the model kits' pieces where a lane plays another than its own (the lane's name): 1 TOM -> CONGA, 2 RIM -> CLAVE,
  * 4 BELL -> CYM */
 static const uint8_t DK_SWAP[DV_NKIT] = {0, 4, 1, 0, 2 | 4};
@@ -62,7 +90,7 @@ typedef struct {
 static drum_lane_t drum_kit[NPART][DV_NLANE] __attribute__((section(".pool")));
 
 /* 1..3 named as the kit they play: aliases, never shown or offered (EDITOR_PROTOCOL.md: retired values) */
-static const char *const N_DRUM_KIT[] = {"STD", "66", "10", "77", "80", "10", "66", "55", "77"};
+static const char *const N_DRUM_KIT[] = {"STD", "66", "10", "77", "80", "10", "66", "55", "77", "USR1", "USR2", "USR3", "USR4"};
 static const char *const N_DRUM_KICK[] = {"PUNCH", "ROUND"};
 
 /* General MIDI notes 35..81 -> the drum (DVT_*; DVT_PUNCH: the kick KICK picks) and semitones from its
@@ -82,9 +110,9 @@ static const int8_t DRUM_GM[47][2] = {
 static uint32_t drum_gm(const int16_t *p, uint32_t note, int32_t *st)
 {
     uint32_t n = note >= 35u && note <= 81u ? note : 36u + (note + 120u - 36u) % 12u, t = (uint32_t)DRUM_GM[n - 35u][0];
-    uint32_t kit = drum_kit_plays(p[P_E0]);           /* STD, the model kits */
+    uint32_t kit = drum_kit_plays(p[P_E0]);           /* STD, the model kits (a user kit: as STD) */
     *st = DRUM_GM[n - 35u][1];
-    if (kit >= DK_80)
+    if (kit >= DK_80 && kit < DK_USR)
         return DV_KTYPE(kit - DK_80 + 1u, DV_TYPE_LANE[t]);
     return t == DVT_PUNCH && p[P_E6] > 0 ? DVT_ROUND : t;
 }
@@ -106,7 +134,7 @@ static uint32_t drum_lane(uint32_t note)
 static uint32_t drum_swaps(const track_t *t)
 {
     uint32_t kit = drum_kit_plays(t->p[P_E0]);
-    return kit >= DK_80 ? DK_SWAP[kit - DK_80] : 0u;
+    return kit >= DK_80 && kit < DK_USR ? DK_SWAP[kit - DK_80] : 0u;
 }
 
 /* the lane's name as the track's KIT plays it (5 characters at most) */
@@ -195,17 +223,161 @@ static voice_t *drum_reuse(track_t *t, uint32_t note)
     drum_lane_t *K = drum_kit_of(t);
     uint32_t lane = drum_lane(note), owner = K ? K[lane].owner : 0;
     voice_t *v;
+    if (drum_user_kit(t->p) < SMP_USER_SLOTS)            /* a user kit: a pad's voice is its note's (voice_alloc) */
+        return 0;
     if (!owner || owner > NVOICE)
         return 0;
     v = &t->v[owner - 1u];
     return v->active && (uint32_t)v->s[0] == lane ? v : 0;
 }
 
+/* ---- EDDA OS: the user kits */
+#define KIT_FADE_MAX 2205u                                   /* SNAP: 50 ms of fade-in or skip at most */
+static void kit_note_on(track_t *t, voice_t *v, uint32_t slot)
+{
+    const int16_t *p = t->p;
+    uint32_t lane = drum_lane(v->note), zi = smp_user_zone(slot, v->note), i, skip = 0, fade = 0;
+    int32_t st = 0, snap = p[P_E4] - 64;
+    if (zi == 0xFFFFu) {                                 /* no pad of its own: its lane's pad, pitched the GM way */
+        int32_t s2;
+        drum_gm(p, v->note, &s2);
+        zi = smp_user_zone(slot, DRUM_LANE_NOTE[lane]);
+        st = s2;
+    }
+    if (snap > 0)
+        skip = (uint32_t)snap * (KIT_FADE_MAX / 63u);
+    else if (snap < 0)
+        fade = ((uint32_t)(-snap) * (KIT_FADE_MAX / 63u) + CTL - 1u) / CTL;   /* in control ticks */
+    v->s[0] = (int32_t)lane;
+    v->s[1] = v->s[2] = v->s[3] = 0;
+    v->s[4] = fade ? 0 : 1 << 24;
+    v->s[5] = (int32_t)(zi == 0xFFFFu ? 0x8000u | slot << 5 : zi);
+    v->s[6] = zi == 0xFFFFu ? 2 : 1;                     /* an empty pad: a silent hit that ends at once */
+    v->s[7] = 0;
+    v->ph[0] = 0;
+    v->ph[1] = 0;
+    v->ph[2] = fade | fade << 8 | (uint32_t)(st + 64) << 24;
+    v->env = 1 << 24;
+    v->env_out = fade ? 0 : v->vel * 258;
+    if (zi != 0xFFFFu) {                                 /* SNAP's skip: decode past the start (the state follows) */
+        const smp_zone_t *z = smp_zone(zi);
+        uint32_t n = z->n > skip + 64u ? skip : 0u;
+        for (i = 0; i < n; i++)
+            smp_decode(z, &v->ph[0], &v->s[1], 0);
+    }
+    if (lane == DV_HATC)                                 /* a closed hat chokes the open one (the lane's pads) */
+        for (i = 0; i < NVOICE; i++) {
+            voice_t *o = &t->v[i];
+            if (o != v && o->active && o->s[6] == 1 && drum_lane(o->note) == DV_HATO)
+                o->s[6] = 3;
+        }
+}
+static int32_t kit_amp(track_t *t, voice_t *v)          /* per control tick: the fade-in, DECY's decay, the choke */
+{
+    int32_t decy = t->p[P_E3], env = v->s[4];
+    uint32_t left = v->ph[2] & 0xFFu, total = (v->ph[2] >> 8) & 0xFFu;
+    v->env = 1 << 24;                                    /* (the ADSR held at full, as the synth kit: no release) */
+    if (v->s[6] == 2 || (v->s[6] == 3 && env < (1 << 12))) {
+        v->active = v->gate = 0;
+        v->stage = 0;
+        v->env = 0;
+        return 0;
+    }
+    if (v->s[6] == 3)
+        env >>= 1;                                       /* choked: -6 dB a tick, gone in ~10 ms */
+    else if (left) {                                     /* SNAP's fade-in: linear over its ticks */
+        left--;
+        env = (int32_t)(((1u << 24) / total) * (total - left));
+        if (!left)
+            env = 1 << 24;
+        v->ph[2] = (v->ph[2] & 0xFFFFFF00u) | left;
+    } else if (decy < 64) {                              /* tau = 100 + DECY^2 * 8 samples (2 ms .. 0.7 s): the hit is
+                                                          * gone (-48 dB) after about 11 tau: 25 ms at 0, 0.1 s at 10,
+                                                          * 0.8 s at 32 */
+        int32_t tau = 100 + decy * decy * 8;
+        env -= env / tau * (int32_t)CTL + (env % tau) * (int32_t)CTL / tau;   /* (env * CTL fits: <= 2^29) */
+        if (env < (1 << 16)) {
+            v->s[6] = 2;
+            env = 0;
+        }
+    }
+    v->s[4] = env;
+    return env >> 9;
+}
+static void kit_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
+{
+    const int16_t *p = t->p;
+    const smp_zone_t *z = smp_zone((uint32_t)v->s[5]);
+    uint32_t i, frac = v->ph[1], r, stepq;
+    int32_t tone = p[P_E2], lv = clamp(p[P_LN0 + ((uint32_t)v->s[0] & (DV_NLANE - 1u))], 0, 127);
+    int32_t d16 = (p[P_E1] - 64) * 3 + ((int32_t)(v->ph[2] >> 24) - 64) * 16;   /* TUNE +-12 st, the GM semitones */
+    int32_t lp = tone >= 64 ? 32767 : 2000 + tone * (30767 / 64), drv = p[P_E7], g = 0, mk = 0;
+    int32_t lift = v->vel >= 120u ? 32767 + clamp(p[P_E5], 0, 127) * 129 : 32767;   /* ACC: accented hits up to x1.5 */
+    vmod_t ml;
+    if (v->s[6] == 2 || !z->n) {
+        v->active = 0;
+        return;
+    }
+    if (lv < 127) {                                      /* the lane's LEVEL (square law) on the block's ramp */
+        int32_t gl = lv * lv * 2 + (lv * lv >> 6);
+        ml.amp0 = (m->amp0 >> 4) * gl >> 11;
+        ml.amp1 = (m->amp1 >> 4) * gl >> 11;
+        m = &ml;
+    }
+    r = pow2_q16(clamp(d16, -1536, 576));
+    stepq = (r >> 8) * (z->rate >> 8);                   /* Q16 samples per output sample */
+    if (drv > 0) {
+        g = 4096 + drv * 3 * 4096 / 127;
+        mk = (int32_t)((19661u << 15) / (uint32_t)softclip((19661 * g) >> 12));
+    }
+    {
+        int32_t prev = (int16_t)(v->s[3] & 0xFFFF), cur = v->s[3] >> 16;   /* the last two decoded samples */
+        if (!(v->ph[2] & 0x10000u)) {                    /* the first block: prime the interpolator */
+            v->ph[2] |= 0x10000u;
+            if (v->ph[0] < z->n)
+                cur = smp_decode(z, &v->ph[0], &v->s[1], 0);
+        }
+        for (i = 0; i < n; i++) {
+            int32_t s;
+            frac += stepq;
+            while (frac >= 65536u) {
+                frac -= 65536u;
+                prev = cur;
+                if (v->ph[0] >= z->n) {                  /* the end of the sound */
+                    v->s[6] = 2;
+                    cur = 0;
+                    if (frac >= 65536u) {
+                        prev = 0;
+                        frac &= 65535u;
+                    }
+                    break;
+                }
+                cur = smp_decode(z, &v->ph[0], &v->s[1], 0);
+            }
+            s = prev + (((cur - prev) * (int32_t)(frac >> 1)) >> 15);
+            v->s[7] += mulq15(s - v->s[7], lp);          /* TONE */
+            s = mulq15(v->s[7], lift);
+            if (g)
+                s = (softclip((s * g) >> 12) * mk) >> 15;
+            out[i] += voice_amp(soft_knee(s + (s >> 2), 24000), m, i) << 1;
+            if (v->s[6] == 2)
+                break;
+        }
+        v->s[3] = (int32_t)((uint32_t)prev & 0xFFFFu) | cur << 16;
+    }
+    v->ph[1] = frac;
+}
+
 static void drum_note_on(track_t *t, voice_t *v)
 {
     drum_lane_t *K = drum_kit_of(t), *L;
-    uint32_t i = (uint32_t)(v - t->v), role, lane;
+    uint32_t i = (uint32_t)(v - t->v), role, lane, uk = drum_user_kit(t->p);
     int32_t st;
+    if (uk < SMP_USER_SLOTS) {                           /* EDDA OS: a user kit (the lane table untouched) */
+        kit_note_on(t, v, uk);
+        return;
+    }
+    v->s[6] = 0;
     if (!K || i >= NVOICE)
         return;
     role = drum_gm(t->p, v->note, &st);
@@ -235,10 +407,13 @@ static void drum_note_on(track_t *t, voice_t *v)
  * it). A voice that plays no lane any more, or whose drum has rung out, ends here */
 static int32_t drum_amp(track_t *t, voice_t *v, int32_t adsr)
 {
-    const drum_lane_t *L = drum_lane_of(t, v);
+    const drum_lane_t *L;
     (void)adsr;
     if (!v->active)                                      /* (taken for another part: env_tick ended it) */
         return 0;
+    if (v->s[6])                                         /* a user kit's voice: its own amplitude */
+        return kit_amp(t, v);
+    L = drum_lane_of(t, v);
     if (!L || (!L->v.live && !L->v.trig)) {
         v->active = v->gate = 0;
         v->stage = 0;
@@ -252,12 +427,16 @@ static int32_t drum_amp(track_t *t, voice_t *v, int32_t adsr)
 static void drum_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     const int16_t *p = t->p;
-    drum_lane_t *L = drum_lane_of(t, v);
+    drum_lane_t *L = v->s[6] ? 0 : drum_lane_of(t, v);
     dv_param_t k;
     int32_t y[CTL], mb[CTL], acc = clamp(p[P_E5] * v->vel * 4, 0, 65536), drv = p[P_E7], g = 0, mk = 0;   /* acc Q16 */
     int32_t lv = clamp(p[P_LN0 + ((uint32_t)v->s[0] & (DV_NLANE - 1u))], 0, 127);
     uint32_t i, r;
     vmod_t ml;                                           /* (only its amplitude ramp is read: voice_amp) */
+    if (v->s[6]) {                                       /* a user kit's voice */
+        kit_render(t, v, out, n, m);
+        return;
+    }
     if (!L)
         return;
     if (lv < 127) {                                      /* the lane's LEVEL (square law) on the block's amplitude
@@ -330,6 +509,8 @@ static const engine_t ENG_DRUM = {
     .amp = drum_amp,
     .knob = {P_E1, P_E2, P_E3, P_E4},
     .poly = DV_NLANE,
+    .sampled = 1,                /* (EDDA OS, the user kits: a pad hit again starts over; the synth kit keeps no
+                                  * phases in the voice anyway) */
     .oneshot = 1,
     .keys = drum_keys,
 };

@@ -1289,16 +1289,17 @@ static void retired(void)
     }
     {
         int32_t v = DK_STD, i;
-        for (i = 0; i < 6; i++) {                       /* STD 80 10 66 55 77, then held at the end */
+        for (i = 0; i < 6; i++) {                       /* STD 80 10 66 55 77, then USR1..USR4 (EDDA OS), held at the end */
             bad += v != ORDER[i];
             v = param_turn(d, v, 1);
         }
-        bad += v != DK_77 || param_turn(d, DK_80, -1) != DK_STD || param_turn(d, DK_STD, -1) != DK_STD;
+        bad += v != DK_USR1 || param_turn(d, DK_USR3, 1) != DK_USR4 || param_turn(d, DK_USR4, 1) != DK_USR4 ||
+               param_turn(d, DK_USR1, -1) != DK_77 || param_turn(d, DK_80, -1) != DK_STD || param_turn(d, DK_STD, -1) != DK_STD;
     }
     for (r = 1; r < 4u; r++)
         bad += strcmp(d->names[r], d->names[MAP[r]]) != 0 || enum_orig(d, (int32_t)r) != MAP[r] ||
                param_fit(d, (int32_t)r) != MAP[r];
-    bad += param_fit(d, 99) != DK_77 || param_fit(d, -5) != DK_STD || enum_orig(d, DK_55) != DK_55;
+    bad += param_fit(d, 99) != DK_USR4 || param_fit(d, -5) != DK_STD || enum_orig(d, DK_55) != DK_55;   /* (EDDA OS: USR4 last) */
     bad += param_fit(&TP[P_LEVEL], 77) != 77;
     {   /* a motion event of KIT 2 (CYM): stored and played as 10 */
         host_tracks_init();

@@ -139,34 +139,53 @@ static inline const smp_zone_t *smp_zone(uint32_t zi)
     return zi < 0x8000u ? &SMP_ZONES[zi] : &usr_zone[(zi >> 5) & 3u][zi & 31u];
 }
 
-/* voice: ph[0] position (samples), ph[1] fraction Q16, s[0] predictor, s[1] step
- * index, s[2] previous sample, s[3] current sample, s[4] zone, s[5] step Q16 */
-static inline int32_t sample_next(const smp_zone_t *z, voice_t *v, int loop)
+/* one ADPCM sample of zone z at *pos (st[0] the predictor, st[1] the step index), the position moved on; a looped
+ * zone wraps at its loop end when loop. (EDDA OS: shared with the DRUM engine's user kits, eng_drum.c) */
+static inline int32_t smp_decode(const smp_zone_t *z, uint32_t *ppos, int32_t *st, int loop)
 {
-    uint32_t pos = v->ph[0], b = SMP_DATA[z->off + (pos >> 1)];
+    uint32_t pos = *ppos, b = SMP_DATA[z->off + (pos >> 1)];
     uint32_t code = (pos & 1u) ? (b >> 4) : (b & 15u);
-    int32_t step = IMA_STEP[(uint32_t)v->s[1] <= 88u ? v->s[1] : 88], vd = step >> 3;
+    int32_t step = IMA_STEP[(uint32_t)st[1] <= 88u ? st[1] : 88], vd = step >> 3;
     if (code & 4u)
         vd += step;
     if (code & 2u)
         vd += step >> 1;
     if (code & 1u)
         vd += step >> 2;
-    v->s[0] = clamp(v->s[0] + ((code & 8u) ? -vd : vd), -32768, 32767);
-    v->s[1] = clamp(v->s[1] + IMA_IDX[code & 7u], 0, 88);
+    st[0] = clamp(st[0] + ((code & 8u) ? -vd : vd), -32768, 32767);
+    st[1] = clamp(st[1] + IMA_IDX[code & 7u], 0, 88);
     pos++;
     if (pos > z->le && z->looped && loop) {
         pos = z->ls;
-        v->s[0] = z->pred;
-        v->s[1] = z->idx;
+        st[0] = z->pred;
+        st[1] = z->idx;
     }
-    v->ph[0] = pos;
-    return v->s[0];
+    *ppos = pos;
+    return st[0];
+}
+/* voice: ph[0] position (samples), ph[1] fraction Q16, s[0] predictor, s[1] step
+ * index, s[2] previous sample, s[3] current sample, s[4] zone, s[5] step Q16 */
+static inline int32_t sample_next(const smp_zone_t *z, voice_t *v, int loop)
+{
+    return smp_decode(z, &v->ph[0], &v->s[0], loop);
+}
+/* the narrowest zone of user slot k holding note: 0x8000 | k << 5 | zone (smp_zone), 0xFFFF for none */
+static uint32_t smp_user_zone(uint32_t k, uint32_t note)
+{
+    uint32_t i, zi = 0xFFFFu, width = 128u;
+    for (i = 0; i < usr_nz[k]; i++) {
+        const smp_zone_t *z = &usr_zone[k][i];
+        if (note >= z->lo && note <= z->hi && z->hi - z->lo <= width) {
+            zi = 0x8000u | k << 5 | i;
+            width = z->hi - z->lo;
+        }
+    }
+    return zi;
 }
 
 static void sample_note_on(track_t *t, voice_t *v)
 {
-    uint32_t si = (uint32_t)t->p[P_E0] % SMP_NALL, i, zi = 0xFFFFu, width = 128u;
+    uint32_t si = (uint32_t)t->p[P_E0] % SMP_NALL, i, zi = 0xFFFFu;
     if (si < SMP_NSETS) {                           /* a built-in set: its zones split the keyboard */
         const smp_set_t *set = &SMP_SETS[si];
         for (i = 0; i < set->nz; i++)
@@ -176,14 +195,7 @@ static void sample_note_on(track_t *t, voice_t *v)
             }
         v->s[4] = (int32_t)(zi == 0xFFFFu ? set->z0 : zi);
     } else {                                        /* user slot: silent if empty; the narrowest zone plays */
-        uint32_t k = si - SMP_NSETS;
-        for (i = 0; i < usr_nz[k]; i++) {
-            const smp_zone_t *z = &usr_zone[k][i];
-            if (v->note >= z->lo && v->note <= z->hi && z->hi - z->lo <= width) {
-                zi = 0x8000u | k << 5 | i;
-                width = z->hi - z->lo;
-            }
-        }
+        zi = smp_user_zone(si - SMP_NSETS, v->note);
         v->s[4] = (int32_t)(zi == 0xFFFFu ? 0 : zi);
     }
     v->ph[0] = 0;

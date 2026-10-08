@@ -293,3 +293,66 @@ def user_slot(name, zones):
     nm = re.sub(r"[^\x20-\x7E]", "", name.upper())[:8].encode().ljust(8, b"\0")
     hdr = struct.pack("<IHBB8sII8x", 0x504D5346, 1, len(zs), 0, nm, len(data), zlib.crc32(data)) + zb
     return hdr.ljust(SLOT_HDR_LEN, b"\0"), bytes(data)
+
+
+# ---- EDDA OS: user drum kits (firmware/src/eng_drum.c KIT USR1..4): a slot whose zones are 16 pads, each pinned
+# to one note (lo = hi = root: the pad plays as it is, no transposition). The pads' notes: the DRUM grid's 8 lanes
+# first (KICK SNARE CLAP HAT CL HAT OP TOM RIM BELL: eng_drum.c DRUM_LANE_NOTE), then 8 more of the GM map a
+# DRUM pattern can reach (low tom, mid tom, ride bell, hi conga ...), all within the FM-1's keys at OCT 0.
+KIT_PAD_NOTES = [36, 38, 39, 42, 46, 45, 37, 56, 41, 43, 47, 48, 49, 50, 51, 53]
+KIT_PAD_NAMES = ["KICK", "SNARE", "CLAP", "HAT CL", "HAT OP", "TOM", "RIM", "BELL",
+                 "LO TOM", "HI TOM", "MID TOM", "CONGA", "CRASH", "HI CONGA", "RIDE", "RIDE BL"]
+KIT_RATES = (22050, 11025)             # a pad's rate: the longest pads drop to 11025 when the kit does not fit
+KIT_MAX_S = 4.0                        # one pad holds at most 4 s (after its tail is trimmed)
+
+
+def trim_tail(x, floor=0.002, hold=0.02, sr=22050):
+    """drop the silence after a sound (below floor x peak for hold seconds), keeping a short tail"""
+    thr = floor * peak(x)
+    end = len(x)
+    while end > 0 and abs(x[end - 1]) < thr:
+        end -= 1
+    return x[:min(len(x), end + int(hold * sr))]
+
+
+def kit_slot(name, pads, rates=KIT_RATES):
+    """pads: 16 entries of (rate, [float samples]) or None (an empty pad) -> (header bytes, ADPCM data).
+    Each pad is one zone at its note (KIT_PAD_NOTES), mono, 22050 Hz; when the kit does not fit the slot the
+    longest pads are re-encoded at 11025 Hz, longest first, until it does (or the kit is refused)."""
+    if len(pads) > SLOT_ZONES:
+        raise ValueError(f"at most {SLOT_ZONES} pads")
+    snd = []                                       # (pad index, float samples at 22050, rate index)
+    for i, p in enumerate(pads):
+        if not p:
+            continue
+        sr, x = p
+        x = resample(x, sr, rates[0])
+        x = trim_tail(x, sr=rates[0])[:int(KIT_MAX_S * rates[0])]
+        if x:
+            snd.append([i, x, 0])
+    if not snd:
+        raise ValueError("an empty kit: no pad has a sound")
+
+    def encode():
+        zs, data = [], bytearray()
+        for i, x, ri in snd:
+            y = x if ri == 0 else resample(x, rates[0], rates[ri])
+            s = to_int16(y)
+            adp, st = ima_encode(s, 0)
+            note = KIT_PAD_NOTES[i]
+            zs.append(dict(off=len(data), n=len(s), ls=0, le=len(s) - 1, root=note, lo=note, hi=note, pred=st[0],
+                           idx=st[1], rate=int(round(rates[ri] / 44100 * 65536))))
+            data += adp
+        return zs, data
+    zs, data = encode()
+    while len(data) > SLOT_MAX_DATA:
+        cand = [e for e in snd if e[2] + 1 < len(rates)]
+        if not cand:
+            raise ValueError(f"too long: {len(data)} B of ADPCM at the lowest rate, a slot holds {SLOT_MAX_DATA} B")
+        max(cand, key=lambda e: len(e[1]))[2] += 1    # the longest pad still at a higher rate: one rate down
+        zs, data = encode()
+    zb = b"".join(struct.pack("<5I2h4B", z["off"], z["n"], z["ls"], z["le"], z["rate"], z["root"] * 16, z["pred"],
+                              z["idx"], z["lo"], z["hi"], 0) for z in zs)
+    nm = re.sub(r"[^\x20-\x7E]", "", name.upper())[:8].encode().ljust(8, b"\0")
+    hdr = struct.pack("<IHBB8sII8x", 0x504D5346, 1, len(zs), 0, nm, len(data), zlib.crc32(data)) + zb
+    return hdr.ljust(SLOT_HDR_LEN, b"\0"), bytes(data)

@@ -360,6 +360,32 @@ static int samples(void)
     bad += check("END cannot change published sample zones without BEGIN",
                  request(ED_SMP_END, a, n) == 8u && host_wire[6] == 2 && host_writes == 2 &&
                  usr_zone[0][0].rate == 65536u);
+    {   /* EDDA OS: the 4th slot (slot 3 at 0xE7000) over the same commands; SMP_INFO lists 4; slot 4 is refused */
+        uint32_t w0 = host_writes, e0 = host_erases;
+        int ok;
+        h.zone[0].rate = 65536;
+        a[0] = 3;
+        ok = request(ED_SMP_BEGIN, a, 1) == 8u && !host_wire[6] && host_erases == e0 + 1u;
+        a[0] = 3; a[1] = 0; a[2] = 4; a[3] = 0;
+        n = pack7(data, 256, a + 4) + 4u;
+        ok &= request(ED_SMP_WRITE, a, n) == 11u && !host_wire[9] && host_writes == w0 + 1u &&
+              !memcmp(host_samples[3] + 512, data, 256) && host_samples[0][512] == data[0];   /* (USR1 untouched) */
+        a[0] = 3; n = pack7((const uint8_t *)&h, sizeof h, a + 1) + 1u;
+        ok &= request(ED_SMP_END, a, n) == 8u && !host_wire[6] && usr_nz[3] == 1 && usr_nz[0] == 1;
+        a[0] = 4;
+        ok &= request(ED_SMP_BEGIN, a, 1) == 0u && request(ED_SMP_END, a, n) == 0u;   /* (no such slot: no reply) */
+        {   /* SMP_INFO: 4 slots of 80 KiB; per slot: zones, the name (0-ended), KiB: slots 1 and 4 hold a zone */
+            uint32_t p = 7, q, nz[4];
+            ok &= request(ED_SMP_INFO, a, 0) > 7u && host_wire[5] == 4u && host_wire[6] == 80u;
+            for (q = 0; q < 4u; q++) {
+                nz[q] = host_wire[p++];
+                while (host_wire[p]) p++;
+                p += 2u;
+            }
+            ok &= nz[0] == 1u && nz[1] == 0u && nz[2] == 0u && nz[3] == 1u && host_wire[p] == 0xF7u;
+        }
+        bad += check("EDDA OS: slot 3 (USR4, flash 0xE7000) takes BEGIN / WRITE / END like the others; SMP_INFO lists 4 slots; slot 4 is no slot", ok);
+    }
     song.playing = 1; host_progress = 0; a[0] = 0; a[1] = 0;
     bad += check("user-preset STORE does not mutate RAM when audio cannot stop",
                  request(ED_UP_STORE, a, 2) == 8u && host_wire[6] == 2 && !up_used(0));
@@ -943,14 +969,14 @@ static int drum_kit_retired(void)
     request(ED_SET, a, 4);
     a[0] = 0; a[1] = P_E0;
     request(ED_DESC, a, 2);
-    {   /* scope, id, fmt, min, max, def (v14 each), "KIT", "", then the 9 names */
+    {   /* scope, id, fmt, min, max, def (v14 each), "KIT", "", then the 13 names */
         const char *n = (const char *)host_wire + 5 + 3 + 6;
-        static const char *const WANT[9] = {"STD", "66", "10", "77", "80", "10", "66", "55", "77"};
+        static const char *const WANT[13] = {"STD", "66", "10", "77", "80", "10", "66", "55", "77", "USR1", "USR2", "USR3", "USR4"};
         n += strlen(n) + 1; n += strlen(n) + 1;
-        for (i = 0; i < 9u; i++, n += strlen(n) + 1)
+        for (i = 0; i < 13u; i++, n += strlen(n) + 1)
             ok &= !strcmp(n, WANT[i]);
     }
-    bad += check("DESC of DRUM KIT: STD 66 10 77 80 10 66 55 77 (1..3 as the kits they play)", ok);
+    bad += check("DESC of DRUM KIT: STD 66 10 77 80 10 66 55 77 USR1..USR4 (1..3 as the kits they play; EDDA OS: the user kits)", ok);
     for (r = 1, ok = ed_eng(TSEL) == ENGI_DRUM; r < 4u; r++) {
         uint32_t u = r + 8192u;
         a[0] = 0; a[1] = P_E0; a[2] = u & 127u; a[3] = u >> 7;

@@ -185,6 +185,13 @@ if [ -f build/gen/felucca_tables.h ]; then
         -o "$OUT/fm4_div0_test" tests/fm4_div0_test.c -lm
     run "DIGITAL -> FM6 without a divide by zero (#61): the same values as before, a 0.9 ORGAN project (UBSan)" \
         "$OUT/fm4_div0_test"
+    # EDDA OS (tests/edda_test.c): the Camelot key lock, the pattern bank, the run / stop / fills / MUTATE / REVEAL, MENU >
+    # EDDA, the GLO keys, the FM6 voice bank, the user drum kits on a kit built by tests/edda_kit.py, the 4th slot
+    mkdir -p build/edda_demo
+    python3 tests/edda_kit.py build/edda_demo/kit >/dev/null
+    $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/edda_test" tests/edda_test.c -lm
+    run "EDDA OS: Camelot key, the bank, run / stop / fill / MUTATE / REVEAL, cues, MENU > EDDA, GLO keys, FM6 voices, user kits, USR4" \
+        "$OUT/edda_test" build/edda_demo/kit
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/theme_test" tests/theme_test.c -lm
     run "themes: contrast, text blending and font metrics" "$OUT/theme_test"
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/text_ref_test" tests/text_ref_test.c -lm

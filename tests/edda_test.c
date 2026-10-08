@@ -5,7 +5,11 @@
  * ogene timeline), the run (phases on the beat clock, the lane mask, the stabs' ramp, the restore at the drop, the
  * cues), the hard stop and the re-entry on the one, REVEAL (the hole every 8th bar, the backbeat's lane in bars
  * 17..24), MUTATE (the bell lane only), MENU > EDDA, the GLO layer's keys, and the FM6 voice bank.
+ * The user drum kits (eng_drum.c KIT USR1..4) on a kit built by tests/edda_kit.py (argv[1]: its prefix; without
+ * it those checks are skipped): the pads, the GM fall-back, TUNE DECY SNAP, the choke, the lane LEVELs, one
+ * voice per pad, an empty kit, and the 4th slot (USR4: the kit from it, SAMPLE SET 8 on it, its flash address).
  * Run by tests/run_tests.sh. */
+#include <stdio.h>
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
 
@@ -60,6 +64,96 @@ static uint32_t cues_note(uint32_t from, uint32_t note)
     return n;
 }
 static uint32_t popcount(uint32_t m) { uint32_t n = 0; while (m) { n += m & 1u; m >>= 1; } return n; }
+/* ---- the user kits: helpers */
+static long load_file(const char *path, void *dst, long max)
+{
+    FILE *f = fopen(path, "rb");
+    long n;
+    if (!f)
+        return -1;
+    n = (long)fread(dst, 1, (size_t)max, f);
+    fclose(f);
+    return n;
+}
+static int kit_load(const char *prefix, uint32_t slot)   /* the built kit (.hdr / .bin) into user slot k, scanned */
+{
+    char path[512];
+    uint8_t *img = (uint8_t *)host_slots + slot * SMP_USER_SIZE;
+    long n;
+    memset(img, 0, SMP_USER_SIZE);
+    snprintf(path, sizeof path, "%s.hdr", prefix);
+    n = load_file(path, img, SMP_USER_DATA);
+    if (n != (long)sizeof(smp_user_hdr_t))
+        return 0;
+    snprintf(path, sizeof path, "%s.bin", prefix);
+    n = load_file(path, img + SMP_USER_DATA, SMP_USER_SIZE - SMP_USER_DATA);
+    smp_user_scan(slot);
+    return n > 0 && usr_nz[slot] == 16u;
+}
+static voice_t *kvoice(track_t *t, uint32_t note)
+{
+    uint32_t i;
+    for (i = 0; i < NVOICE; i++)
+        if (t->v[i].active && t->v[i].note == note)
+            return &t->v[i];
+    return 0;
+}
+static uint32_t kvoices(track_t *t)
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < NVOICE; i++)
+        n += t->v[i].active != 0;
+    return n;
+}
+static uint32_t render_peak(uint32_t nblocks)          /* the peak of the next blocks of the mix */
+{
+    uint32_t i, k, pk = 0;
+    for (k = 0; k < nblocks; k++) {
+        int32_t o[2 * CTL];
+        mix_block(o, CTL);
+        for (i = 0; i < CTL; i++)
+            pk = (uint32_t)abs(o[2 * i]) > pk ? (uint32_t)abs(o[2 * i]) : pk;
+    }
+    return pk;
+}
+static uint32_t blocks_until_end(track_t *t, uint32_t note, uint32_t max)   /* blocks until the pad's voice ends */
+{
+    uint32_t k;
+    for (k = 0; k < max; k++) {
+        int32_t o[2 * CTL];
+        if (!kvoice(t, note))
+            return k;
+        mix_block(o, CTL);
+    }
+    return max;
+}
+static void voices_off(void)                        /* nothing sounding */
+{
+    uint32_t i, k;
+    for (k = 0; k < NTRK; k++)
+        for (i = 0; i < NVOICE; i++)
+            trk[k].v[i].active = 0;
+}
+static void settle(void)                            /* nothing sounding, the effects' tails gone */
+{
+    uint32_t k;
+    voices_off();
+    for (k = 0; k < 400u; k++) {
+        int32_t o[2 * CTL];
+        mix_block(o, CTL);
+    }
+}
+static void kit_track(track_t *t, int32_t kit)      /* a DRUM track on user kit `kit` (DK_USR1..), the defaults */
+{
+    uint32_t i;
+    voices_off();
+    song.master_q12 = 4096;                          /* (the MASTER knob: 0 under ui_test's stubs) */
+    host_preset(t, ENGI_DRUM, 0);
+    t->p[P_E0] = (int16_t)kit;
+    for (i = 0; i < 4u; i++)
+        t->p[P_DIST + i] = 0;
+}
+static const uint8_t KIT_PAD_NOTES[16] = {36, 38, 39, 42, 46, 45, 37, 56, 41, 43, 47, 48, 49, 50, 51, 53};
 static int has_note(const track_t *t, uint32_t note)
 {
     uint32_t i;
@@ -67,10 +161,11 @@ static int has_note(const track_t *t, uint32_t note)
     return 0;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     uint32_t i, j, k, n[3], m0;
     char nm[4];
+    const char *kit = argc > 1 ? argv[1] : 0;
     /* ------------------------------------------------------------- Camelot */
     {
         static const uint8_t RA[12] = {8, 3, 10, 5, 0, 7, 2, 9, 4, 11, 6, 1};   /* 1A..12A: G#m Ebm Bbm Fm Cm Gm Dm Am Em Bm F#m C#m */
@@ -420,6 +515,154 @@ int main(void)
         set_engine_of(&trk[1], ENGI_FM6); apply_preset_to(&trk[1], 8);
         ok = trk[1].p[P_E7] == 8 && str_eq(UI_PALETTES[UI_BW_INDEX + 1u].name, "EDDA") && NPALETTES == UI_BW_INDEX + 2u;
         ck("the OGENE preset loads with SLOT E1; the EDDA palette is the last one", ok);
+    }
+    /* ------------------------------------------------------ the user kits */
+    {
+        int ok = ENG_DRUM.edit[0].max == DK_COUNT - 1 && DK_COUNT == 13u && str_eq(N_DRUM_KIT[DK_USR1], "USR1") &&
+                 str_eq(N_DRUM_KIT[DK_USR4], "USR4") && drum_kit_plays(DK_USR4) == DK_USR4 && DK_USR == 9u;
+        int16_t pp[P_COUNT];
+        memset(pp, 0, sizeof pp);
+        pp[P_E0] = DK_USR2;
+        ok &= drum_user_kit(pp) == 1u && smp_user_addr(3) == 0xE7000u && smp_user_addr(2) == 0xC8000u &&
+              SMP_USER_SLOTS == 4u && str_eq(SMP_ALL_NAMES[SMP_NALL - 1u], "USR4");
+#ifdef FL_STORE_OK
+        ok &= FL_STORE_OK(0xE7000u, 0x14000u) && !FL_STORE_OK(0xFB000u, 0x1000u) && !FL_STORE_OK(0xE6000u, 0x2000u);
+#endif
+        ck("DRUM KIT: USR1..USR4 after the synth kits (values 9..12); USR4 is the slot at 0xE7000 (in the flash guard)", ok);
+        {   /* the track with a user kit: the synth kit's lane names, no model swaps */
+            track_t *t = &trk[0];
+            reset();
+            kit_track(t, DK_USR4);
+            ok = drum_swaps(t) == 0u && str_eq(drum_lane_name(t, DV_TOM), "TOM") && str_eq(drum_lane_abbr(t, DV_BELL), "CB");
+            ck("a user kit keeps the lanes' names (KICK .. BELL), no model-kit swap", ok);
+        }
+    }
+    if (!kit) {
+        printf("edda: (no kit given: the user kit checks skipped; tests/edda_kit.py builds one)\n");
+    } else {
+        track_t *t = &trk[0];
+        int ok;
+        uint32_t pk, nb[2];
+        voice_t *v;
+        reset();
+        ok = kit_load(kit, 0) && kit_load(kit, 3);
+        for (i = 0; ok && i < 16u; i++)
+            ok &= usr_zone[0][i].lo == KIT_PAD_NOTES[i] && usr_zone[0][i].hi == KIT_PAD_NOTES[i] &&
+                  usr_zone[0][i].root16 == KIT_PAD_NOTES[i] * 16 && !usr_zone[0][i].looped &&
+                  usr_zone[0][i].rate == ((i == 12u || i == 14u) ? 16384u : 32768u);   /* crash, ride: 11025 Hz */
+        ok &= smp_user_zone(0, 36) == 0x8000u && smp_user_zone(0, 53) == (0x8000u | 15u) && smp_user_zone(0, 44) == 0xFFFFu &&
+              smp_user_zone(3, 38) == (0x8000u | 3u << 5 | 1u);
+        ck("the kit built by tests/edda_kit.py: 16 pads on their notes, the cymbals at 11025 Hz (the fit), in USR1 and USR4", ok);
+
+        /* every pad plays its zone, one-shot, at its own level; the voice ends with the sound */
+        kit_track(t, DK_USR1);
+        ok = 1;
+        for (i = 0; i < 16u; i++) {
+            uint32_t note = KIT_PAD_NOTES[i];
+            trk_note_on(t, note, 100);
+            v = kvoice(t, note);
+            ok &= v && v->s[6] == 1 && (uint32_t)v->s[5] == (0x8000u | i) && v->s[0] == (int32_t)drum_lane(note) &&
+                  (v->ph[2] >> 24) == 64u;
+            pk = render_peak(8);
+            ok &= pk > 1500u;
+            trk_note_off(t, note);                       /* (a hit does not end with its key) */
+            ok &= kvoice(t, note) != 0;
+            k = blocks_until_end(t, note, 6000);
+            ok &= k < 6000u && k > 2u;
+            if (!ok) { printf("  pad %u (note %u): peak %u, ended after %u blocks\n", i + 1u, note, pk, k); break; }
+        }
+        ck("KIT USR1: each of the 16 pads plays its sound (one-shot: the key let go changes nothing), the voice ends with it", ok);
+
+        /* the GM fall-back: a note without a pad plays its lane's pad, pitched by its GM semitones */
+        kit_track(t, DK_USR1);
+        trk_note_on(t, 44, 100);                         /* pedal hat: HAT CL -2 st */
+        v = kvoice(t, 44);
+        ok = v && v->s[6] == 1 && (uint32_t)v->s[5] == (0x8000u | 3u) && (v->ph[2] >> 24) == 62u;
+        trk_note_on(t, 35, 100);                         /* kick 2: KICK -2 st */
+        v = kvoice(t, 35);
+        ok &= v && (uint32_t)v->s[5] == 0x8000u && (v->ph[2] >> 24) == 62u;
+        trk_note_on(t, 57, 100);                         /* crash 2: lane BELL (the GM map): the bell pad, +1 st */
+        v = kvoice(t, 57);
+        ok &= v && (uint32_t)v->s[5] == (0x8000u | 7u) && (v->ph[2] >> 24) == 65u;
+        ck("a note with no pad of its own plays its lane's pad at its GM semitones (44 -> HAT CL -2, 35 -> KICK -2)", ok);
+
+        /* TUNE: +12 semitones plays the sound twice as fast (it ends in half the blocks) */
+        kit_track(t, DK_USR1);
+        trk_note_on(t, 45, 100); nb[0] = blocks_until_end(t, 45, 6000);
+        t->p[P_E1] = 127;
+        trk_note_on(t, 45, 100); nb[1] = blocks_until_end(t, 45, 6000);
+        ok = nb[0] > 150u && nb[1] * 2u + nb[0] / 40u >= nb[0] && nb[1] * 2u <= nb[0] + nb[0] / 40u;
+        ck("TUNE 127 (+12 st): the tom ends in half the blocks", ok);
+
+        /* DECY below 64 shortens: the bell (0.5 s) at DECY 10 is gone within 0.2 s */
+        kit_track(t, DK_USR1);
+        trk_note_on(t, 56, 100); nb[0] = blocks_until_end(t, 56, 6000);
+        t->p[P_E3] = 10;
+        trk_note_on(t, 56, 100); nb[1] = blocks_until_end(t, 56, 6000);
+        ok = nb[0] >= 330u && nb[1] < 200u && nb[1] > 60u;
+        t->p[P_E3] = 100;
+        trk_note_on(t, 56, 100); k = blocks_until_end(t, 56, 6000);
+        ok &= k == nb[0];
+        ck("DECY 10 ends the bell in about 0.1 s (an exponential decay); DECY 64 and up: the sound whole", ok);
+
+        /* SNAP: above 64 skips into the sound (not a sound too short for it), below 64 fades it in */
+        kit_track(t, DK_USR1);
+        t->p[P_E4] = 127;
+        trk_note_on(t, 36, 100); v = kvoice(t, 36);
+        ok = v && v->ph[0] == 2205u;
+        trk_note_on(t, 37, 100); v = kvoice(t, 37);     /* the rim: 882 samples: no skip */
+        ok &= v && v->ph[0] == 0u;
+        t->p[P_E4] = 1;
+        voices_off();
+        trk_note_on(t, 38, 100); v = kvoice(t, 38);
+        ok &= v && v->ph[0] == 0u && v->s[4] == 0 && (v->ph[2] & 0xFFu) == 69u;
+        pk = render_peak(1);
+        ok &= pk < 400u;                                 /* the fade's first block: nearly silent (231) */
+        render_peak(80);
+        ok &= v->active && v->s[4] == (1 << 24) && (v->ph[2] & 0xFFu) == 0u;
+        ck("SNAP 127 skips 50 ms into the kick (never a 40 ms rim), SNAP 1 fades the snare in over 50 ms", ok);
+
+        /* the closed hat chokes the open one; one voice per pad; the lane LEVEL */
+        kit_track(t, DK_USR1);
+        trk_note_on(t, 46, 100); v = kvoice(t, 46);
+        render_peak(2);
+        trk_note_on(t, 42, 100);
+        ok = v && v->s[6] == 3 && kvoice(t, 42);
+        k = blocks_until_end(t, 46, 100);
+        ok &= k < 20u;
+        trk_note_on(t, 36, 100); render_peak(4); trk_note_on(t, 36, 100);
+        v = kvoice(t, 36);
+        ok &= kvoices(t) == 2u && v && v->ph[0] < 64u;  /* the kick again: its one voice, from the start */
+        t->p[P_LN0] = 0;
+        settle();
+        k = render_peak(8);                              /* (what is left of the reverb's tail) */
+        trk_note_on(t, 36, 100);
+        pk = render_peak(8);
+        ok &= pk <= k + 2u;
+        t->p[P_LN0] = 127;
+        ck("HAT CL chokes HAT OP (gone in 10 ms); a pad hit again restarts its one voice; LANE 1 LEVEL 0 silences the kick", ok);
+
+        /* an empty kit (USR2 holds nothing): silent hits that end at once, nothing else disturbed */
+        kit_track(t, DK_USR2);
+        settle();
+        k = render_peak(8);
+        trk_note_on(t, 36, 100); v = kvoice(t, 36);
+        ok = v && v->s[6] == 2;
+        ok &= render_peak(8) <= k + 2u && !kvoice(t, 36);
+        ck("KIT USR2 on an empty slot: a hit is silent and ends at once", ok);
+
+        /* USR4: the same kit from the 4th slot, on DRUM and on SAMPLE SET 8 */
+        kit_track(t, DK_USR4);
+        trk_note_on(t, 38, 100); v = kvoice(t, 38);
+        ok = v && (uint32_t)v->s[5] == (0x8000u | 3u << 5 | 1u) && render_peak(8) > 1500u;
+        voices_off();
+        song.master_q12 = 4096;
+        host_preset(t, ENGI_SAMPLE, 0);
+        t->p[P_E0] = (int16_t)(SMP_NALL - 1u);
+        t->p[P_ATK] = 0; t->p[P_SUS] = 127;
+        trk_note_on(t, 36, 100); v = kvoice(t, 36);
+        ok &= v && (uint32_t)v->s[4] == (0x8000u | 3u << 5) && v->s[6] == 0 && render_peak(8) > 1500u;
+        ck("USR4: DRUM KIT USR4 plays the kit from the 4th slot; SAMPLE SET 8 plays its kick", ok);
     }
     printf(bad ? "edda: %d FAILED\n" : "edda: all passed\n", bad);
     return bad != 0;

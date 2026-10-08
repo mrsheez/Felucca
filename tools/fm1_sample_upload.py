@@ -7,6 +7,14 @@
   fm1_sample_upload.py load SLOT NAME file.wav[:ROOT[:LO-HI]] ...   (SLOT 1..4)
   fm1_sample_upload.py erase SLOT
   fm1_sample_upload.py build NAME OUT_PREFIX file.wav[...] ...      (no device: writes OUT_PREFIX.hdr / .bin)
+  fm1_sample_upload.py kit SLOT NAME pad1.wav pad2.wav ... pad16.wav   (EDDA OS: a 16-pad drum kit; "-" leaves
+                                                                     a pad empty; DRUM > KIT USRn plays it)
+  fm1_sample_upload.py kitbuild NAME OUT_PREFIX pad1.wav ...        (no device)
+
+A kit's pads are, in order, KICK SNARE CLAP HAT CL HAT OP TOM RIM BELL (the DRUM grid's lanes), then LO TOM
+HI TOM MID TOM CONGA CRASH HI CONGA RIDE RIDE BELL (sampleio.KIT_PAD_NOTES): each plays on its own note as it
+is, one-shot. Tails are trimmed, a pad holds up to 4 s; when the kit does not fit the slot's 80 KiB the longest
+pads drop to 11025 Hz. Any WAV (8..32 bit, float, any rate, any channel count).
 
 Each file becomes one zone: mono, 22050 Hz, IMA ADPCM (sampleio.py, the same encoder
 as the built-in sets and the web editor). ROOT is a MIDI note (default: from the file
@@ -103,18 +111,33 @@ def build(name, specs):
     return sio.user_slot(name, zones)
 
 
+def build_kit(name, specs):
+    """specs: up to 16 WAV paths in pad order ("-": an empty pad) -> (header, ADPCM data) of the kit slot"""
+    pads = []
+    for spec in specs[:sio.SLOT_ZONES]:
+        if spec == "-":
+            pads.append(None)
+            continue
+        sr, x = sio.read_any_wav(Path(spec))
+        pads.append((sr, x))
+    return sio.kit_slot(name, pads)
+
+
 def main():
-    if len(sys.argv) < 2 or sys.argv[1] not in ("info", "load", "erase", "build"):
+    if len(sys.argv) < 2 or sys.argv[1] not in ("info", "load", "erase", "build", "kit", "kitbuild"):
         sys.exit(__doc__)
     cmd = sys.argv[1]
-    if cmd in ("load", "build"):
+    if cmd in ("load", "build", "kit", "kitbuild"):
         if len(sys.argv) < 5:
             sys.exit(__doc__)
         try:
-            hdr, data = build(sys.argv[3] if cmd == "load" else sys.argv[2], sys.argv[4:])
+            if cmd in ("kit", "kitbuild"):
+                hdr, data = build_kit(sys.argv[3] if cmd == "kit" else sys.argv[2], sys.argv[4:])
+            else:
+                hdr, data = build(sys.argv[3] if cmd == "load" else sys.argv[2], sys.argv[4:])
         except (OSError, ValueError) as e:
             sys.exit(f"cannot build the slot: {e}")
-        if cmd == "build":
+        if cmd in ("build", "kitbuild"):
             Path(sys.argv[3] + ".hdr").write_bytes(hdr)
             Path(sys.argv[3] + ".bin").write_bytes(data)
             print(f"{sys.argv[2]}: {len(data)} B ADPCM, {hdr[6]} zones")
