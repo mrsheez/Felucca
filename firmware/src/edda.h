@@ -25,6 +25,9 @@ enum { ED_IDLE, ED_SHAKERS, ED_STABS, ED_LOG, ED_SILENCE, ED_DROP };
 #define ED_CUE_CC_KEY 24u        /* the Camelot key, 1..24 (1A 1B .. 12A 12B), 0 none */
 #define ED_CUE_NOTE_MUTATE 43u   /* G2: the bell lane re-rolled */
 #define ED_CUE_CC_FILL 25u       /* FILL on / off */
+#define ED_CUE_CC_SECTION 26u    /* a SONG chain's section playing, 1..4 (A..D); with ED_CUE_NOTE_SECTION as it starts */
+#define ED_CUE_CC_SONG 27u       /* THE ARRIVAL's song loaded, 1..13, 0 none (SAVE > ARRIVAL, a project, CLEAR SONG) */
+#define ED_CUE_NOTE_SECTION 45u  /* A2: a section starts (a SONG row, a cue's jump) */
 #define ED_ACTS 5u               /* EDDA: five parts, five bulbs */
 
 typedef struct {
@@ -56,6 +59,7 @@ typedef struct {
     uint32_t fill_until;         /* .. the bar count at which it goes off */
     uint8_t mutate;              /* MUTATE asked for: the bell lane re-rolls on the next one */
     uint32_t seed;               /* the mutations' own random state */
+    uint8_t song;                /* THE ARRIVAL's song the music is (arrival.c arv_cur), for its cue (ED_RQ_CUE_SONG) */
 } edda_t;
 
 static edda_t edda;
@@ -76,7 +80,7 @@ static uint32_t edda_out_vel(uint32_t k, uint32_t vel);
 /* the UI's EDDA actions (ui_layer.c the GLO keys, menu_items.c MENU > EDDA): queued, run by edda_block at the start of
  * the next audio block, where the sequencer and MIDI OUT live (one context changes the run and sends the cues) */
 enum { ED_RQ_RUN = 1, ED_RQ_STOP, ED_RQ_ACT, ED_RQ_FILL, ED_RQ_MUTATE, ED_RQ_KEY_DN, ED_RQ_KEY_UP, ED_RQ_KEY_REL,
-       ED_RQ_CUE_KEY, ED_RQ_CUE_ACT };
+       ED_RQ_CUE_KEY, ED_RQ_CUE_ACT, ED_RQ_CUE_SONG };
 static void edda_ui(uint32_t rq);
 static void edda_reveal_bar(uint32_t b);
 static void edda_mutate_now(void);

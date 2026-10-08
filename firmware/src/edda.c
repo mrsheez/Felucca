@@ -261,6 +261,14 @@ static void edda_pat_fill(track_t *t, uint32_t n)
     t->p[P_SDIV] = (int16_t)p->div;
 }
 
+/* EDDA OS: a SONG chain's row starts (song_chain.c chain_apply, in the audio block like every cue): its section
+ * (noinline: once a section, not in the block's loops) */
+static __attribute__((noinline)) void edda_section_cue(uint32_t slot)
+{
+    edda_cue_cc(ED_CUE_CC_SECTION, slot + 1u);
+    edda_cue_note(ED_CUE_NOTE_SECTION);
+}
+
 /* the UI's actions waiting for the audio block (edda_ui, edda_rq_run) */
 #define ED_RQ_N 8u
 static volatile uint8_t edda_rq[ED_RQ_N], edda_rq_w, edda_rq_r;
@@ -467,6 +475,10 @@ static __attribute__((noinline)) void edda_rq_run(void)
         case ED_RQ_KEY_REL: edda_key_step(0); break;
         case ED_RQ_CUE_KEY: edda_cue_cc(ED_CUE_CC_KEY, edda.camelot); break;
         case ED_RQ_CUE_ACT: edda_cue_cc(ED_CUE_CC_ACT, edda.act); break;
+        case ED_RQ_CUE_SONG:                          /* (THE ARRIVAL: the song and its key) */
+            edda_cue_cc(ED_CUE_CC_SONG, edda.song);
+            edda_cue_cc(ED_CUE_CC_KEY, edda.camelot);
+            break;
         }
     }
 }

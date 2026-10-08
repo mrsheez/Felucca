@@ -1267,7 +1267,13 @@ static void ui_input(void)
                 }
             } else if (kind == CF_CLEAR_SONG) {             /* (EDDA OS: and THE ARRIVAL's song: the rows are the
                                                          * project slots' again) */
-                if (!chain_busy()) { chain_defaults(&chain_config); ui.song_row = 0; arv_cur = 0; ui_message("SONG CLEARED"); }
+                if (!chain_busy()) {
+                    chain_defaults(&chain_config);
+                    ui.song_row = 0;
+                    arv_cur = edda.song = 0;
+                    edda_ui(ED_RQ_CUE_SONG);
+                    ui_message("SONG CLEARED");
+                }
             } else if (kind == CF_INIT_SOUND) {
                 if (!chain_busy()) { set_engine(TSEL->eng_req); ui_message("SOUND INIT"); }
             } else {

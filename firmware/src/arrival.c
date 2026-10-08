@@ -246,5 +246,7 @@ static void arv_load(uint32_t n)
     ui.force = 1;
     ui_say("LOADED ", sg->name);
     str_cpy(ui.msg2, sg->line, sizeof ui.msg2);         /* then the line the song opens on: the voice's cue */
+    edda.song = arv_cur;                                /* (SHOW CUES: CC 27 the song, CC 24 its key) */
+    edda_ui(ED_RQ_CUE_SONG);
     memset(snd_said, 0, sizeof snd_said);
 }

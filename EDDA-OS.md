@@ -273,7 +273,8 @@ all of them meet on every beat, for as long as the set runs. Checked for ten min
 | CC 20 / CC 22 | bars since play / beat of the bar |
 | CC 21 | ACT: bulbs lit 1–5 (MENU > EDDA > ACT, or GLO + G4) |
 | CC 23 / CC 24 / CC 25 | the run's phase / the Camelot key 1–24 / FILL |
-| notes C2 F2 D2 E2 G2 | bar, run start, drop or re-entry, hard stop, bell re-rolled |
+| CC 26 / CC 27 | the SONG section playing, 1–4 (A–D) / THE ARRIVAL's song loaded, 1–13 (0: none) |
+| notes C2 F2 D2 E2 G2 A2 | bar, run start, drop or re-entry, hard stop, bell re-rolled, a section starts |
 
 ### 2.17 VIZ — twelve full-screen visualisers (tap HOME on HOME)
 Tap **HOME** on the HOME screen; tap again for the next one, its name at the foot for a moment; after the
@@ -340,7 +341,9 @@ SONG page names each row's section (the row playing counts its passes down).
 the key of the section playing gives it one more pass (as long as the room wants it); another section's key
 cues it — NEXT shows on its row, and when the pass playing ends the song goes on from that section's next row
 (from a GROOVE straight to the DROP); the same key again drops the cue. A cue on the song's last pass plays on
-instead of ending. Every song, and any SONG chain of projects, cues the same way.
+instead of ending. Every song, and any SONG chain of projects, cues the same way. With SHOW CUES on, each section
+sends CC 26 and the note A2 as it starts and a load sends the song (CC 27) and its key (CC 24): lights can follow
+the drops.
 
 The tracks hold section A: loop it,
 play over it, edit it, save it as a project (the project keeps the song: its rows play the song's sections with

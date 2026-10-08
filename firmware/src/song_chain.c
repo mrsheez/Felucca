@@ -50,9 +50,10 @@ static const step_t *seq_steps(const track_t *t)
     return chain.running ? chain.source[chain.slot].step[t - trk] : t->step;
 }
 static void motion_restore(track_t *t);
+static __attribute__((noinline)) void edda_section_cue(uint32_t slot);   /* (EDDA OS, edda.c: a section's show cue) */
 /* EDDA OS: the row a cue of section s leads to: the next one after the row playing that plays s (round to the
- * start), CHAIN_ROWS = none */
-static uint32_t chain_cue_row(uint32_t s)
+ * start), CHAIN_ROWS = none (noinline: the audio ISR runs it once a cue's pass ends, never per sample) */
+static __attribute__((noinline)) uint32_t chain_cue_row(uint32_t s)
 {
     uint32_t k, n = chain.config.count;
     for (k = 1; k <= n; k++) {
@@ -76,6 +77,7 @@ static void chain_apply(void)
         t->seq_base = 0;                        /* (EDDA OS: the exact grid from the slot's step 0) */
         t->rh_n = t->rskip_n = 0;
     }
+    edda_section_cue(chain.slot);
 }
 static void chain_start(void)
 {

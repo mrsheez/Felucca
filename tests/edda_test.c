@@ -1665,6 +1665,35 @@ int main(int argc, char **argv)
         ok3 &= !chain.running && song.grid == 0u;     /* (stopped: the keys play again) */
         ck("SONG playing: a cue on the song's last pass plays on (round to its first row of that section)", ok3);
     }
+    {   /* SHOW CUES (channel 16): CC 27 the song loaded (and CC 24 its key), each section as it starts: CC 26 its
+         * letter and the note A2; CLEAR SONG: CC 27 0 */
+        uint32_t m0, v = 0, w = 0, nb;
+        int ok;
+        reset();                                        /* (cues on) */
+        m0 = mo_w;
+        arv_load(7);                                    /* DO AM AGAIN: 10B */
+        blocks(1);
+        ok = cues_cc(m0, ED_CUE_CC_SONG, &v) == 1u && v == 8u && cues_cc(m0, ED_CUE_CC_KEY, &w) == 1u && w == 20u;
+        m0 = mo_w;
+        ok &= chain_prepare() == 0u;
+        blocks(2);
+        ok &= cues_cc(m0, ED_CUE_CC_SECTION, &v) == 1u && v == 1u && cues_note(m0, ED_CUE_NOTE_SECTION) == 1u;
+        for (nb = 0; chain.row == 0u && nb < 30u * FS / CTL; nb++) {
+            mo_r = mo_w;                                /* (the queue read as USB would: never full) */
+            m0 = mo_w;
+            blocks(1);
+        }
+        ok &= chain.row == 1u && cues_cc(m0, ED_CUE_CC_SECTION, &v) == 1u && v == 2u &&   /* BREAK x2, then BUILD */
+              cues_note(m0, ED_CUE_NOTE_SECTION) == 1u;
+        transport_req = 2;
+        blocks(2);
+        stop_transport();
+        m0 = mo_w;
+        go_title("TOOLS"); turn(EN_K4, 1); press(B_OCTUP); press(B_OCTUP);
+        blocks(1);
+        ok &= !arv_cur && cues_cc(m0, ED_CUE_CC_SONG, &v) == 1u && v == 0u;
+        ck("SHOW CUES: CC 27 the song loaded (CC 24 its key), CC 26 + A2 each section as it starts, CLEAR SONG: CC 27 0", ok);
+    }
     printf(bad ? "edda: %d FAILED\n" : "edda: all passed\n", bad);
     return bad != 0;
 }
