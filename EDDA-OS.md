@@ -295,7 +295,7 @@ shape moves. HOME's own oscilloscope draws its trace the same way.
 - **SELECT PAGES** (MENU > CONTROL > SELECT): the SELECT knob turns through every page, HOME at either end;
   GLO + SELECT sets the tempo.
 - **SONG quick entry** (SEQ held, or SEQ → SONG): the white keys **F3 G3 A3 B3** append sections A B C D —
-  tap A B B C for A, B ×2, C. Stopped only.
+  tap A B B C for A, B ×2, C. While a song plays they **cue** instead (2.21).
 
 ### 2.19 The voice bank and the palette
 FM6 patches **OGENE IRON, OJA FLUTE, HILIFE GTR, TALK DRUM, LOG DRUM, EDDA EP** (presets OGENE, OJA, HILIFE,
@@ -334,7 +334,15 @@ AGAIN and TURN AM UP: BREAK, BUILD, DROP) and its arrangement as the SONG page's
 plays it from its first row (on another song than the one loaded, PLAY loads it first); PLAY again stops. A
 load stops the transport and sets the four sounds, section A's steps, the rows, the tempo, the delay and the
 reverb, and KEY to the song's Camelot code; the top bar says LOADED and then the line the song opens on. The
-SONG page names each row's section (the row playing counts its bars down). The tracks hold section A: loop it,
+SONG page names each row's section (the row playing counts its passes down).
+
+**Cueing live.** On the SONG page while a song plays, **F3 G3 A3 B3** are its sections A–D and no longer sound:
+the key of the section playing gives it one more pass (as long as the room wants it); another section's key
+cues it — NEXT shows on its row, and when the pass playing ends the song goes on from that section's next row
+(from a GROOVE straight to the DROP); the same key again drops the cue. A cue on the song's last pass plays on
+instead of ending. Every song, and any SONG chain of projects, cues the same way.
+
+The tracks hold section A: loop it,
 play over it, edit it, save it as a project (the project keeps the song: its rows play the song's sections with
 your sounds). **TOOLS > CLEAR SONG** hands the SONG page back to the project slots.
 
@@ -381,7 +389,7 @@ TIME 1/4D 1/8D 1/16D · SEQ > CHANCE KNOB 4 NUDGE · DRUM EDIT 1 KIT USR1–4, E
 10 LOG · SCL > CHORD VOIC LEAD.
 
 **Gestures**: HOME on HOME = VIZ (again: next) · black keys with CHRD + QNT WHITE = CHORD+ · F3–B3 on SONG =
-sections A–D.
+sections A–D (playing: cue the next one, or one more pass of the one playing).
 
 The web editor sees the new MENU rows (protocol ids 18–24), the 4th slot and the kits.
 

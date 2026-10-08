@@ -1140,13 +1140,15 @@ static void setup(int s)
         song.g[G_SLOT] = 2; go_page(GR_SLOTS); ui.act = 4; ui.msg_t = 0;
         break;
     /* EDDA OS: SAVE > ARRIVAL, THE ARRIVAL's songs: the list with a song picked (none loaded); DO AM AGAIN loaded and
-     * playing (its arrow, in the accent) with YOU DEY WHINE ME picked; the SONG page of a loaded song: its sections */
+     * playing (its arrow, in the accent) with YOU DEY WHINE ME picked; the SONG page of a song playing: its sections,
+     * one cued (NEXT) */
     case S_ARRIVAL: song.playing = 0; ui.bpick = 3; go_page(GR_BANK); ui.msg_t = 0; break;
     case S_ARRIVAL_PLAYING:
         song.playing = 0; arv_load(7); chain_prepare(); events_block(32); ui.bpick = 8; go_page(GR_BANK); ui.msg_t = 0;
         break;
-    case S_SONG_ARRIVAL:
-        song.playing = 0; arv_load(9); chain_prepare(); events_block(32); ui.song_row = 1; go_page(GR_SONG); ui.msg_t = 0;
+    case S_SONG_ARRIVAL:                            /* (TURN AM UP from its INTRO, its DROP cued: F3..B3 live) */
+        song.playing = 0; arv_load(9); chain_prepare(); events_block(32); chain.cue = 3; ui.song_row = 1; go_page(GR_SONG);
+        ui.msg_t = 0;
         break;
     case S_SONG_NAMED:
         song.playing = 0; project_save_as(0, "LOFI JAM"); project_save_as(1, "MWMWMWMWMWMW");

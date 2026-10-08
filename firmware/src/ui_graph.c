@@ -1043,7 +1043,7 @@ static uint32_t graph_signature(void)
         h ^= ui.song_row * 40503u + chain_config.count * 7919u + arv_cur * 2654435761u;
         for (i = 0; i < CHAIN_ROWS; i++)
             h = (h ^ (chain_config.row[i].slot + 4u * chain_config.row[i].repeat)) * 16777619u;
-        h ^= chain.running ? (chain.row + 1u) * 104729u + chain.remaining * 1299709u : 0u;
+        h ^= chain.running ? (chain.row + 1u) * 104729u + chain.remaining * 1299709u + chain.cue * 15485863u : 0u;
         for (i = 0; i < 4u; i++) h ^= (uint32_t)graph_project_used(i) << (24u + i);
         h += graph_pname_sig;
     }
@@ -1608,6 +1608,10 @@ static void graph_song(void)
             else if (chain.running && i == chain.row) {
                 fmt_int(b, chain.remaining); str_cpy(b + str_len(b), " LEFT", 8);
                 cv_text_on(142, y + 1, &AF_S, b, sel ? T_INK : T_THEME, bg);
+            } else if (chain.running && chain.cue && i == chain_cue_row(chain.cue - 1u)) {   /* EDDA OS: cued */
+                str_cpy(b, "NEXT ", sizeof b);
+                str_cpy(b + 5, sec, sizeof b - 5);
+                cv_free_text(142, y + 1, &AF_S, b, sel ? T_INK : T_ACCENT, bg, 232 - 142);
             } else if (arv_cur) {
                 cv_free_text(142, y + 1, &AF_S, sec, sel ? T_INK : T_MID, bg, 232 - 142);
             } else if (graph_project_name(chain_config.row[i].slot)[0]) {   /* the project's name, cut to fit */

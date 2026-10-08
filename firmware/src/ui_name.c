@@ -50,8 +50,16 @@ static void name_close(void)
         ui.force = 1;
     nm.kind = NK_NONE;
 }
-/* the keys: 2 = NAME's (silent), 1 = the DRUM grid, 0 = notes (seq.c keyboard_block reads song.grid) */
-static uint32_t keys_mode(void) { return name_on() ? 2u : (uint32_t)grid_on(); }
+/* the keys: 2 = NAME's (silent), 1 = the DRUM grid, 3 = a song playing on the SONG page (EDDA OS: F3..B3 cue its
+ * sections, silent; the other keys play), 0 = notes (seq.c keyboard_block reads song.grid) */
+static uint32_t keys_mode(void)
+{
+    if (name_on())
+        return 2u;
+    if (grid_on())
+        return 1u;
+    return !ui.home && !ui.menu && !ui.confirm && cur_page()->graph == GR_SONG && chain.running ? 3u : 0u;
+}
 
 static const char *nm_group(uint32_t p)                /* white key place p's characters */
 {

@@ -665,7 +665,9 @@ static void keyboard_block(void)
             }
             if (song.grid == 2u)                  /* NAME (ui_name.c): every key types, none sounds */
                 kb_note[k] = KB_SILENT;
-            else if (song.grid)                   /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
+            else if (song.grid == 3u && !key_black(k) && key_place(k) < 4u)
+                kb_note[k] = KB_SILENT;           /* EDDA OS: a song playing on the SONG page: F3..B3 cue sections */
+            else if (song.grid == 1u)             /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
                 kb_note[k] = key_black(k) && key_place(k) < NLANE ? DRUM_LANE_NOTE[key_place(k)] : KB_SILENT;
             else if (chp_key(k, 1)) {             /* EDDA OS CHORD+: a black key holds a modifier (chord.c) */
                 kb_note[k] = KB_SILENT;

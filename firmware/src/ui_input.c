@@ -487,6 +487,34 @@ static void grid_edit(uint32_t slot, int32_t steps)
  * patterns A B C D: a tap appends a row of that pattern (x1), the same pattern again plays it once more (its REPS up to
  * 16); the row just entered is the one selected (KNOB 2 / 3 adjust it, OCT+ deletes). The keys sound as they do while
  * entering steps. Stopped only (a playing song: STOP TO EDIT) */
+/* EDDA OS: a song playing on the SONG page: section slot's key (F3..B3, silent then: seq.c, keys_mode 3) cues it. The
+ * section playing: one more pass of it (up to 16); another: when this pass ends the song goes on from its next row
+ * that plays it (song_chain.c chain_tick); the same key again: the cue is dropped */
+static void song_cue(uint32_t slot)
+{
+    char b[16];
+    const char *nm = arv_sec_name(slot);
+    b[0] = (char)('A' + slot);
+    b[1] = 0;
+    if (nm[0])
+        str_cpy(b, nm, sizeof b);
+    if (slot == chain.slot) {
+        fm1_irq_off();                                  /* (the audio ISR counts the passes down) */
+        if (chain.remaining < 16u)
+            chain.remaining++;
+        fm1_irq_on();
+        ui_say("ONE MORE ", b);
+    } else if (chain_cue_row(slot) >= CHAIN_ROWS) {
+        ui_say(b, " NOT IN THE SONG");
+    } else if (chain.cue == slot + 1u) {
+        chain.cue = 0;
+        ui_say("CUE OFF ", b);
+    } else {
+        chain.cue = (uint8_t)(slot + 1u);
+        ui_say("NEXT ", b);
+    }
+    ui.force = 1;
+}
 static void song_keys(uint32_t pressed)
 {
     uint32_t k;
@@ -495,6 +523,10 @@ static void song_keys(uint32_t pressed)
         if (!((pressed >> k) & 1u) || key_black(k) || key_place(k) >= 4u)
             continue;
         slot = key_place(k);
+        if (chain.running) {                            /* EDDA OS: playing, the key cues its section */
+            song_cue(slot);
+            return;
+        }
         if (chain_busy()) {
             ui_message("STOP TO EDIT");
             return;
@@ -1337,7 +1369,7 @@ static void ui_input(void)
         slice_keys_pick(notes);
 #endif
     lock_keys();                                        /* (a grid key on a hit let go: the hit goes) */
-    if (song.grid) {
+    if (song.grid == 1u) {
         grid_keys(notes);
     } else if (song.seq_mode && cur_page()->graph == GR_SONG) {   /* SONG: the first four white keys enter sections */
         if (notes)

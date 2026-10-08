@@ -1620,6 +1620,51 @@ int main(int argc, char **argv)
         ok = !arv_cur && !chain_config.count && !arv_sec_name(0)[0];
         ck("TOOLS > CLEAR SONG ends it: the SONG page's rows are the project slots' again", ok);
     }
+    {   /* the SONG page while a song plays: F3..B3 cue its sections (silent keys). The section playing: one more pass;
+         * another: next, when this pass ends, from its next row; the same key again drops the cue; a cue on the last
+         * pass of the song plays on */
+        uint32_t nb, row0;
+        int ok, ok2, ok3;
+        reset();
+        arv_load(0);                                    /* UP NEPA: A INTRO x2, B GROOVE x4, D RUN, C DROP x4, .. */
+        go_title("SONG");
+        frame();
+        press(B_PLAY);
+        blocks(2);
+        frame();
+        ok = chain.running && chain.row == 0u && chain.remaining == 2u && song.grid == 3u &&
+             str_eq(arv_sec_name(2), "DROP") && chain_config.row[3].slot == 2u;
+        key_down(white(2)); blocks(1); frame();        /* A3: C, the DROP */
+        ok &= kb_note[white(2)] == KB_SILENT;
+        key_up(white(2)); blocks(1); frame();
+        ok &= chain.cue == 3u && msg_is("NEXT DROP") && chain.row == 0u;
+        key_down(white(2)); blocks(1); frame(); key_up(white(2)); blocks(1); frame();
+        ok &= !chain.cue && msg_is("CUE OFF DROP");
+        key_down(white(2)); blocks(1); frame(); key_up(white(2)); blocks(1); frame();
+        ok &= chain.cue == 3u;
+        for (nb = 0; chain.row == 0u && nb < 20u * FS / CTL; nb++)
+            blocks(1);
+        ok &= chain.row == 3u && chain.slot == 2u && chain.remaining == 4u && !chain.cue &&
+              nb > 7u * FS / CTL && nb < 9u * FS / CTL;   /* (one pass of INTRO: 4 bars at 116, 8.3 s, not two) */
+        ck("SONG playing: a section's key cues it (silent), NEXT; again: CUE OFF; this pass ends, the song goes on from "
+           "the cued section's next row", ok);
+        frame();
+        key_down(white(2)); blocks(1); frame(); key_up(white(2)); blocks(1); frame();   /* the DROP playing: once more */
+        ok2 = chain.remaining == 5u && !chain.cue && msg_is("ONE MORE DROP") && chain.row == 3u;
+        ck("SONG playing: the section playing's key: one more pass of it", ok2);
+        chain.row = (uint8_t)(chain_config.count - 1u);   /* the last row's last pass */
+        chain.remaining = 1u;
+        row0 = chain.row;
+        key_down(white(1)); blocks(1); frame(); key_up(white(1)); blocks(1); frame();   /* G3: B, the GROOVE */
+        for (nb = 0; chain.row == row0 && chain.running && nb < 20u * FS / CTL; nb++)
+            blocks(1);
+        ok3 = chain.running && chain.row == 1u && chain.slot == 1u && song.playing;
+        press(B_PLAY);
+        blocks(2);
+        frame();
+        ok3 &= !chain.running && song.grid == 0u;     /* (stopped: the keys play again) */
+        ck("SONG playing: a cue on the song's last pass plays on (round to its first row of that section)", ok3);
+    }
     printf(bad ? "edda: %d FAILED\n" : "edda: all passed\n", bad);
     return bad != 0;
 }

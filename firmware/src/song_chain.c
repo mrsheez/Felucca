@@ -14,6 +14,8 @@ static struct {
     chain_config_t config;
     int16_t timing[NTRK][4];
     volatile uint8_t armed, running, row, remaining;
+    volatile uint8_t cue;        /* EDDA OS: a section cued on the SONG page while playing, slot + 1 (0 none): at the
+                                  * end of this pass the song goes on from its next row that plays it (chain_tick) */
     uint8_t slot, rec;
     uint32_t carry;
     int32_t carry_n;             /* EDDA OS, micro timing: track 1's step-1 nudge where the slot ended (samples): carry
@@ -48,6 +50,18 @@ static const step_t *seq_steps(const track_t *t)
     return chain.running ? chain.source[chain.slot].step[t - trk] : t->step;
 }
 static void motion_restore(track_t *t);
+/* EDDA OS: the row a cue of section s leads to: the next one after the row playing that plays s (round to the
+ * start), CHAIN_ROWS = none */
+static uint32_t chain_cue_row(uint32_t s)
+{
+    uint32_t k, n = chain.config.count;
+    for (k = 1; k <= n; k++) {
+        uint32_t q = (chain.row + k) % n;
+        if (chain.config.row[q].slot == s)
+            return q;
+    }
+    return CHAIN_ROWS;
+}
 static void chain_apply(void)
 {
     uint32_t i;
@@ -76,6 +90,7 @@ static void chain_start(void)
     chain.remaining = chain.config.row[0].repeat;
     chain.carry = 0;
     chain.carry_n = 0;
+    chain.cue = 0;
     chain.running = 1;
     chain.armed = 0;
     chain_apply();
@@ -90,6 +105,7 @@ static void chain_stop(void)
         memcpy(&trk[i].p[P_SLEN], chain.timing[i], sizeof chain.timing[i]);
     song.rec = chain.rec;
     chain.running = 0;
+    chain.cue = 0;
 }
 static void chain_tick(uint32_t n)
 {
@@ -100,6 +116,19 @@ static void chain_tick(uint32_t n)
     length = seq_len(t, div_samples((uint32_t)t->p[P_SDIV]));   /* (EDDA OS: the step as the sequencer counts it) */
     if (t->seq_pos + n < length)
         return;
+    if (chain.cue) {                                    /* EDDA OS: a section cued: this pass was the last (a cue
+                                                         * on the last pass of the song plays on instead of ending) */
+        uint32_t r = chain_cue_row(chain.cue - 1u);
+        chain.cue = 0;
+        if (r < CHAIN_ROWS) {
+            chain.carry = t->seq_pos + n - length;
+            chain.carry_n = step_nudge(&seq_steps(t)[0]) * (int32_t)(div_samples((uint32_t)t->p[P_SDIV]) / 16u);
+            chain.row = (uint8_t)r;
+            chain.remaining = chain.config.row[r].repeat;
+            chain_apply();
+            return;
+        }
+    }
     if (chain.remaining > 1u) {
         chain.remaining--;
         return;
