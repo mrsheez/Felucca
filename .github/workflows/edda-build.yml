@@ -138,5 +138,8 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/configure-pages@v5     # (turns Pages on for the repository the first time: Source: GitHub Actions)
+        with:
+          enablement: true
       - id: deployment
         uses: actions/deploy-pages@v4
