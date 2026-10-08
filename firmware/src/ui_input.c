@@ -1227,8 +1227,8 @@ static void ui_input(void)
     } else if (seq == BT_TAP) {
         open_family(FAM_SEQ);
     }
-    if (home == BT_TAP)                                 /* HOME acts on release: a hold opens the menu */
-        go_home();
+    if (home == BT_TAP)                                 /* HOME acts on release: a hold opens the menu; on HOME */
+        vz_home_tap();                                  /* (EDDA OS) the visualisers, in them the next (ui_viz.c) */
     cursor_fix();                                       /* LEN may have changed (knob, editor, load) */
     for (id = 0; id < 14u; id++) {
         if (!((pressed >> id) & 1u))

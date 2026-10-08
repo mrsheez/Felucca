@@ -1284,6 +1284,7 @@ static void ui_draw(void)
     ui_draw_page(counting);
     scr_shown();
 }
+#include "ui_viz.c"              /* EDDA OS: the twelve full-screen visualisers over HOME (vz_page, vz_home_tap) */
 static void ui_draw_page(uint32_t counting)
 {
     if (ui.uboot) {
@@ -1330,6 +1331,8 @@ static void ui_draw_page(uint32_t counting)
         ui.force = 0;
         return;
     }
+    if (vz_page())                                      /* EDDA OS: VIZ (a layer's map, a dialog: over it) */
+        return;
     if (!ui.home && !page_visible(ui.page)) {          /* an OP page of a track that is not DIGITAL (without
                                                          * FELUCCA_FM4: any track): EDIT 1 */
         ui.page = (uint8_t)page_first(FAM_EDIT);

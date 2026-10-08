@@ -4902,6 +4902,146 @@ static uint64_t scr_session_fork(uint32_t setting, uint32_t *flags)   /* from th
     *flags = (uint32_t)r[1];
     return r[0];
 }
+/* EDDA OS: the twelve visualisers (ui_viz.c): HOME tapped on HOME opens one, again the next, past the last HOME; a page
+ * button leaves; the MENU over it and back; the keys and knobs still HOME's; the spectrum's bands; the screen stays on */
+static uint32_t px_count(uint16_t c, uint32_t y0, uint32_t y1)   /* pixels of colour c in screen rows y0 .. y1 - 1 */
+{
+    uint32_t x, y, n = 0;
+    for (y = y0; y < y1; y++)
+        for (x = 0; x < 240u; x++)
+            n += host_screen[y * 240u + x] == swap16(c);
+    return n;
+}
+static int test_viz(void)
+{
+    int bad = 0, ok;
+    uint32_t i, k, rows, n;
+    int16_t *vp;
+    ui_power_on();
+    usb.config = 0;
+    song.playing = 1;
+    ok = ui.home && !ui.viz;
+    press(B_HOME); frames(32);
+    ok &= ui.home && ui.viz == 1u && vz.n == VZ_SCOPE && vz.last == 0u && str_eq(VZ_NAME[0], "SCOPE") && VZ_COUNT == 12u;
+    for (i = 1; i < VZ_COUNT; i++) {
+        press(B_HOME); frames(64);                    /* (the two bands, a few times) */
+        ok &= ui.viz == 1u && vz.n == i && vz.last == i && ui.home;
+    }
+    ok &= str_eq(VZ_NAME[VZ_COUNT - 1u], "CLOCK");
+    press(B_HOME); frames(32);
+    ok &= !ui.viz && ui.home;                         /* past the twelfth: HOME */
+    press(B_HOME); frames(32);
+    ok &= ui.viz == 1u && vz.n == 0u;                 /* (from SCOPE again) */
+    bad += check("VIZ: HOME tapped on HOME opens SCOPE; again the next of 12; past CLOCK: HOME, then SCOPE again", ok);
+
+    press(B_HOME); frames(32);                        /* SPECTRUM */
+    ok = vz.n == VZ_SPECTRUM;
+    press(B_ENV); frames(32);
+    ok &= !ui.viz && !ui.home && cur_page()->fam == FAM_ENV;
+    press(B_HOME); frames(32);
+    ok &= ui.home && !ui.viz;                         /* HOME from a page: HOME itself */
+    press(B_HOME); frames(32);
+    ok &= ui.home && ui.viz == 1u && vz.n == VZ_SPECTRUM;   /* again: the one shown last */
+    bad += check("VIZ: a page button leaves for its page; HOME from a page: HOME, then the visualiser shown last", ok);
+
+    hold(B_HOME); frames(32);                         /* HOME held: the MENU over it */
+    ok = ui.menu == 1u && ui.viz == 1u;
+    hold(B_HOME); frames(48);
+    ok &= !ui.menu && ui.home && ui.viz == 1u && vz.n == VZ_SPECTRUM;
+    bad += check("VIZ: HOME held opens the MENU; closed, the visualiser again", ok);
+
+    {   /* the keys play, the knobs edit HOME's four (the value comes up at the foot), SELECT the tempo */
+        const param_desc_t *d = home_param(0, &vp);
+        int16_t v0 = *vp;
+        key_down(7u); frame();
+        ok = gates() >= 1u && song.grid == 0u;
+        key_up(7u); frame();
+        turn(EN_K1, 1); frames(32);
+        ok &= *vp != v0 && ui.hot_t && d != 0 && ui.viz == 1u && ui.home;
+        turn(EN_SELECT, 1); frames(32);
+        ok &= song.g[G_BPM] == 121 && ui.viz == 1u;
+        bad += check("VIZ: the keys play, KNOB 1..4 are HOME's, SELECT the tempo; it stays", ok);
+    }
+
+    {   /* the spectrum: a 1 kHz tone peaks in the band holding bin 23 (43 Hz bins); -60 dB is nothing */
+        uint32_t best = 0;
+        vz.n = VZ_SPECTRUM; vz.fresh = 1;
+        for (i = 0; i < SCOPE_N; i++)
+            scope_buf[i] = (int16_t)(20000.0 * sin(2.0 * 3.14159265 * 1000.0 * (double)i / 22050.0));
+        scope_w = 0;
+        vz_snap();
+        for (k = 1; k < VZ_NB; k++)
+            if (vz.spec[k] > vz.spec[best])
+                best = k;
+        ok = best == 17u && VZ_EDGE[17] == 23u && VZ_EDGE[18] == 25u && vz.spec[best] > 200u && vz.spec[2] < 40u && vz.spec[35] < 40u;
+        for (i = 0; i < SCOPE_N; i++)
+            scope_buf[i] = (int16_t)(20.0 * sin(2.0 * 3.14159265 * 1000.0 * (double)i / 22050.0));
+        vz.fresh = 1; vz_snap();
+        ok &= vz.spec[17] < 16u;
+        for (i = 0; i < SCOPE_N; i++)
+            scope_buf[i] = (int16_t)(20000.0 * sin(2.0 * 3.14159265 * 5000.0 * (double)i / 22050.0));
+        vz.fresh = 1; vz_snap();
+        for (best = 0, k = 1; k < VZ_NB; k++)
+            if (vz.spec[k] > vz.spec[best])
+                best = k;
+        ok &= VZ_EDGE[best] <= 116u && VZ_EDGE[best + 1u] > 116u;   /* (5 kHz: bin 116) */
+        bad += check("VIZ SPECTRUM: a 1 kHz tone peaks in bin 23's band, 5 kHz in bin 116's; -60 dB shows nothing", ok);
+    }
+
+    {   /* the picture: SCOPE draws its trace in both bands; the stand-in signal spans them */
+        ui.viz = 1; vz.n = VZ_SCOPE; vz.fresh = 1; ui.force = 1;
+        for (i = 0; i < SCOPE_N; i++)
+            scope_buf[i] = (int16_t)(20000.0 * sin(2.0 * 3.14159265 * 220.0 * (double)i / 22050.0));
+        scope_w = 0;
+        rows = host_blit_rows;
+        frame();
+        ok = host_blit_rows - rows == 240u;           /* (forced: the whole picture) */
+        n = px_count(T_THEME, 0, 120) + px_count(T_THEME, 120, 240);
+        ok &= px_count(T_THEME, 0, 120) > 100u && px_count(T_THEME, 120, 240) > 100u && n > 400u;
+        rows = host_blit_rows;
+        frame(); frame();
+        ok &= host_blit_rows - rows == 240u;          /* (a band a frame) */
+        bad += check("VIZ: a forced frame draws the whole picture, then a band a frame; SCOPE's trace in both", ok);
+    }
+
+    {   /* every visualiser draws (no crash, something on the screen), stopped and playing */
+        for (k = 0; k < VZ_COUNT && ok; k++) {
+            song.playing = k & 1u;
+            vz.n = (uint8_t)k; vz.fresh = 1; ui.force = 1;
+            frame(); frame(); frame();
+            ok &= px_count(T_BG, 0, 240) < 240u * 240u;
+        }
+        song.playing = 1;
+        bad += check("VIZ: each of the twelve draws something, playing or stopped", ok);
+    }
+
+    {   /* SCREEN OFF waits while a visualiser shows */
+        uint32_t pw = host_pw_n;
+        ui.viz = 1; vz.n = VZ_PULSE;
+        scr_idle(31u * 60000u);
+        ok = host_pw_n == pw && host_bl && scrn.st == SCR_ON;
+        ui.viz = 0; ui.force = 1; frame();
+        scr_idle(31u * 60000u);
+        ok &= scrn.st == SCR_OFF;
+        btn_down(B_ENV); frame(); frames(300u); btn_up(B_ENV); frame(); frames(100u);
+        bad += check("VIZ: the screen stays on while one shows; off HOME, SCREEN OFF as before", ok);
+    }
+
+    {   /* the name at the foot for a while, then the knob's value; a layer's map over it */
+        ui_power_on(); usb.config = 0; song.playing = 1;
+        press(B_HOME); frames(16);
+        ok = ui.viz == 1u && vz.name_ms != 0u;
+        frames(2000);
+        ok &= (int32_t)(vz.name_ms - fm1_ms) <= 0;
+        btn_down(B_GLO); frames(700);
+        ok &= ui.layer == LAYER_GLO && ui.viz == 1u;
+        btn_up(B_GLO); frames(64);
+        ok &= !ui.layer && ui.viz == 1u && ui.home;
+        bad += check("VIZ: its name shows for a moment; a layer's map over it, then the visualiser again", ok);
+    }
+    ui_power_on();
+    return bad;
+}
 static int test_screen_off(void)
 {
     int bad = 0, ok;
@@ -7308,6 +7448,7 @@ int main(void)
     bad += test_step_leds();
     bad += test_scale_leds();
     bad += test_screen_off();
+    bad += test_viz();
     bad += test_fm6_charts();
 #if FELUCCA_FM4
     bad += test_fm_charts();                        /* (DIGITAL's charts: built with FELUCCA_FM4=1 only) */

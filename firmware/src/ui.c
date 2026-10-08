@@ -165,6 +165,7 @@ static struct {
         uint8_t sig;             /* a card: what its value is of (label, unit, track, engine, palette) */
     } roll[5];
     int16_t roll_bpm;            /* the BPM last drawn */
+    uint8_t viz;                 /* EDDA OS: a full-screen visualiser over HOME (ui_viz.c), 0 none */
 } ui;
 
 enum { CF_NONE, CF_CLEAR_SEQ, CF_CLEAR_TRK, CF_OVR_PROJ, CF_OVR_USER, CF_LOAD_PAT,
@@ -245,7 +246,7 @@ static int scr_input(uint32_t pressed, uint32_t notes)
 static int scr_frame(void)
 {
     uint32_t lim = SCR_MIN[scr_get()] * 60000u;
-    if (ui.confirm || ui.uboot || seq_counting()) {    /* (never dark under these) */
+    if (ui.confirm || ui.uboot || seq_counting() || ui.viz) {   /* (never dark under these; EDDA OS: VIZ) */
         scrn.idle = fm1_ms;
         if (scrn.st == SCR_OFF)
             scr_wake();

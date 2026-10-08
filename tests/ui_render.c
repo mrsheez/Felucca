@@ -654,7 +654,9 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_MESSAGE_NOFILE, S_PRESET
        S_USER_FOOT, S_SLICES_BREAK, S_SLICES_USR, S_SLICES_NOFILE,
        S_ROLL_EMPTY, S_ROLL_ACID, S_ROLL_CHORDS, S_ROLL_TIES, S_ROLL_LEN32, S_ROLL_HIGH, S_ROLL_LOW, S_ROLL_WIDE, S_ROLL_PLAYING,
        S_ROLL_LOCKS, S_ROLL_LOCK_HELD, S_DRUM_LOCKS, S_DRUM_LOCK_HELD, S_MOTION_LOCKS, S_AUTO_LIST, S_AUTO_LIST_ADD, S_AUTO_LIST_DRUM, S_REC_LAYER, S_REC_LAYER_SET, S_REC_LAYER_SONG,
-       S_COUNTIN, S_COUNTIN2, S_MENU_AUDIO, S_MENU_EDDA, S_HEAD_PLAY_REC, S_HEAD_REC_OTHER, S_HEAD_BPM_TURN, S_HEAD_BPM_LOCK,
+       S_COUNTIN, S_COUNTIN2, S_MENU_AUDIO, S_MENU_EDDA,
+       S_VIZ_SCOPE, S_VIZ_SPECTRUM, S_VIZ_WATERFALL, S_VIZ_ORBIT, S_VIZ_TUNNEL, S_VIZ_PULSE, S_VIZ_STARS, S_VIZ_GRID,
+       S_VIZ_RAIN, S_VIZ_WHEEL, S_VIZ_BULBS, S_VIZ_CLOCK, S_VIZ_NOTE, S_HEAD_PLAY_REC, S_HEAD_REC_OTHER, S_HEAD_BPM_TURN, S_HEAD_BPM_LOCK,
        S_HEAD_BPM_LOCKED, S_HEAD_GLO_TURN, S_HEAD_DOWNBEAT, S_HEAD_BEAT_2,
        S_MOCK_HOME, S_MOCK_PRESETS, S_MOCK_SEQ, S_MOCK_DRUM, S_MOCK_MIXER, S_MOCK_DIALOG, S_MOCK_MENU, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "message_key", "message_nofile", "presets", "presets_nofav", "user",
@@ -672,7 +674,9 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "user_foot", "slices_break", "slices_usr", "slices_nofile",
     "roll_empty", "roll_acid", "roll_chords", "roll_ties", "roll_len32_p2", "roll_high", "roll_low", "roll_wide", "roll_playing",
     "roll_locks", "roll_lock_held", "drum_locks", "drum_lock_held", "motion_locks", "auto_list", "auto_list_add", "auto_list_drum", "layer_rec", "layer_rec_set", "layer_rec_song",
-    "countin", "countin_2bars", "menu_audio", "menu_edda", "head_play_rec", "head_rec_other", "head_bpm_turn", "head_bpm_lock",
+    "countin", "countin_2bars", "menu_audio", "menu_edda",
+    "viz_scope", "viz_spectrum", "viz_waterfall", "viz_orbit", "viz_tunnel", "viz_pulse", "viz_stars", "viz_grid",
+    "viz_rain", "viz_wheel", "viz_bulbs", "viz_clock", "viz_note", "head_play_rec", "head_rec_other", "head_bpm_turn", "head_bpm_lock",
     "head_bpm_locked", "head_glo_turn", "head_downbeat", "head_beat_2",
     "mock_home", "mock_presets", "mock_seq", "mock_drum", "mock_mixer", "mock_dialog", "mock_menu"};
 
@@ -820,6 +824,61 @@ static void roll_scene(int s)
     ui.bank = (uint8_t)(ui.cursor / 16u);
 }
 
+/* EDDA OS's visualisers (ui_viz.c): a stand-in mix in the scope (a bass, a stab, a lead, a hiss; t moves them), the
+ * notes held, the beat a third in, the pictures before (WATERFALL, RAIN, STARS: their histories) */
+static void viz_scope_fill(uint32_t t)
+{
+    uint32_t i;
+    for (i = 0; i < SCOPE_N; i++) {
+        double x = (double)i / 22050.0, v;
+        v = 8000.0 * sin(2.0 * M_PI * (55.0 + 5.0 * (t % 7u)) * x) + 4000.0 * sin(2.0 * M_PI * 220.0 * x + t) +
+            2500.0 * sin(2.0 * M_PI * (880.0 + 110.0 * (t % 5u)) * x) + 700.0 * sin(2.0 * M_PI * 5200.0 * x + 0.3 * t);
+        scope_buf[i] = (int16_t)v;
+    }
+    scope_w = 0;
+}
+static void viz_notes(uint32_t t)
+{
+    static const uint8_t CH[4][3] = {{57, 60, 64}, {53, 57, 60}, {48, 52, 55}, {55, 59, 62}};
+    uint32_t k, v;
+    for (k = 0; k < NTRK; k++)
+        for (v = 0; v < NVOICE; v++)
+            trk[k].v[v].active = trk[k].v[v].gate = 0;
+    for (v = 0; v < 3u; v++) {                       /* track 2: a chord a bar; track 1: a bass line; track 4: hits */
+        trk[1].v[v].active = trk[1].v[v].gate = 1;
+        trk[1].v[v].note = (uint8_t)(CH[(t / 8u) % 4u][v] + 12u);
+    }
+    trk[0].v[0].active = trk[0].v[0].gate = (t % 2u) == 0u;
+    trk[0].v[0].note = (uint8_t)(CH[(t / 8u) % 4u][0] - 12u + (t % 4u == 2u ? 7u : 0u));
+    trk[2].v[0].active = trk[2].v[0].gate = (t % 3u) != 1u;
+    trk[2].v[0].note = (uint8_t)(72u + (t * 5u) % 12u);
+    trk[3].v[0].active = trk[3].v[0].gate = 1;
+    trk[3].v[0].note = (uint8_t)(t % 2u ? 42u : 36u);
+}
+static void viz_state(uint32_t n)
+{
+    uint32_t k;
+    ui.viz = 1;
+    vz.n = vz.last = (uint8_t)n;
+    vz.name_ms = 0;
+    vz.fresh = 1;
+    vz.band = 0;
+    edda.camelot = 15;                               /* 8A */
+    edda.act = 3;
+    edda.bar = 16;
+    beat_n = 2;
+    beat_len = beat_samples();
+    beat_pos = beat_len / 3u;
+    for (k = 0; k < 40u; k++) {
+        viz_scope_fill(k);
+        viz_notes(k);
+        fm1_ms += 80u;
+        vz_snap();
+    }
+    viz_scope_fill(40);
+    viz_notes(40);
+    fm1_ms += 80u;
+}
 static void setup(int s)
 {
     memset(kb_chn, 0, sizeof kb_chn);               /* no key held (roll_playing holds one) */
@@ -866,6 +925,15 @@ static void setup(int s)
     case S_COUNTIN: song.playing = 0; song.rec = 1; cin_total = 4; cin_left = 3; go_home(); break;
     case S_COUNTIN2: song.playing = 0; song.rec = 1; cin_total = 8; cin_left = 8; go_page(GR_ROLL); break;
     case S_MENU_AUDIO: ui.menu = 1; ui.menu_sel = MI_CLICK; rp_put(RP_CLICK, 1u); rp_put(RP_COUNTIN, 1u); break;
+    case S_VIZ_SCOPE: case S_VIZ_SPECTRUM: case S_VIZ_WATERFALL: case S_VIZ_ORBIT: case S_VIZ_TUNNEL: case S_VIZ_PULSE:
+    case S_VIZ_STARS: case S_VIZ_GRID: case S_VIZ_RAIN: case S_VIZ_WHEEL: case S_VIZ_BULBS: case S_VIZ_CLOCK:
+        viz_state((uint32_t)(s - S_VIZ_SCOPE));
+        if (s == S_VIZ_BULBS) { edda.phase = ED_STABS; edda.left = 2; edda.stab_lvl0 = 90; }
+        break;
+    case S_VIZ_NOTE:                                 /* the foot's note: the visualiser's number and name */
+        viz_state(VZ_ORBIT);
+        vz.name_ms = (fm1_ms + 1000u) | 1u;
+        break;
     case S_MENU_EDDA:                                /* EDDA OS: the EDDA tab's six rows, their widest values */
         ui.menu = 1; ui.menu_sel = MI_SEQOUT;
         edda.camelot = 24; edda.cues = 1; edda.seq_out = 2; edda.act = ED_ACTS; edda.run_len = 1; edda.reveal = 1;
@@ -1728,7 +1796,8 @@ int main(int argc, char **argv)
     al_off = 1;                                     /* (the alignment check is not timed) */
     /* draw cost: a full redraw of a screen (all strips), and HOME frame by frame (the scope, every other frame) */
     {
-        static const int COST[] = {S_HOME, S_PRESETS, S_STEP, S_ROLL_CHORDS, S_DRUM, S_MIXER, S_MENU, S_ABOUT_CREDITS, S_CONFIRM_PROJ};
+        static const int COST[] = {S_HOME, S_PRESETS, S_STEP, S_ROLL_CHORDS, S_DRUM, S_MIXER, S_MENU, S_ABOUT_CREDITS, S_CONFIRM_PROJ,
+                                   S_VIZ_SCOPE, S_VIZ_SPECTRUM, S_VIZ_ORBIT, S_VIZ_TUNNEL, S_VIZ_PULSE, S_VIZ_GRID, S_VIZ_WHEEL};
         enum { N = 200 };
         uint32_t i, k;
         fprintf(rep, "\ndraw cost on the host (cc -O1; only the ratios mean anything on the device):\n");

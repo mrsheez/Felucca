@@ -1447,9 +1447,10 @@ static void draw_tracks(void)
 }
 /* oscilloscope of the output, triggered on a rising zero crossing: a RAISE centre line, the trace 2 px (in silence
  * a flat line on it; MENU > SCREEN OFF keeps it from staying on the panel for hours) */
+static int16_t scope_snap[SCOPE_N];          /* the scope as a frame saw it (and EDDA OS's visualisers: ui_viz.c) */
 static void graph_scope(uint16_t c)
 {
-    static int16_t snap[SCOPE_N];
+    int16_t *snap = scope_snap;
     uint32_t w = scope_w, i, trig = 0;
     int32_t cy = (int32_t)cv_h / 2, py = cy, x, peak = 1500, a = cv_h == H_GRAPH ? 46 : cy - 6;   /* (LARGE: the strip) */
     for (i = 0; i < SCOPE_N; i++) {
