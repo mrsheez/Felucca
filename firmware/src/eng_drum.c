@@ -55,6 +55,7 @@
  * fraction, ph[2] the fade-in: ticks left | ticks << 8, bit 16 primed, the GM semitones + 64 << 24. The engine is marked
  * sampled: a pad hit again starts its sound over (voice.c keeps no positions), as the synth kit restarts its hit. */
 #include "drum_voice.c"
+#define SMP_PRIMED (1u << 16)   /* ph[2]: the interpolator primed */
 
 enum { DK_STD, DK_HAND, DK_CYM, DK_HCYM, DK_80, DK_10, DK_66, DK_55, DK_77,
        DK_USR1, DK_USR2, DK_USR3, DK_USR4, DK_COUNT };   /* (stored values; USR1..4: EDDA OS's user kits) */
@@ -332,8 +333,8 @@ static void kit_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     }
     {
         int32_t prev = (int16_t)(v->s[3] & 0xFFFF), cur = v->s[3] >> 16;   /* the last two decoded samples */
-        if (!(v->ph[2] & 0x10000u)) {                    /* the first block: prime the interpolator */
-            v->ph[2] |= 0x10000u;
+        if (!(v->ph[2] & SMP_PRIMED)) {                  /* the first block: prime the interpolator */
+            v->ph[2] |= SMP_PRIMED;
             if (v->ph[0] < z->n)
                 cur = smp_decode(z, &v->ph[0], &v->s[1], 0);
         }
