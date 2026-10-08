@@ -57,7 +57,7 @@ static void ed_send(void)
 }
 static int32_t ed_rv(const uint8_t *p) { return (int32_t)(p[0] | p[1] << 7) - 8192; }
 
-/* ---- user sample slots (eng_sample.c): flash SMP_USER_BASE + k * SMP_USER_SIZE ----
+/* ---- user sample slots (eng_sample.c): flash smp_user_addr(k) (USR1..3 at SMP_USER_BASE, USR4 at SMP_USER4_BASE) ----
  * BEGIN erases the header sector (the slot is invalid from then on), WRITE fills the data
  * (offset >= 512, erasing each further sector when the write reaches its start), END sends
  * the header: the device checks the data CRC and writes the header last. */
@@ -76,7 +76,7 @@ static uint32_t ed_unpack7(const uint8_t *a, uint32_t na, uint8_t *out, uint32_t
     return na ? 0u : n;
 }
 static uint8_t ed_smp_buf[512] __attribute__((aligned(4)));
-static uint32_t ed_smp_slot(uint32_t k) { return SMP_USER_BASE + k * SMP_USER_SIZE; }
+static uint32_t ed_smp_slot(uint32_t k) { return smp_user_addr(k); }
 static void ed_smp_inval(uint32_t k)
 {
     fm1_irq_off();

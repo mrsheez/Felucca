@@ -21,7 +21,7 @@
  *    page), read back at a scan, kept for the same sample only, junk and torn writes ignored, a long sample. */
 #include <stdarg.h>
 #include <stdint.h>
-static uint32_t host_slots[3u * 0x14000u / 4u];          /* USR1..3, as the flash at 0xA0000 */
+static uint32_t host_slots[4u * 0x14000u / 4u];          /* USR1..4, as the flash at 0xA0000 (USR4: 0xE7000, mapped after) */
 #define SMP_USER_XIP(k) ((const uint8_t *)host_slots + (k) * SMP_USER_SIZE)
 #define main hostsim_main
 #include "hostsim.c"
@@ -39,23 +39,34 @@ static int slice_page_on(void) { return host_page; }
 static void ui_message(const char *s) { snprintf(host_msg, sizeof host_msg, "%s", s); }
 static uint32_t host_erases;
 static int st_read(uint32_t off, void *dst, uint32_t n) { (void)off; (void)dst; (void)n; return -1; }
+/* a flash offset in the slots -> its place in host_slots (USR4 at SMP_USER4_BASE follows USR3), or -1 */
+static int32_t host_slot_off(uint32_t off, uint32_t n)
+{
+    if (off >= SMP_USER4_BASE && off + n <= SMP_USER4_BASE + SMP_USER_SIZE)
+        return (int32_t)(3u * SMP_USER_SIZE + off - SMP_USER4_BASE);
+    if (off >= SMP_USER_BASE && off + n <= SMP_USER_BASE + 3u * SMP_USER_SIZE)
+        return (int32_t)(off - SMP_USER_BASE);
+    return -1;
+}
 static int st_erase(uint32_t off)
 {
-    if (off < SMP_USER_BASE || off + 0x1000u > SMP_USER_BASE + sizeof host_slots || (off & 0xFFFu))
+    int32_t o = host_slot_off(off, 0x1000u);
+    if (o < 0 || (off & 0xFFFu))
         return -8;
-    memset((uint8_t *)host_slots + (off - SMP_USER_BASE), 0xFF, 0x1000u);
+    memset((uint8_t *)host_slots + o, 0xFF, 0x1000u);
     host_erases++;
     return 0;
 }
 static int st_prog(uint32_t off, const void *src, uint32_t n)
 {
     uint32_t i;
-    if (off < SMP_USER_BASE || off + n > SMP_USER_BASE + sizeof host_slots)
+    int32_t o = host_slot_off(off, n);
+    if (o < 0)
         return -8;
     if (host_torn)
         return -1;                                       /* power gone after the erase */
     for (i = 0; i < n; i++)                              /* NOR: bits only go 1 -> 0 */
-        ((uint8_t *)host_slots)[off - SMP_USER_BASE + i] &= ((const uint8_t *)src)[i];
+        ((uint8_t *)host_slots)[(uint32_t)o + i] &= ((const uint8_t *)src)[i];
     return 0;
 }
 #include "../firmware/src/storage.c"
@@ -852,9 +863,10 @@ int main(int argc, char **argv)
 #else
     check("PIANO (SRC 4): none in a build without the CC0 samples", !slc_get(SLC_SRC_PIANO), 0);
 #endif
-    check("SRC: BREAK USR1 USR2 USR3 PIANO (append-only: 1.0.3's numbers kept)",
-          ENG_SLICE.edit[0].max == 4 && str_eq(N_SLC_SRC[0], "BREAK") && str_eq(N_SLC_SRC[1], "USR1") &&
-          str_eq(N_SLC_SRC[3], "USR3") && str_eq(N_SLC_SRC[4], "PIANO") && SLC_BREAK.len != 0u, 0);
+    check("SRC: BREAK USR1 USR2 USR3 PIANO USR4 (append-only: 1.0.3's numbers kept; EDDA OS: USR4 after PIANO)",
+          ENG_SLICE.edit[0].max == 5 && str_eq(N_SLC_SRC[0], "BREAK") && str_eq(N_SLC_SRC[1], "USR1") &&
+          str_eq(N_SLC_SRC[3], "USR3") && str_eq(N_SLC_SRC[4], "PIANO") && str_eq(N_SLC_SRC[5], "USR4") &&
+          slc_src_slot(5) == 3u && slc_slot_src(3) == 5u && slc_src_slot(4) == SMP_USER_SLOTS && SLC_BREAK.len != 0u, 0);
     sine_ok("SLICE on an empty USR2: A4", sine_run(SLC_ENG, 2, 69), 440.0);
     sine_ok("SLICE on an empty USR2: A3", sine_run(SLC_ENG, 2, 57), 220.0);
     sine_ok("SAMPLE on an empty USR2: A4", sine_run(4u, (int16_t)(SMP_NSETS + 1), 69), 440.0);

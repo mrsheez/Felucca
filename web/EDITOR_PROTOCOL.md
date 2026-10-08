@@ -209,7 +209,7 @@ reply.
 unused mask bits in the last group must be zero. Oversized or incomplete transfers
 are rejected; SMP_WRITE decodes at most 256 bytes, SMP_END exactly 480 bytes.
 
-**User sample slot** (80 KiB each, SAMPLE engine sets USR1..USR3; reference uploader
+**User sample slot** (80 KiB each, SAMPLE engine sets USR1..USR3, and USR4 on EDDA OS firmware: slot 3, SET 8, SLICE SRC 5, backup id 35; reference uploader
 `tools/fm1_sample_upload.py`, slot builder `sampleio.user_slot`; the editor's port of it is
 checked byte for byte by `web/test_web.mjs`): header at 0, ADPCM data at 512.
 
@@ -614,6 +614,7 @@ this firmware sends 3. Requests name objects, never flash addresses.
 | 8 | the FM6 patch bank of 1.0..1.0.2 (B1..B27). Since 1.0.3 always listed empty (see below) | 3472, or 0 if empty |
 | 9 | the user presets' FM6 patches (1.0.3; `up_fm6.c`: per slot a tag and the packed patch) | 3728, or 0 if none |
 | 32..34 | user sample slots 1..3: header (512 bytes) then ADPCM data | 512 + data length, or 0 if empty |
+| 35 | user sample slot 4 (EDDA OS; a 14-object manifest), the same layout | 512 + data length, or 0 if empty |
 
 Reading: `BACKUP_LIST` (no arguments) stops the transport, then takes a snapshot of the runtime object and
 answers `1, rc, count` (13 since 1.0.3, 12 with FM6 up to 1.0.2, 11 before) and, per object in the order above, `id, size u32, crc u32` (CRC-32, zlib). The other objects are read as

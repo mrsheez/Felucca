@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The firmware editor handler, USB framing and UART recovery against RAM flash.
  * Build with the generated tables and the same flags as hostsim.c. */
-static unsigned char host_samples[3][0x14000];
+static unsigned char host_samples[4][0x14000];
 #define SMP_USER_XIP(k) host_samples[k]
 #define FELUCCA_OTA 1
 #define FELUCCA_FLASH 0
@@ -50,7 +50,10 @@ static void panel_setup(void) {}
 static uint32_t flash_ok = 1;
 static void audio_silence(void) {}
 static void fl_inval(uint32_t off, uint32_t n) { (void)off; (void)n; }
-static uint8_t *host_flash_ptr(uint32_t off) { return &host_samples[0][0] + off - SMP_USER_BASE; }
+static uint8_t *host_flash_ptr(uint32_t off)       /* USR1..3 at SMP_USER_BASE, USR4 at SMP_USER4_BASE (EDDA OS) */
+{
+    return off >= SMP_USER4_BASE ? &host_samples[3][0] + off - SMP_USER4_BASE : &host_samples[0][0] + off - SMP_USER_BASE;
+}
 static int fl_erase4k(uint32_t off, uint32_t *took)
 {
     memset(host_flash_ptr(off), 0xFF, 4096); *took = 0; host_erases++; return 0;

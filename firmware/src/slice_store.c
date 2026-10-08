@@ -72,7 +72,7 @@ static void slc_store_load(uint32_t k)
 static int slc_store_write(uint32_t k)
 {
     slc_rec_t r;
-    uint32_t off = SMP_USER_BASE + k * SMP_USER_SIZE + SLC_REC_OFF;
+    uint32_t off = smp_user_addr(k) + SLC_REC_OFF;
     if (!usr_nz[k])                                  /* emptied or being uploaded meanwhile: nothing to keep */
         return 0;
     if (!slc_rec_room(k))

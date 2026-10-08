@@ -3,7 +3,7 @@
 /* The editor's full backup (editor_backup.c: LIST / GET / PUT) against simulated NOR flash:
  * CRC before any write, stale runtime copies, USB resets and timeouts, malformed objects, older
  * project formats, settings values and user preset banks kept byte for byte. */
-static unsigned char host_samples[3][0x14000];
+static unsigned char host_samples[4][0x14000];
 #define SMP_USER_XIP(k) host_samples[k]
 #define main hostsim_main
 #include "hostsim.c"
@@ -177,8 +177,8 @@ int main(void)
 
     reset();
     trk[0].step[0] = (step_t){{60}, 1, ST_NOTE, 0, 96, 0, 0};
-    bad += check("LIST captures the runtime: 13 objects (id 8 empty, id 9 the FM6 patches), runtime 3648 B (FUN9)",
-                 list(0, &len, &crc) == 0 && rep[2] == 13u && len == sizeof(project_store_t) && len == 3648u &&
+    bad += check("LIST captures the runtime: 14 objects (id 8 empty, id 9 the FM6 patches, 35 the 4th slot), runtime 3648 B (FUN9)",
+                 list(0, &len, &crc) == 0 && rep[2] == 14u && len == sizeof(project_store_t) && len == 3648u &&
                  crc == st_crc32(ED_BK_RAW, len));
     bad += check("an empty project slot lists as length 0", list(2, &len, &crc) == 0 && len == 0);
     bad += check("GET of the runtime copy", get(0, 0, 64) == 0);

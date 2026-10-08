@@ -40,11 +40,16 @@ static uint32_t pow2_q16(int32_t d16)
 /* ---- user sample slots (loaded from the web editor into flash, see web/EDITOR_PROTOCOL.md)
  * 3 slots of 80 KiB at flash 0xA0000.. (Felucca data region), read through the plain XIP
  * window. Slot = header (magic, count, name, data length, CRC32) + up to 16 zones in the
- * smp_zone_t layout (off relative to the slot's data at +512) + IMA ADPCM data. */
+ * smp_zone_t layout (off relative to the slot's data at +512) + IMA ADPCM data.
+ * EDDA OS: a 4th slot (USR4) at 0xE7000 (hal/fm1_flash.h FL_SMP4_LO, the free run above the autosave); its
+ * number follows the others everywhere (SET / SRC values, the editor's slot 3, backup id 35), so every stored
+ * value keeps its meaning. smp_user_addr(k): a slot's flash address. */
 #include "../hal/fm1_xip.h"   /* relative: hostsim includes this file too */
-#define SMP_USER_SLOTS 3
+#define SMP_USER_SLOTS 4
 #define SMP_USER_BASE 0xA0000u
+#define SMP_USER4_BASE 0xE7000u
 #define SMP_USER_SIZE 0x14000u
+static uint32_t smp_user_addr(uint32_t k) { return k < 3u ? SMP_USER_BASE + k * SMP_USER_SIZE : SMP_USER4_BASE; }
 #define SMP_USER_DATA 512u
 #define SMP_USER_MAGIC 0x504D5346u                  /* "FSMP" */
 #define SMP_NALL (SMP_NSETS + SMP_USER_SLOTS)
@@ -58,10 +63,10 @@ typedef struct {
 } smp_user_hdr_t;                                   /* 32 + 16 x 28 = 480 B, data at +512 */
 static smp_zone_t usr_zone[SMP_USER_SLOTS][16];     /* RAM copy, off rebased onto SMP_DATA */
 static uint8_t usr_nz[SMP_USER_SLOTS];
-static const char *const SMP_ALL_NAMES[SMP_NALL] = {SMP_SET_NAMES_INIT, "USR1", "USR2", "USR3"};
+static const char *const SMP_ALL_NAMES[SMP_NALL] = {SMP_SET_NAMES_INIT, "USR1", "USR2", "USR3", "USR4"};
 
 #ifndef SMP_USER_XIP                                /* host tests: a RAM image of the slots */
-#define SMP_USER_XIP(k) fm1_xip_ptr(SMP_USER_BASE + (k) * SMP_USER_SIZE)
+#define SMP_USER_XIP(k) fm1_xip_ptr(smp_user_addr(k))
 #endif
 static const uint8_t *smp_user_xip(uint32_t k) { return SMP_USER_XIP(k); }
 #if FELUCCA_SLICE

@@ -83,11 +83,11 @@ static slc_man_t *slice_edit_begin(uint32_t *k)
     const slc_src_t *s = slice_src(&src, &div);
     slc_man_t *m;
     if (!s || !src || src == SLC_SRC_PIANO) {
-        static const char *const EMPTY[3] = {"USR1 EMPTY", "USR2 EMPTY", "USR3 EMPTY"};
-        ui_message(src && src != SLC_SRC_PIANO ? EMPTY[src - 1u] : "SRC USR1-3 TO EDIT");
+        static const char *const EMPTY[4] = {"USR1 EMPTY", "USR2 EMPTY", "USR3 EMPTY", "USR4 EMPTY"};
+        ui_message(src && src != SLC_SRC_PIANO ? EMPTY[slc_src_slot(src) & 3u] : "SRC USR1-4 TO EDIT");
         return 0;
     }
-    *k = src - 1u;
+    *k = slc_src_slot(src);
     if (div != SLC_DIV_MAN && slc_man_of(s)) {       /* the slot has slices set by hand: those, not the grid; this */
         TSEL->p[P_E1] = SLC_DIV_MAN;                 /* touch only shows them (its marker was another one) */
         ui_message("DIV MAN");

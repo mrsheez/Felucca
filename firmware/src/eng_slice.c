@@ -62,10 +62,11 @@ static const slc_src_t SLC_BREAK = SLC_BREAK_INIT;
 static const slc_src_t SLC_PIANO = SLC_PIANO_INIT;
 static slc_src_t slc_usr[SMP_USER_SLOTS];
 static int16_t slc_rbuf[NPART][NVOICE][SLC_RB];       /* reverse windows, one per part voice */
-/* append-only: stored sounds keep their SRC numbers (1.0.4 added PIANO) */
-static const char *const N_SLC_SRC[] = {"BREAK", "USR1", "USR2", "USR3", "PIANO"};
+/* append-only: stored sounds keep their SRC numbers (1.0.4 added PIANO; EDDA OS: USR4, the 4th slot, after it) */
+static const char *const N_SLC_SRC[] = {"BREAK", "USR1", "USR2", "USR3", "PIANO", "USR4"};
 #define SLC_SRC_PIANO 4u
-#define SLC_NSRC 5
+#define SLC_SRC_USR4 5u
+#define SLC_NSRC 6
 #define SLC_SINE 7u                  /* a voice's source when it has no material: the sine */
 static const char *const N_SLC_DIV[] = {"4", "8", "16", "32", "AUTO", "MAN"};
 static const char *const N_SLC_MODE[] = {"ONE", "GATE", "LOOP"};
@@ -90,14 +91,20 @@ static uint8_t slc_man_save;                     /* bit k: slot k's slices chang
 
 /* the SRC of a part's sound (0..4: a stored value out of range reads as the nearest) */
 static uint32_t slc_src_of(const int16_t *p) { return (uint32_t)clamp(p[P_E0], 0, SLC_NSRC - 1); }
-/* source 0 = BREAK, 1..3 = USR1..3, 4 = PIANO; 0 = no material (an empty or erased slot, no PIANO in the build) */
+/* source 0 = BREAK, 1..3 = USR1..3, 4 = PIANO, 5 = USR4; 0 = no material (an empty or erased slot, no PIANO in the
+ * build) */
+static uint32_t slc_src_slot(uint32_t src)       /* the user slot of a SRC value, SMP_USER_SLOTS for BREAK / PIANO */
+{
+    return src == SLC_SRC_USR4 ? 3u : src >= 1u && src <= 3u ? src - 1u : SMP_USER_SLOTS;
+}
+static uint32_t slc_slot_src(uint32_t k) { return k < 3u ? k + 1u : SLC_SRC_USR4; }   /* .. and back */
 static const slc_src_t *slc_get(uint32_t src)
 {
     if (!src)
         return SLC_BREAK.len ? &SLC_BREAK : 0;
     if (src == SLC_SRC_PIANO)
         return SLC_PIANO.len ? &SLC_PIANO : 0;
-    src--;
+    src = slc_src_slot(src);
     return src < SMP_USER_SLOTS && usr_nz[src] && slc_usr[src].len ? &slc_usr[src] : 0;
 }
 
@@ -313,7 +320,7 @@ static uint32_t slc_state_at(const slc_src_t *s, uint32_t pos)
  * SLC_MIN apart and from the end); 0 = no material in the slot */
 static slc_man_t *slc_man_begin(uint32_t k)
 {
-    const slc_src_t *s = k < SMP_USER_SLOTS ? slc_get(k + 1u) : 0;
+    const slc_src_t *s = k < SMP_USER_SLOTS ? slc_get(slc_slot_src(k)) : 0;
     const slc_man_t *cur;
     slc_man_t *m;
     uint32_t i;
@@ -408,7 +415,7 @@ static uint32_t slc_man_join(slc_man_t *m, uint32_t j)
  * not fit its material (nothing changes). Junk is refused: no sums that can wrap */
 static int slc_man_restore(uint32_t k, uint32_t n, uint32_t end, const uint32_t *pos)
 {
-    const slc_src_t *s = k < SMP_USER_SLOTS ? slc_get(k + 1u) : 0;
+    const slc_src_t *s = k < SMP_USER_SLOTS ? slc_get(slc_slot_src(k)) : 0;
     slc_man_t *m;
     uint32_t i, e;
     if (!s || !n || n > SLC_AUTO || end > s->len)
