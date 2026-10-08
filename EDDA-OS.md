@@ -11,8 +11,8 @@ section below says otherwise.
 | Version | 1.1.5-EDDA (the splash says `v1.1.5-edda`) |
 | Base | Felucca 1.1.5.1 (hugelton/Felucca `main`, merged); EDDA OS's commits sit on top (`git log main..edda`) |
 | Licence | GPL-3.0-only, as Felucca |
-| Verified | 3,517 host checks pass (Felucca's suites and `tests/edda_test.c`, under ASan/UBSan); the whole firmware compiles for a 32-bit target |
-| Not yet | flashed onto an FM-1 (section 7); the package builds with JieLi's compiler on GitHub and its suites pass there |
+| Verified | 3,546 host checks pass (Felucca's suites and `tests/edda_test.c`, under ASan/UBSan), THE ARRIVAL's thirteen songs played through the firmware's audio on every run; the package builds with JieLi's compiler on GitHub and its suites pass there |
+| Not yet | flashed onto an FM-1 (section 7) |
 | Install | from a Windows laptop with Chrome or Edge; no Mac or Linux needed (section 1) |
 
 ---
@@ -461,7 +461,7 @@ is Route A's build.
 ## 7. What is verified, and what is not
 
 **Verified on the host** (gcc and clang, Felucca's own harness with the real sequencer, UI and MIDI code,
-under ASan/UBSan): 3,517 checks pass. EDDA's own (`tests/edda_test.c`, `tests/ui_test.c`) cover the Camelot
+under ASan/UBSan): 3,546 checks pass. EDDA's own (`tests/edda_test.c`, `tests/ui_test.c`) cover the Camelot
 wheel and path, every bank pattern, Euclidean rhythms, the run phase by phase at 120 BPM, the hard stop and
 re-entry, REVEAL, FILL, MUTATE, the cues, the user kits on a 16-pad kit built by the real builder (pads, the
 GM fall-back, TUNE / DECY / SNAP, the choke, levels, an empty kit, USR4), CHORD+ and VOIC LEAD, the filter's
@@ -469,22 +469,32 @@ response, dotted echo lengths, micro timing at the pattern's start and in chains
 at 128 BPM, two at 97 and 173, the ARP), SEQ OUT (pairing through chords, ties, slides, ratchets, lanes,
 mutes, a full queue, OFF; the clock's pulse 6k in step k's block for ten minutes; START / STOP; none on an
 external clock), the settings round trip, VIZ navigation and the spectrum's bands, SELECT PAGES and the SONG
-keys. Every screen, in every palette, passes Felucca's layout lint (0 findings over 163 screens × 11 palettes).
+keys, and THE ARRIVAL: the album's titles, tempi and keys, every section in range, the arrangements, the load (each
+synth track in the song's key, the EDDA kit, the log drum), SAVE > ARRIVAL's knob, LOAD and PLAY, a project keeping
+the song, CLEAR SONG, the live cues (silent keys, NEXT, CUE OFF, ONE MORE, the jump after exactly one pass, a cue
+on the last pass playing on) and their show cues; then every song is played through the firmware's audio (3 to 4
+minutes each, sounding, nothing clipped, no held note cut by the voice budget, the master limiter at most 8 dB).
+Every screen, in every palette, passes Felucca's layout lint (0 findings over 166 screens × 11 palettes).
 The web editor's protocol and kit builder tests pass; the browser emulator's source builds and runs natively.
 
-**Built with JieLi's compiler** (GitHub Actions, runs 37803676056 and 37805034320, every visualiser in): the
-image is 472,580 bytes of the 581,564-byte app slot, RAM (.data + .bss) 93,688 of 98,304 bytes, the pool
-334,788 of 344,064 bytes (9,276 spare; the build requires 8,192), register access in `hal/` only. The package
+**Built with JieLi's compiler** (GitHub Actions, run 37848134635, every visualiser and all thirteen songs in):
+the image is 538,700 bytes of the 581,564-byte app slot (42,864 spare: THE ARRIVAL's songs, kit and log drum take
+about 66 KB), RAM (.data + .bss) 93,688 of 98,304 bytes, the pool 334,788 of 344,064 bytes (9,276 spare; the build
+requires 8,192), register access in `hal/` only. The package
 carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s SHA-256s,
 so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real
-package, sanitizers and fuzzers included, and the browser emulator builds to WebAssembly and plays (2.1 % of real
-time for a heavy song), except the static cost check below.
+package, sanitizers and fuzzers included, THE ARRIVAL's render check with the same figures as on the host, and the
+browser emulator builds to WebAssembly and plays (1.2 % of real time for a heavy song), except the static cost check
+below. Timed on the host, the songs' audio costs on average 48–72 % of the heaviest mix Felucca's CPU check renders
+(four parts and drums at the budget of 8), their heaviest second at most about the same as that mix.
 
-**Not yet:** a flash onto an FM-1 and listening tests of the voices and kits. `tests/target_budget.py`, a static
+**Not yet:** a flash onto an FM-1 and listening tests of the voices, the kits and the songs on its own outputs (the
+songs have been heard as host renders: the same code, the same numbers, a computer's DAC). `tests/target_budget.py`, a static
 count of the instructions in the audio code's loops from JieLi's disassembly, reports four functions over
 Felucca's figures, all EDDA's intended work: `drum_render` (the user kits' sample voice now inside it; its
 per-sample loop has no divides), the audio interrupt `fm1_alnk0_irq` (+19 %: SEQ OUT, the run, the cues),
-`slicer_track` (+59 %) and `perf_begin` (+29 %: both the exact grid's clocks). The host CPU check, which times
+`slicer_track` (+59 %) and `perf_begin` (+29 %: both the exact grid's clocks). THE ARRIVAL, the live cues and their
+show cues leave these figures as they were (the cues run in noinline functions once a pass). The host CPU check, which times
 the renders, passes with nothing over budget. After a good test on the FM-1, `BUDGET_UPDATE=1 python3
 tests/target_budget.py build/felucca.dis tests/target_budget.txt` re-bases the static figures.
 

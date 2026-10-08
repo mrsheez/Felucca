@@ -1,6 +1,7 @@
 # Felucca
 
-> **This branch is EDDA OS**, the Mr. Sheez performance fork of Felucca 1.1.5.1 (GPL-3.0): 16-WAV drum kits, a
+> **This branch is EDDA OS**, the Mr. Sheez performance fork of Felucca 1.1.5.1 (GPL-3.0): the thirteen songs of
+> *EDDA: The Arrival* ready to play and cue live, with their own recorded kit and log drum, 16-WAV drum kits, a
 > 4th sample slot, CHORD+, a filter per track, micro timing, the sequencer out over MIDI with clock, twelve
 > full-screen visualisers, the Camelot key lock and the EDDA set tools. What it adds and how to install it
 > from a Windows laptop: **[EDDA-OS.md](EDDA-OS.md)**. Felucca's own documentation follows unchanged.
