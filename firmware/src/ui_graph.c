@@ -399,6 +399,42 @@ static void graph_chord(const track_t *t, uint16_t c)
                  !on ? T_RAISE : note % 12u == (uint32_t)r % 12u ? T_ACCENT : c, T_SURF);
     }
 }
+/* EDDA OS, the FILTER page: the track's one-knob filter (fx.c track_filter) as its response over the octaves
+ * 20 Hz .. 20 kHz: a flat line at 0, a low-pass falling on the right, a high-pass falling on the left; the
+ * cutoff's octave marked, the knob's side named */
+static void graph_filter(const track_t *t, uint16_t c)
+{
+    int32_t v = t->p[P_ED_FX], i, prev = -1, w = 216;              /* the graph: x 12..228, y 20..92 */
+    static const char *const OCT[6] = {"20", "100", "500", "2K", "8K", ""};   /* (20K: the right edge, unlabelled) */
+    char b[12];
+    const char *unit;
+    cv_text_on(14, 6, &AF_S, v == 0 ? "FLAT" : v < 0 ? "LOW-PASS" : "HIGH-PASS", v ? T_TEXT : T_DIM, T_SURF);
+    param_format(&TP[P_ED_FX], v, b, &unit);
+    cv_text_r(226, 6, &AF_S, b, v ? c : T_DIM, T_SURF);
+    for (i = 0; i < 6; i++) {                           /* the octave grid: 20 100 500 2K 8K 20K */
+        static const uint8_t AT[6] = {0, 50, 100, 143, 186, 216};
+        int32_t x = 12 + AT[i];
+        cv_line(x, 20, x, 92, T_LINE);
+        if (i < 5)
+            cv_text_on(x + 2, 94, &AF_S, OCT[i], T_DIM, T_SURF);
+    }
+    for (i = 0; i <= w; i++) {                          /* the curve: 10 octaves over 216 px, 12 dB / octave past the cutoff, 6 dB = 6 px */
+        int32_t oct = i * 1000 / w, db = 0, y;           /* thousandths of 10 octaves above 20 Hz */
+        if (v < 0) {
+            int32_t fc = 1000 - (-v) * 750 / 64 - 30;    /* the cutoff in thousandths: 18 kHz = 0.97 */
+            if (oct > fc)
+                db = (oct - fc) * 120 / 100;             /* 12 dB per octave (100 thousandths) */
+        } else if (v > 0) {
+            int32_t fc = v * 860 / 63;                   /* 20 Hz .. 7.8 kHz */
+            if (oct < fc)
+                db = (fc - oct) * 120 / 100;
+        }
+        y = 22 + (db > 66 ? 66 : db);                    /* 1 px per dB, the floor -66 dB */
+        if (prev >= 0)
+            cv_line_t(11 + i, prev, 12 + i, y, c, 2);
+        prev = y;
+    }
+}
 /* the four sends as faders under their cards: a RAISE slot, the THEME fill from the bottom, a cap */
 static void graph_fx(const track_t *t, uint16_t c)
 {
@@ -1530,6 +1566,9 @@ static void draw_graph(void)
             break;
         case GR_FX:
             graph_fx(t, c);
+            break;
+        case GR_FILT:
+            graph_filter(t, c);
             break;
         case GR_SLCR:
             graph_slicer(t, c);

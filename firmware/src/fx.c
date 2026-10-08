@@ -47,6 +47,55 @@ _Static_assert(sizeof rev_comb / 2u >= SP_LEN && sizeof rev_u.sp / 4u >= 4u * (S
  * (a little bias = even harmonics) -> tone low-pass that closes with drive ->
  * make-up gain (straight into tanh over the full band, it would sound like a
  * broken digital fuzz). State per part (track_t dist_*). */
+/* EDDA OS: the track's one-knob filter (P_ED_FX, the FILTER page): 0 off (bit for bit), -1..-64 a low-pass from
+ * 16.5 kHz down to 100 Hz, 1..63 a high-pass from 22 Hz up to 7.8 kHz, two one-pole stages (12 dB / octave), the
+ * cutoff log-spaced over the knob. After the SLICER and the FX layer's mute, before the level and the sends:
+ * the whole track, as a DJ's channel filter. The coefficients (Q15, 1 - e^(-2 pi fc / fs)) by knob step. */
+static const uint16_t FLT_LP_K[64] = {
+    29687, 29063, 28376, 27631, 26832, 25986, 25099, 24179, 23233, 22269, 21294, 20316,
+    19339, 18371, 17417, 16482, 15569, 14682, 13824, 12996, 12201, 11440, 10714, 10022,
+    9365, 8742, 8153, 7598, 7074, 6582, 6120, 5687, 5281, 4901, 4547, 4216,
+    3908, 3620, 3353, 3104, 2873, 2658, 2459, 2274, 2102, 1943, 1796, 1659,
+    1533, 1416, 1308, 1208, 1115, 1029, 950, 877, 810, 747, 689, 636,
+    587, 542, 500, 461,
+};
+static const uint16_t FLT_HP_K[63] = {
+    102, 113, 124, 136, 150, 164, 181, 198, 218, 240, 263, 289,
+    318, 349, 384, 422, 463, 509, 559, 614, 674, 740, 813, 892,
+    979, 1075, 1180, 1294, 1420, 1558, 1708, 1873, 2053, 2249, 2464, 2698,
+    2953, 3231, 3534, 3863, 4221, 4609, 5029, 5484, 5976, 6506, 7076, 7689,
+    8346, 9048, 9797, 10593, 11436, 12325, 13260, 14239, 15258, 16314, 17401, 18514,
+    19644, 20783, 21922,
+};
+static void track_filter(track_t *t, int32_t *b, uint32_t n)
+{
+    int32_t v = t->p[P_ED_FX], k, y1 = t->flt_y1, y2 = t->flt_y2;
+    uint32_t i;
+    if (!v) {
+        t->flt_y1 = t->flt_y2 = 0;                      /* (off: the next turn starts from rest) */
+        return;
+    }
+    if (v < 0) {                                        /* low-pass: two poles */
+        k = FLT_LP_K[(-v - 1) & 63];
+        for (i = 0; i < n; i++) {
+            y1 += mulq15(b[i] - y1, k);
+            y2 += mulq15(y1 - y2, k);
+            b[i] = y2;
+        }
+    } else {                                            /* high-pass: the input less two low-passes in series */
+        k = FLT_HP_K[(v - 1) % 63];
+        for (i = 0; i < n; i++) {
+            int32_t h;
+            y1 += mulq15(b[i] - y1, k);
+            h = b[i] - y1;
+            y2 += mulq15(h - y2, k);
+            b[i] = h - y2;
+        }
+    }
+    t->flt_y1 = y1;
+    t->flt_y2 = y2;
+}
+
 static void track_dist(track_t *t, int32_t *b, uint32_t n)
 {
     int32_t d = t->p[P_DIST], i, g, k, mk, bias = 2400, b0;
@@ -363,6 +412,7 @@ static void mix_part(track_t *t, uint32_t n)
         slicer_track(t, b, n);                          /* slicer.c: before the level, pan and sends */
         if ((pf.mute >> (t - trk)) & 1u)
             perf_mute((uint32_t)(t - trk), b, n);       /* perform.c: a black key in the FX layer */
+        track_filter(t, b, n);                          /* EDDA OS: the track's FILT (P_ED_FX) */
         for (i = 0; i < n; i++) {
             int32_t x = ((b[i] >> 2) * lvl) >> 10, a = x < 0 ? -x : x;   /* pre-shift: 8 loud voices */
             int32_t xs = clamp(x, -xmax, xmax);         /* sends: mulq15 would overflow */

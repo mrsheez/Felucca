@@ -604,6 +604,73 @@ int main(int argc, char **argv)
         ok &= str_eq(N_VOIC[VC_LEAD], "LEAD") && TP[P_VOIC].max == VC_LEAD;
         ck("VOIC LEAD: F after C is C F A, G after it B D G (the smallest move); CHORD+ only with QNT WHITE", ok);
     }
+    /* ------------------------------------------------------ the track filter */
+    {
+        track_t *t = &trk[0];
+        int ok;
+        uint32_t k2;
+        static int32_t x0[4096], x1[4096];
+        /* a square wave from the sequencer-free path: the track's buffer through track_filter alone */
+        for (i = 0; i < 4096u; i++)
+            x0[i] = (i / 64u) & 1u ? 8000 : -8000;       /* 344 Hz, rich in harmonics */
+        reset();
+        ok = str_eq(TP[P_ED_FX].label, "FILT") && TP[P_ED_FX].min == -64 && TP[P_ED_FX].max == 63 && TP[P_ED_FX].def == 0;
+        t->p[P_ED_FX] = 0;
+        memcpy(x1, x0, sizeof x1);
+        track_filter(t, x1, 4096);
+        ok &= !memcmp(x0, x1, sizeof x0);                /* 0: bit for bit */
+        {   /* -64 (a 100 Hz low-pass): the 344 Hz square is nearly gone; -8 (8 kHz): nearly whole */
+            int32_t pk = 0, pk8 = 0, hf = 0, hf0 = 0;
+            t->p[P_ED_FX] = -64;
+            t->flt_y1 = t->flt_y2 = 0;
+            memcpy(x1, x0, sizeof x1);
+            track_filter(t, x1, 4096);
+            for (i = 2048; i < 4096u; i++) pk = abs(x1[i]) > pk ? abs(x1[i]) : pk;
+            t->p[P_ED_FX] = -8;
+            t->flt_y1 = t->flt_y2 = 0;
+            memcpy(x1, x0, sizeof x1);
+            track_filter(t, x1, 4096);
+            for (i = 2048; i < 4096u; i++) {
+                pk8 = abs(x1[i]) > pk8 ? abs(x1[i]) : pk8;
+                hf += abs(x1[i] - x1[i - 1u]);
+                hf0 += abs(x0[i] - x0[i - 1u]);
+            }
+            ok &= pk < 1500 && pk8 > 7000 && hf < hf0;   /* (the edges softened) */
+            /* +63 (a 7.8 kHz high-pass): the square's body is gone, only its edges remain */
+            t->p[P_ED_FX] = 63;
+            t->flt_y1 = t->flt_y2 = 0;
+            memcpy(x1, x0, sizeof x1);
+            track_filter(t, x1, 4096);
+            k2 = 0;
+            for (i = 2048; i < 4096u; i++)
+                if (i % 64u == 32u) k2 += (uint32_t)abs(x1[i]);   /* mid-plateau: near 0 */
+            ok &= k2 < 32u * 300u && abs(x1[2048]) > 1000;   /* (the edge at 2048 passes) */
+            /* +1 (22 Hz): nearly whole */
+            t->p[P_ED_FX] = 1;
+            t->flt_y1 = t->flt_y2 = 0;
+            memcpy(x1, x0, sizeof x1);
+            track_filter(t, x1, 4096);
+            pk = 0;
+            for (i = 2048; i < 4096u; i++) pk = abs(x1[i]) > pk ? abs(x1[i]) : pk;
+            ok &= pk > 7000;
+        }
+        {   /* the page: FILTER in the FX family after SLICER, its one knob the track's FILT; the knob steps it */
+            uint32_t pi;
+            for (pi = 0; pi < NPAGES && !str_eq(PAGES[pi].title, "FILTER"); pi++) ;
+            ok &= pi < NPAGES && PAGES[pi].fam == FAM_FX && PAGES[pi].id[0] == P_ED_FX && PAGES[pi].id[1] == 0xFFu &&
+                  str_eq(PAGES[pi - 1u].title, "SLICER") && PAGES[pi].graph == GR_FILT;
+            ui_power_on();
+            ui.home = 0; ui.page = (uint8_t)pi; page_entered(); frame();
+            t = TSEL;
+            t->p[P_ED_FX] = 0;
+            turn(EN_K1, -3); frame();
+            ok &= t->p[P_ED_FX] == -3;
+            turn(EN_K1, 10); frame();
+            ok &= t->p[P_ED_FX] == 7;
+            t->p[P_ED_FX] = 0;
+        }
+        ck("FILT (the track's one-knob filter): 0 bit for bit, -64 a 100 Hz low-pass, +63 a 7.8 kHz high-pass, the FILTER page after SLICER", ok);
+    }
     /* ------------------------------------------------------ dotted echoes */
     {
         uint32_t q;
