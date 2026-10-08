@@ -580,8 +580,8 @@ static void vz_bulbs(void)
     fmt_int(b + 4, (int32_t)act);
     vz_text(0, 240, 98, &AF_M, b, T_MID, T_BG);
     vz_text(0, 240, 126, &AF_L, vz_phase_name(), edda.stopped ? T_REC : T_TEXT, T_BG);
-    if (edda.phase != ED_IDLE) {                                      /* the phase's beats */
-        uint32_t n = edda_phase_beats(edda.phase), done = n - edda.left;
+    if (edda.phase != ED_IDLE && edda_phase_beats(edda.phase)) {      /* the phase's beats */
+        uint32_t n = edda_phase_beats(edda.phase), done = n > edda.left ? n - edda.left : 0u;
         int32_t w = (232 - 4 * ((int32_t)n - 1)) / (int32_t)n;
         for (i = 0; i < n; i++)
             cv_rect(4 + (int32_t)i * (w + 4), 166, w, 12, i < done ? T_THEME : T_RAISE);
@@ -640,7 +640,7 @@ static void vz_toast(void)
     const char *unit = "";
     s[0] = 0;
     if (ui.msg_t && ui.msg[0])
-        str_cpy(s, ui.msg, sizeof s);
+        str_cpy(s, ui.msg + ((uint8_t)ui.msg[0] < 32u), sizeof s);   /* (a message's icon byte: its words) */
     else if (vz.name_ms && (int32_t)(vz.name_ms - fm1_ms) > 0) {
         fmt_int(s, (int32_t)vz.n + 1);
         str_cpy(s + str_len(s), "/12 ", 6);
