@@ -1,6 +1,6 @@
 # EDDA OS — the Mr. Sheez performance firmware for the M-VAVE FM-1
 
-EDDA OS is a fork of **Felucca 1.1.5** (Hügelton Instruments, GPL-3.0) built for the Mr. Sheez live set:
+EDDA OS is a fork of **Felucca 1.1.5.1** (Hügelton Instruments, GPL-3.0) built for the Mr. Sheez live set:
 the key of the record on the decks, the EDDA rhythm language, the transition by subtraction on one key,
 a hard stop that re-enters on the one, 16-WAV drum kits, the sequencer out over MIDI with clock, and
 twelve full-screen visualisers. Everything Felucca does is still there and behaves as before unless a
@@ -9,7 +9,7 @@ section below says otherwise.
 | | |
 | --- | --- |
 | Version | 1.1.5-EDDA (the splash says `v1.1.5-edda`) |
-| Base | Felucca 1.1.5, commit `276f72a`; EDDA OS's commits sit on top (`git log 276f72a..edda`) |
+| Base | Felucca 1.1.5.1 (hugelton/Felucca `main`, merged); EDDA OS's commits sit on top (`git log main..edda`) |
 | Licence | GPL-3.0-only, as Felucca |
 | Verified | 3,517 host checks pass (Felucca's suites and `tests/edda_test.c`, under ASan/UBSan); the whole firmware compiles for a 32-bit target |
 | Not yet | built with JieLi's compiler and flashed onto an FM-1 (section 7) |

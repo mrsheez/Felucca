@@ -802,7 +802,7 @@ This firmware (count 25; tabs 0 DISPLAY, 1 CONTROL, 2 AUDIO, 3 EDDA, 4 SYSTEM; 1
 | 14 | 14 | COUNT-IN | 0 | 0 OFF, 1 "1 BAR", 2 "2 BARS" (1.1) | OFF | 2 AUDIO |
 | 15 | 15 | RESTORE LAST | 0 | 0 ON, 1 OFF (1.2) | ON | 3 SYSTEM |
 | 16 | 16 | SCALE LEDS | 0 | 0 OFF, 1 ON (1.2) | OFF | 1 CONTROL |
-| 17 | 17 | SCREEN OFF | 0 | 0 NEVER, 1 "5 MIN", 2 "15 MIN", 3 "30 MIN", 4 "60 MIN" (1.1.5) | 30 MIN | 0 DISPLAY |
+| 17 | 17 | SCREEN OFF | 0 | 0 NEVER, 1 "5 MIN", 2 "15 MIN", 3 "30 MIN", 4 "60 MIN" (1.1.5) | NEVER (1.1.5.1; 1.1.5: 30 MIN) | 0 DISPLAY |
 | 18 | 18 | KEY | 0 | 0 OFF, 1..24: 1A 1B 2A 2B .. 12A 12B (the Camelot wheel; EDDA OS) | OFF | 3 EDDA |
 | 19 | 19 | SHOW CUES | 0 | 0 OFF, 1 ON (EDDA OS) | OFF | 3 EDDA |
 | 20 | 20 | ACT | 0 | 0 "1 BULB" .. 4 "5 BULBS" (EDDA OS) | 1 BULB | 3 EDDA |

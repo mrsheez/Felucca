@@ -812,7 +812,7 @@ static int menu_protocol(void)
         {"KEY", "OFF,1A,1B,2A,2B,3A,3B,4A,4B,5A,5B,6A,6B,7A,7B,8A,8B,9A,9B,10A,10B,11A,11B,12A,12B"},
         {"SHOW CUES", "OFF,ON"}, {"ACT", "1 BULB,2 BULBS,3 BULBS,4 BULBS,5 BULBS"}, {"RUN", "SHORT,LONG"}, {"REVEAL", "OFF,ON"},
         {"SEQ OUT", "OFF,NOTES,+CLOCK"}, {"SELECT", "TEMPO,PAGES"}};
-    static const int32_t DEF[25] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
+    static const int32_t DEF[25] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
     static const uint8_t TAB[25] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 4, 2, 2, 2, 4, 1, 0, 3, 3, 3, 3, 3, 3, 1};      /* DISPLAY CONTROL AUDIO EDDA SYSTEM */
     static const char *const TABN[5] = {"DISPLAY", "CONTROL", "AUDIO", "EDDA", "SYSTEM"};
     int bad = 0, ok = 1;
