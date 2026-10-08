@@ -657,7 +657,7 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_MESSAGE_NOFILE, S_PRESET
        S_COUNTIN, S_COUNTIN2, S_MENU_AUDIO, S_MENU_EDDA,
        S_VIZ_SCOPE, S_VIZ_SPECTRUM, S_VIZ_WATERFALL, S_VIZ_ORBIT, S_VIZ_TUNNEL, S_VIZ_PULSE, S_VIZ_STARS, S_VIZ_GRID,
        S_VIZ_RAIN, S_VIZ_WHEEL, S_VIZ_BULBS, S_VIZ_CLOCK, S_VIZ_NOTE, S_HEAD_PLAY_REC, S_HEAD_REC_OTHER, S_HEAD_BPM_TURN, S_HEAD_BPM_LOCK,
-       S_HEAD_BPM_LOCKED, S_HEAD_GLO_TURN, S_HEAD_DOWNBEAT, S_HEAD_BEAT_2,
+       S_HEAD_BPM_LOCKED, S_HEAD_GLO_TURN, S_HEAD_DOWNBEAT, S_HEAD_BEAT_2, S_ARRIVAL, S_ARRIVAL_PLAYING, S_SONG_ARRIVAL,
        S_MOCK_HOME, S_MOCK_PRESETS, S_MOCK_SEQ, S_MOCK_DRUM, S_MOCK_MIXER, S_MOCK_DIALOG, S_MOCK_MENU, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "message_key", "message_nofile", "presets", "presets_nofav", "user",
     "phrases", "project", "tools", "song_empty", "song", "step", "pattern", "chance", "chance_nudge", "motion", "drum",
@@ -677,7 +677,7 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "countin", "countin_2bars", "menu_audio", "menu_edda",
     "viz_scope", "viz_spectrum", "viz_waterfall", "viz_orbit", "viz_tunnel", "viz_pulse", "viz_stars", "viz_grid",
     "viz_rain", "viz_wheel", "viz_bulbs", "viz_clock", "viz_note", "head_play_rec", "head_rec_other", "head_bpm_turn", "head_bpm_lock",
-    "head_bpm_locked", "head_glo_turn", "head_downbeat", "head_beat_2",
+    "head_bpm_locked", "head_glo_turn", "head_downbeat", "head_beat_2", "arrival", "arrival_playing", "song_arrival",
     "mock_home", "mock_presets", "mock_seq", "mock_drum", "mock_mixer", "mock_dialog", "mock_menu"};
 
 /* the scenes of the UI design screens: the state the UI-redesign
@@ -1138,6 +1138,15 @@ static void setup(int s)
     case S_PROJECT_NAMED:
         song.playing = 0; project_save_as(0, "LOFI JAM"); project_save_as(1, "MWMWMWMWMWMW"); project_save_as(2, "");
         song.g[G_SLOT] = 2; go_page(GR_SLOTS); ui.act = 4; ui.msg_t = 0;
+        break;
+    /* EDDA OS: SAVE > ARRIVAL, THE ARRIVAL's songs: the list with a song picked (none loaded); DO AM AGAIN loaded and
+     * playing (its arrow, in the accent) with YOU DEY WHINE ME picked; the SONG page of a loaded song: its sections */
+    case S_ARRIVAL: song.playing = 0; ui.bpick = 3; go_page(GR_BANK); ui.msg_t = 0; break;
+    case S_ARRIVAL_PLAYING:
+        song.playing = 0; arv_load(7); chain_prepare(); events_block(32); ui.bpick = 8; go_page(GR_BANK); ui.msg_t = 0;
+        break;
+    case S_SONG_ARRIVAL:
+        song.playing = 0; arv_load(9); chain_prepare(); events_block(32); ui.song_row = 1; go_page(GR_SONG); ui.msg_t = 0;
         break;
     case S_SONG_NAMED:
         song.playing = 0; project_save_as(0, "LOFI JAM"); project_save_as(1, "MWMWMWMWMWMW");

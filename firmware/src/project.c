@@ -97,7 +97,9 @@ typedef struct {
     uint8_t parts;                             /* NPART; 0: track 4 is the old GM drum part (see the top) */
     uint8_t phys;                              /* PROJ_PHYS: PHYS MODEL values as today; 1: MODEL 4 was DRUM;
                                                 * 0 (a reserved byte before 1.0): MODEL 2 was DUST */
-    uint8_t rsv;
+    uint8_t arv;                               /* EDDA OS: THE ARRIVAL's song the music came from + 1 (arrival.c
+                                                * arv_cur: the SONG page's sections are that song's), 0 none; byte
+                                                * 65, reserved before (always written 0: every older project has none) */
     proj_trk_t t[NTRK];
     chain_config_t chain;
     motion_store_t motion;
@@ -582,7 +584,7 @@ static int proj_pack(project_store_t *out, const project_t *q)
             if (q->fm6[t][i] > 127u) return 0;
     if (!chain_valid(&q->chain) || !motion_valid(&q->motion) || P_COUNT > 127u) return 0;
     memset(out, 0, sizeof *out); memcpy(b, &magic, 4); memcpy(b + 4, &size, 4);
-    memcpy(b + 8, q->g, sizeof q->g); b[62] = q->sel; b[63] = q->parts; b[64] = q->phys; b[66] = P_COUNT;
+    memcpy(b + 8, q->g, sizeof q->g); b[62] = q->sel; b[63] = q->parts; b[64] = q->phys; b[65] = q->arv; b[66] = P_COUNT;
     for (t = 0; t < NTRK; t++) {
         for (i = 0; i < P_COUNT; i++) {
             if (q->t[t].p[i] < -64 || q->t[t].p[i] > 127) return 0;
@@ -644,7 +646,7 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
         np < 8u || np > P_COUNT || 68u + NTRK * (np + 2u + NSTEP * 9u) + sizeof q->chain + sizeof q->motion > end)
         return 0;
     memset(q, 0, sizeof *q); q->magic = PROJ_MAGIC; q->size = sizeof *q;
-    memcpy(q->g, b + 8, sizeof q->g); q->sel = b[62]; q->parts = b[63]; q->phys = b[64];
+    memcpy(q->g, b + 8, sizeof q->g); q->sel = b[62]; q->parts = b[63]; q->phys = b[64]; q->arv = b[65];
     if (v7 && (q->g[G_RTYPE] < 0 || q->g[G_RTYPE] > 1))   /* a FUN7 may still hold the old drum channel there */
         proj_rtype_room(q->g);
     for (t = 0; t < NTRK; t++) {
@@ -727,6 +729,7 @@ static union {                               /* serialized main-loop work; no re
 } proj_wire_u;
 #define proj_wire (proj_wire_u.s)
 static uint8_t proj_wire_gen;                /* +1 whenever proj_wire is rewritten (a backup's runtime copy lives there) */
+#include "arrival.c"                         /* EDDA OS: THE ARRIVAL, songs that load as a project does */
 
 static void proj_steps(step_t *s)            /* a loaded sequence stays inside its fixed fields */
 {
@@ -789,6 +792,7 @@ static void project_capture(project_t *p)
     p->sel = song.sel;
     p->parts = NPART;
     p->phys = PROJ_PHYS;
+    p->arv = arv_cur;                                 /* EDDA OS: the song the sections are (arrival.c) */
     p->chain = chain_config;
     for (i = 0; i < NTRK; i++) {
         for (uint32_t j = 0; j < P_COUNT; j++) p->t[i].p[j] = motion_base_value(&trk[i], j);
@@ -933,6 +937,7 @@ static int project_restore_runtime(const project_t *input)
     fm1_irq_on();
     proj_name_get(proj_name, (const uint8_t *)p->name);
     proj_cur = PROJ_NO_SLOT;                            /* (project_load: its slot) */
+    arv_cur = (uint8_t)(p->arv <= ARV_NSONGS ? p->arv : 0u);   /* EDDA OS: the sections of THE ARRIVAL's song, or none */
     undo.trk = 0;                                       /* (ui.c) the undo copy belongs to the old project */
     undo_depth++;                                       /* and these loads take none */
     for (k = 0; k < NTRK; k++) {                        /* the power-on sounds: format 1 (tracks 2..4), old drums */
@@ -1026,6 +1031,31 @@ static uint32_t chain_prepare(void)
         return 2;
     if (!chain_valid(&chain_config) || !chain_config.count)
         return 1;
+    if (arv_cur && arv_cur <= ARV_NSONGS) {             /* EDDA OS: the rows name THE ARRIVAL's song's sections */
+        for (i = 0; i < chain_config.count; i++)
+            used |= 1u << chain_config.row[i].slot;
+        chain.config = chain_config;
+        for (i = 0; i < 4u; i++)
+            if ((used >> i) & 1u) {
+                arv_section(arv_cur - 1u, i, &chain.source[i]);
+                {   /* (as below: an engine-specific event of a track whose engine is no longer the song's goes) */
+                    motion_store_t *m = &chain.source[i].motion;
+                    uint32_t n = 0, e;
+                    for (e = 0; e < m->count; e++) {
+                        const motion_event_t *v = &m->event[e];
+                        uint32_t owner = v->place >> 6;
+                        if (MOTION_ID(v) >= P_FM1_ATK && arv_song(arv_cur - 1u)->snd[owner].engine != trk[owner].eng_req)
+                            continue;
+                        m->event[n++] = *v;
+                    }
+                    m->count = (uint8_t)n;
+                }
+            }
+        RING_PUBLISH();
+        chain.armed = 1;
+        transport_req = 1;
+        return 0;
+    }
     for (i = 0; i < chain_config.count; i++) {
         uint32_t s = chain_config.row[i].slot;
         if (!project_used(s))

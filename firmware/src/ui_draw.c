@@ -612,7 +612,7 @@ static void foot_hint(char *a, char *b)
     uint32_t c = act_col();
     str_cpy(a, "OCT+ ", 8);
     str_cpy(a + 5, c ? act_name(c - 1u) : "--", 8);
-    str_cpy(b, ui.act && cur_page()->graph != GR_PATS ? "OCT- CANCEL" : "OCT- BACK", 16);
+    str_cpy(b, ui.act && cur_page()->graph != GR_PATS && cur_page()->graph != GR_BANK ? "OCT- CANCEL" : "OCT- BACK", 16);
 }
 
 /* SAVE > USER / PROJECT: EDIT renames the selected slot (ui_name.c); SEQ > AUTO LIST: EDIT deletes the row's
@@ -897,6 +897,18 @@ static void draw_columns(void)
         draw_column(1, "ENG", ENGINES[TSEL->eng_req]->name, "", VAL(1u), -1, engine_icon(ENGINES[TSEL->eng_req]->name));
         draw_column(2, "FAV", preset_favorite() ? "ON" : "OFF", "", VAL(2u), -1, ICON_X_STAR);
         draw_column(3, "LIST", favorites.filter ? "FAV" : "ALL", "", VAL(3u), -1, ICON_X_FOLDER);
+        return;
+    }
+    if (cur_page()->graph == GR_BANK) {                  /* EDDA OS: SAVE > ARRIVAL: SONG, LOAD (a GO button), its
+                                                          * tempo and key */
+        uint32_t n = arv_count(), k = ui.bpick < n ? ui.bpick : n - 1u;
+        fmt_int(val, (int32_t)k + 1);
+        draw_column(0, "SONG", val, "", VAL(0u), (int32_t)k * 1000 / (int32_t)(n > 1u ? n - 1u : 1u), ICON_X_SONG);
+        draw_act_column(1, "LOAD", T_THEME, ICON_AUTO);
+        fmt_int(val, (int32_t)arv_bpm(k));
+        draw_column(2, "BPM", val, "", T_MID, -1, ICON_AUTO);
+        edda_cam_name(arv_cam(k), val);
+        draw_column(3, "KEY", val, "", T_MID, -1, ICON_AUTO);
         return;
     }
     if (cur_page()->graph == GR_PATS) {                  /* PAT, then LOAD (a GO button) */

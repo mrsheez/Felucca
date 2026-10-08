@@ -29,6 +29,14 @@ static int project_save_as(uint32_t slot, const char *name);
 static int project_name(uint32_t slot, char *b);
 static int project_rename(uint32_t slot, const char *name);
 static void project_cur_name(char *b);
+/* EDDA OS: THE ARRIVAL, the songs (arrival.c, included by project.c) */
+static uint8_t arv_cur;                      /* the song the music was loaded from + 1, 0 = none */
+static uint32_t arv_count(void);
+static uint32_t arv_bpm(uint32_t n);
+static uint32_t arv_cam(uint32_t n);
+static void arv_label(uint32_t n, char *name, uint32_t nlen, char *info);
+static void arv_load(uint32_t n);
+static const char *arv_sec_name(uint32_t s);
 static uint32_t user_of(const track_t *t)    /* user preset slot its sound came from, UP_SLOTS = none */
 {
     return t->user && up_used(t->user - 1u) ? t->user - 1u : UP_SLOTS;
@@ -143,6 +151,7 @@ static struct {
     uint8_t confirm_trk;         /* the track it clears, the slot it overwrites */
     uint8_t uslot;               /* SAVE > USER: the selected user preset slot */
     uint8_t ppick;               /* SEQ > PATTERNS: the pattern picked (pat_count list index) */
+    uint8_t bpick;               /* SAVE > ARRIVAL (EDDA OS): the song picked (arrival.c, 0 .. arv_count - 1) */
     uint8_t song_row;            /* SONG: row selected, count selects the next empty row */
     uint8_t ev_row;              /* SEQ > AUTO LIST (ui_input.c ev_*): the row selected (the track's count: + ADD LOCK) */
     uint8_t ev_step, ev_id;      /* .. + ADD LOCK: the step and the parameter a lock is added on */
@@ -322,7 +331,7 @@ static uint32_t large_kind(void)
         return LK_TALL;
     g = cur_page()->graph;
     return g == GR_BROWSE || g == GR_SLOTS || g == GR_USER || g == GR_PATS || g == GR_SONG || g == GR_ROLL ||
-           g == GR_CHANCE || g == GR_SLICES || g == GR_EVENTS ? LK_LABEL : LK_TALL;
+           g == GR_CHANCE || g == GR_SLICES || g == GR_EVENTS || g == GR_BANK ? LK_LABEL : LK_TALL;
 }
 /* the geometry of the page shown: the cards' height, the panel's top and height */
 static uint32_t card_h(void) { return large_kind() == LK_TALL ? LG_CARD_H : CARD_H; }
@@ -1371,7 +1380,7 @@ static uint32_t act_cols(void)                   /* the columns that are actions
     if (pg->graph == GR_TOOLS) return 15u;
     if (pg->graph == GR_SONG)
         return 1u;                               /* PLAY / STOP (also the PLAY button) */
-    if (pg->graph == GR_PATS)
+    if (pg->graph == GR_PATS || pg->graph == GR_BANK)
         return 2u;                               /* LOAD */
     if (pg->graph == GR_USER)
         return 14u;                              /* LOAD ERASE SAVE */
@@ -1389,7 +1398,7 @@ static uint32_t act_col(void)
 {
     if (!ui.home && cur_page()->graph == GR_SONG) return 1u;
     if (!ui.home && cur_page()->graph == GR_EVENTS) return 5u;
-    return !ui.home && cur_page()->graph == GR_PATS ? 2u : ui.act;
+    return !ui.home && (cur_page()->graph == GR_PATS || cur_page()->graph == GR_BANK) ? 2u : ui.act;
 }
 
 static const char *act_name(uint32_t c)          /* column c's action (the footer hint) */
@@ -1404,7 +1413,7 @@ static const char *act_name(uint32_t c)          /* column c's action (the foote
     }
     if (cur_page()->graph == GR_SONG)
         return song.playing || chain_busy() ? "STOP" : "PLAY";
-    if (cur_page()->graph == GR_PATS)
+    if (cur_page()->graph == GR_PATS || cur_page()->graph == GR_BANK)
         return "LOAD";
     if (cur_page()->graph == GR_USER)
         return UP_GO[(c + 2u) % 3u];
@@ -1429,6 +1438,8 @@ static int act_ready(void)
         return song.playing || chain_busy() || chain_config.count;
     if (cur_page()->graph == GR_PATS)
         return pat_last[s] != pat_pick() + 1u || steps_sig(TSEL) != pat_sig[s];
+    if (cur_page()->graph == GR_BANK)                   /* another song, or the one loaded again (from its start) */
+        return arv_cur != ui.bpick + 1u || !(song.playing || chain_busy());
     if (cur_page()->graph == GR_USER)
         return c == 3u ? !song.playing : up_used(ui.uslot) && (c == 1u || !song.playing);
 #if FELUCCA_SLICE

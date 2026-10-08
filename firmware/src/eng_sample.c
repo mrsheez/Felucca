@@ -52,7 +52,10 @@ static uint32_t pow2_q16(int32_t d16)
 static uint32_t smp_user_addr(uint32_t k) { return k < 3u ? SMP_USER_BASE + k * SMP_USER_SIZE : SMP_USER4_BASE; }
 #define SMP_USER_DATA 512u
 #define SMP_USER_MAGIC 0x504D5346u                  /* "FSMP" */
-#define SMP_NALL (SMP_NSETS + SMP_USER_SLOTS)
+/* EDDA OS: THE ARRIVAL's sets (tools/gen_samples.py SMP_XSETS: EKIT, the bank's drum kit; LOG, the log drum) come
+ * after the user slots, SET / SRC 9 and 10, so every stored SET keeps its meaning (USR1..4 stay 5..8) */
+#define SMP_XBASE (SMP_NSETS + SMP_USER_SLOTS)
+#define SMP_NALL (SMP_XBASE + SMP_NXSETS)
 typedef struct {
     uint32_t magic;
     uint16_t version;
@@ -63,7 +66,14 @@ typedef struct {
 } smp_user_hdr_t;                                   /* 32 + 16 x 28 = 480 B, data at +512 */
 static smp_zone_t usr_zone[SMP_USER_SLOTS][16];     /* RAM copy, off rebased onto SMP_DATA */
 static uint8_t usr_nz[SMP_USER_SLOTS];
-static const char *const SMP_ALL_NAMES[SMP_NALL] = {SMP_SET_NAMES_INIT, "USR1", "USR2", "USR3", "USR4"};
+static const char *const SMP_ALL_NAMES[SMP_NALL] = {SMP_SET_NAMES_INIT, "USR1", "USR2", "USR3", "USR4", SMP_XSET_NAMES_INIT};
+/* SET / SRC si: the built-in set it plays (SMP_SETS, or EDDA OS's SMP_XSETS), 0 for a user slot */
+static const smp_set_t *smp_builtin(uint32_t si)
+{
+    if (si < SMP_NSETS)
+        return &SMP_SETS[si];
+    return si >= SMP_XBASE && si < SMP_NALL ? &SMP_XSETS[si - SMP_XBASE] : 0;
+}
 
 #ifndef SMP_USER_XIP                                /* host tests: a RAM image of the slots */
 #define SMP_USER_XIP(k) fm1_xip_ptr(smp_user_addr(k))
@@ -128,8 +138,9 @@ static void smp_sine(int32_t *out, uint32_t n, const vmod_t *m, int32_t d16, int
 /* SET / SRC si (0..SMP_NALL - 1) has no sample data: an empty or invalid user slot, a built-in set without data */
 static int smp_set_missing(uint32_t si)
 {
-    if (si < SMP_NSETS)
-        return !SMP_ZONES[SMP_SETS[si].z0].n;
+    const smp_set_t *set = smp_builtin(si);
+    if (set)
+        return !SMP_ZONES[set->z0].n;
     return !usr_nz[(si - SMP_NSETS) % SMP_USER_SLOTS];
 }
 
@@ -186,8 +197,8 @@ static uint32_t smp_user_zone(uint32_t k, uint32_t note)
 static void sample_note_on(track_t *t, voice_t *v)
 {
     uint32_t si = (uint32_t)t->p[P_E0] % SMP_NALL, i, zi = 0xFFFFu;
-    if (si < SMP_NSETS) {                           /* a built-in set: its zones split the keyboard */
-        const smp_set_t *set = &SMP_SETS[si];
+    const smp_set_t *set = smp_builtin(si);
+    if (set) {                                      /* a built-in set: its zones split the keyboard */
         for (i = 0; i < set->nz; i++)
             if (v->note >= SMP_ZONES[set->z0 + i].lo && v->note <= SMP_ZONES[set->z0 + i].hi) {
                 zi = set->z0 + i;

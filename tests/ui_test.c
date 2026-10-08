@@ -144,6 +144,7 @@ static void ui_power_on(void)
     memset(&nm, 0, sizeof nm);                    /* NAME closed, no project name */
     proj_name[0] = 0;
     proj_cur = PROJ_NO_SLOT;
+    arv_cur = 0;                                  /* (EDDA OS: no song of THE ARRIVAL loaded) */
     memset(&favorites, 0, sizeof favorites);
     memset(&undo, 0, sizeof undo);
     memset(pat_last, 0, sizeof pat_last);
@@ -440,10 +441,12 @@ static int test_sound_loads(void)
                      str_eq(sd->names[1], "PIANO") && enum_step(sd, 0, 1) == 2 && enum_step(sd, 2, 1) == 0 &&
                      enum_step(sd, 1, 2) == 2 && enum_orig(sd, 1) == 0 && enum_orig(sd, 5) == 5 &&
                      enum_orig(&ENGINES[8]->edit[0], 1) == 0);
-        bad += check("SAMPLE / GRAIN SET 4 (PERC, retired): a PIANO alias, knobs skip it, USR1..3 stay 5..7, USR4 is 8 (EDDA OS)",
+        bad += check("SAMPLE / GRAIN SET 4 (PERC, retired): a PIANO alias, knobs skip it, USR1..3 stay 5..7, USR4 is 8, "
+                     "THE ARRIVAL's EKIT LOG 9 10 (EDDA OS)",
                      str_eq(sd->names[SMP_SET_PERC], "PIANO") && enum_orig(sd, SMP_SET_PERC) == 0 &&
                      enum_step(sd, 3, 4) == 5 && enum_step(sd, 5, 4) == 3 && str_eq(sd->names[5], "USR1") &&
-                     str_eq(sd->names[7], "USR3") && str_eq(sd->names[8], "USR4") && sd->max == 8 &&
+                     str_eq(sd->names[7], "USR3") && str_eq(sd->names[8], "USR4") && str_eq(sd->names[9], "EKIT") &&
+                     str_eq(sd->names[10], "LOG") && sd->max == 10 && enum_step(sd, 8, 9) == 9 && enum_step(sd, 9, 10) == 10 &&
                      enum_orig(&ENGINES[8]->edit[0], SMP_SET_PERC) == 0 && SMP_SETS[SMP_SET_PERC].z0 == SMP_SETS[0].z0);
     }
     host_legacy_sample_perc(t);                /* SAMPLE PERC (SET 4, retired after 1.0.2): every load gives DRUM */
@@ -2123,7 +2126,7 @@ static int test_presets_knob(void)
     uint32_t i, n_snd = 0, n_cur = 0;
     for (i = 0; i < NPAGES; i++) {
         track_t before;
-        uint32_t g = PAGES[i].graph, uslot, ppick;
+        uint32_t g = PAGES[i].graph, uslot, ppick, bpick;
         int16_t slot;
         ui_power_on();
         song.sel = 0;
@@ -2133,7 +2136,7 @@ static int test_presets_knob(void)
             continue;
         frame();
         before = *TSEL;
-        uslot = ui.uslot; ppick = pat_pick(); slot = song.g[G_SLOT];
+        uslot = ui.uslot; ppick = pat_pick(); slot = song.g[G_SLOT]; bpick = ui.bpick;
         turn(EN_PRESET, 1);
         {
             int same_snd = TSEL->preset == before.preset && TSEL->eng_req == before.eng_req &&
@@ -2148,6 +2151,8 @@ static int test_presets_knob(void)
                 sel_ok &= song.g[G_SLOT] == slot + 1 && same_snd && same_steps;
             } else if (g == GR_PATS) {
                 sel_ok &= pat_pick() == ppick + 1u && same_snd && same_steps;
+            } else if (g == GR_BANK) {                     /* (EDDA OS: SAVE > ARRIVAL, the song picked, none loaded) */
+                sel_ok &= ui.bpick == bpick + 1u && same_snd && same_steps && !arv_cur;
             } else if (g == GR_SONG || g == GR_EVENTS) {   /* (AUTO LIST: its row) */
                 sel_ok &= same_snd && same_steps && ui.page == i;
             } else if (g == GR_TOOLS) {
@@ -2163,7 +2168,7 @@ static int test_presets_knob(void)
     }
     bad += check("#92 PRESETS on STEP, PATTERN, CHANCE, AUTOMATION: the step cursor; the sound and the steps stay",
                  cur_ok && n_cur == 4u);
-    bad += check("#94 PRESETS on USER, PROJECT, PHRASES, SONG: the selection (KNOB 1's); nothing loaded", sel_ok);
+    bad += check("#94 PRESETS on USER, PROJECT, ARRIVAL, PHRASES, SONG: the selection (KNOB 1's); nothing loaded", sel_ok);
     bad += check("#94 PRESETS on TOOLS does nothing", tools_ok);
     bad += check("#94 PRESETS elsewhere (EDIT, ENV, LFO, FX, SCL, ARP, MIXER, GLOBAL, ...): the next sound, the steps stay",
                  snd_ok && n_snd >= 15u);

@@ -101,14 +101,19 @@ typedef struct {
 static gr_part_t gr_p[NPART] __attribute__((section(".pool")));
 
 static uint32_t gr_part(const track_t *t) { return (uint32_t)(t - trk) % NPART; }
-static uint32_t gr_nz(uint32_t src) { return src < SMP_NSETS ? SMP_SETS[src].nz : usr_nz[(src - SMP_NSETS) % SMP_USER_SLOTS]; }
+static uint32_t gr_nz(uint32_t src)
+{
+    const smp_set_t *set = smp_builtin(src);                 /* (EDDA OS: the bank's sets after USR4 too) */
+    return set ? set->nz : usr_nz[(src - SMP_NSETS) % SMP_USER_SLOTS];
+}
 static const smp_zone_t *gr_zone(uint32_t src, uint32_t zl)
 {
-    return src < SMP_NSETS ? &SMP_ZONES[SMP_SETS[src].z0 + zl] : &usr_zone[(src - SMP_NSETS) % SMP_USER_SLOTS][zl & 15u];
+    const smp_set_t *set = smp_builtin(src);
+    return set ? &SMP_ZONES[set->z0 + zl] : &usr_zone[(src - SMP_NSETS) % SMP_USER_SLOTS][zl & 15u];
 }
 static uint32_t gr_stamp(uint32_t src)
 {
-    return src < SMP_NSETS ? 0u : usr_nz[(src - SMP_NSETS) % SMP_USER_SLOTS] ? smp_user_gen : 0xFFFFFFFFu;
+    return smp_builtin(src) ? 0u : usr_nz[(src - SMP_NSETS) % SMP_USER_SLOTS] ? smp_user_gen : 0xFFFFFFFFu;
 }
 static inline uint32_t gr_rnd(gr_part_t *P) { return noise32(&P->rng); }
 static inline uint32_t gr_scale(uint32_t n, uint32_t f16) { return (n >> 16) * f16 + (((n & 0xFFFFu) * f16) >> 16); }
@@ -135,7 +140,7 @@ static inline int32_t gr_dec(const smp_zone_t *z, uint32_t pos, int32_t *pred, i
 static int32_t gr_find(uint32_t src, uint32_t note)
 {
     uint32_t i, nz = gr_nz(src);
-    int32_t zl = src < SMP_NSETS ? 0 : -1;
+    int32_t zl = smp_builtin(src) ? 0 : -1;
     if (smp_set_missing(src))
         return GR_SINE;
     for (i = 0; i < nz && i < GR_MAXZ; i++) {

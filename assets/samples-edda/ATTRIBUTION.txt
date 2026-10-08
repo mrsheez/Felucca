@@ -1,0 +1,19 @@
+THE ARRIVAL bank (EDDA OS): the sounds in this folder
+
+Designed (tools/edda_sounds.py, synthesised, GPL-3.0-only with the firmware):
+  kick.wav, logdrum_lo.wav, logdrum_hi.wav, udu.wav, bottle.wav
+
+Recorded: Versilian Studios' VCSL, CC0 1.0 (public domain dedication)
+  https://github.com/sgossner/VCSL  https://creativecommons.org/publicdomain/zero/1.0/
+  each cut to its hit, high-passed, faded, normalised and resampled by tools/edda_sounds.py
+
+  shaker.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Idiophones/Struck Idiophones/Shaker, Large/LShaker_Hit_rr1_Mid.wav
+  cabasa.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Idiophones/Struck Idiophones/Cabasa/Cabasa1_Hit_rr1_Mid.wav
+  clap.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Idiophones/Struck Idiophones/Claps/Clap_rr1.wav
+  xstick.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Membranophones/Struck Membranophones/Snare Drum, Modern 2/Snare3M_Xstick_v2_rr1_Mid.wav
+  snare.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Membranophones/Struck Membranophones/Snare Drum, Modern 1/Snare2_HitSN_v6_rr1_Mid.wav
+  conga.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Membranophones/Struck Membranophones/Conga/Conga_HitN_v3_rr1_Sum.wav
+  agogo_hi.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Idiophones/Struck Idiophones/Agogo Bells/Agogo_High_v3_rr1_Mid.wav
+  agogo_lo.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Idiophones/Struck Idiophones/Agogo Bells/Agogo_Low_v2_rr1_Mid.wav
+  ekwe.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Idiophones/Struck Idiophones/Slit Drum/LogDrumHi_MedM_v3_rr1_Sum.wav
+  claves.wav  <-  sgossner/VCSL (Versilian Studios Community Sample Library, CC0 1.0): Idiophones/Struck Idiophones/Claves/Claves1_Hit_v2_rr1_Mid.wav

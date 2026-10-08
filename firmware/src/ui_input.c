@@ -756,7 +756,7 @@ static void edit_param(uint32_t slot, int32_t steps)
     }
 #endif
     if ((act_cols() >> slot) & 1u) {                      /* an action's knob picks it (right) or drops it (left); */
-        if (pg->graph != GR_PATS)                         /* OCT+ does it (act_do) */
+        if (pg->graph != GR_PATS && pg->graph != GR_BANK)   /* OCT+ does it (act_do) */
             ui.act = steps > 0 ? (uint8_t)(slot + 1u) : ui.act == slot + 1u ? 0u : ui.act;
         return;
     }
@@ -768,6 +768,11 @@ static void edit_param(uint32_t slot, int32_t steps)
     if (pg->graph == GR_PATS) {                          /* KNOB 1 the pattern */
         if (slot == 0u)
             ui.ppick = (uint8_t)clamp((int32_t)pat_pick() + steps, 0, (int32_t)pat_count() - 1);
+        return;
+    }
+    if (pg->graph == GR_BANK) {                          /* EDDA OS: SAVE > ARRIVAL, KNOB 1 the song */
+        if (slot == 0u)
+            ui.bpick = (uint8_t)clamp((int32_t)ui.bpick + steps, 0, (int32_t)arv_count() - 1);
         return;
     }
     if (pg->graph == GR_MOD && slot == 0u) {             /* MOD: KNOB 1 the slot, 2..4 its SRC DST AMT */
@@ -811,6 +816,11 @@ static void act_do(void)
     if (cur_page()->graph == GR_SONG) {
         if (song.playing || chain_busy() || seq_counting()) transport_req = 2;
         else chain_play_ui();
+        return;
+    }
+    if (cur_page()->graph == GR_BANK) {                   /* EDDA OS: the song picked into the music (arrival.c: the
+                                                         * transport stops; PLAY on this page or SONG plays it) */
+        arv_load(ui.bpick);
         return;
     }
     if (cur_page()->graph == GR_PATS) {
@@ -946,7 +956,7 @@ static void presets_turn(int32_t s)
     if (ui.home || g == GR_BROWSE) {
         preset_step(s);
     } else if (g == GR_ROLL || g == GR_CHANCE || g == GR_USER || g == GR_SLOTS || g == GR_PATS || g == GR_SONG ||
-               g == GR_EVENTS) {
+               g == GR_EVENTS || g == GR_BANK) {
         edit_param(0, s);                                 /* KNOB 1's (STEP: STOP TO EDIT while a song plays) */
         ui.hot_col = 0;
         ui.hot_t = 40;
@@ -1223,8 +1233,9 @@ static void ui_input(void)
                     if (ui.song_row > chain_config.count) ui.song_row = chain_config.count;
                     ui_message("ROW DELETED");
                 }
-            } else if (kind == CF_CLEAR_SONG) {
-                if (!chain_busy()) { chain_defaults(&chain_config); ui.song_row = 0; ui_message("SONG CLEARED"); }
+            } else if (kind == CF_CLEAR_SONG) {             /* (EDDA OS: and THE ARRIVAL's song: the rows are the
+                                                         * project slots' again) */
+                if (!chain_busy()) { chain_defaults(&chain_config); ui.song_row = 0; arv_cur = 0; ui_message("SONG CLEARED"); }
             } else if (kind == CF_INIT_SOUND) {
                 if (!chain_busy()) { set_engine(TSEL->eng_req); ui_message("SOUND INIT"); }
             } else {
@@ -1273,6 +1284,11 @@ static void ui_input(void)
                 transport_req = 2;
             else if (!ui.home && cur_page()->graph == GR_SONG)
                 chain_play_ui();
+            else if (!ui.home && cur_page()->graph == GR_BANK) {   /* EDDA OS: the song picked, from its start */
+                if (arv_cur != ui.bpick + 1u)
+                    arv_load(ui.bpick);
+                chain_play_ui();
+            }
             else
                 transport_req = 1;
             break;
@@ -1310,7 +1326,7 @@ static void ui_input(void)
     if (act_cols() && (oct & 2u)) {                     /* action pages: OCT+ does the picked action, */
         act_do();
     } else if (act_cols() && (oct & 1u)) {              /* OCT- drops it, or (none picked) goes HOME */
-        if (cur_page()->graph != GR_PATS && ui.act)
+        if (cur_page()->graph != GR_PATS && cur_page()->graph != GR_BANK && ui.act)
             ui.act = 0;
         else
             go_home();
@@ -1371,7 +1387,7 @@ static void ui_input(void)
             continue;
         }
         if (ui.home || pg->scope == SC_STEP || pg->scope == SC_TRK || page_desc(pg, k, &hv) ||
-            ((pg->graph == GR_USER || pg->graph == GR_MOD || pg->graph == GR_PATS) && k == 0u)
+            ((pg->graph == GR_USER || pg->graph == GR_MOD || pg->graph == GR_PATS || pg->graph == GR_BANK) && k == 0u)
             || pg->graph == GR_SONG || (pg->graph == GR_SLICES && k < 2u)) {   /* (not an empty column) */
             ui.hot_col = (uint8_t)k;
             ui.hot_t = 40;

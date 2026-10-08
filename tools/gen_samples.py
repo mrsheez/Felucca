@@ -32,6 +32,12 @@ SLICE's SRC PIANO (added in 1.0.4 after BREAK and USR1-3) is the PIANO set's mid
 no data of its own, only its slice table (one AUTO slice, the note's attack): SLC_PIANO_INIT.
 Without the CC0 library (no PIANO set) it has no material (SLICE plays a sine there).
 
+EDDA OS: two more sets after BREAK, outside SMP_SETS (so SMP_NSETS and the USR1-4 numbers stay as they were):
+SMP_XSETS, from assets/samples-edda/ (tools/edda_sounds.py: designed sounds and VCSL CC0 recordings, each WAV
+already at the rate it is stored at): EKIT, THE ARRIVAL's drum kit (16 pads, each pinned to its GM note: DRUM's
+KIT EDDA, eng_drum.c), and LOG, the amapiano log drum (two zones). SAMPLE / GRAIN reach them as SET 9 and 10
+(after USR4, eng_sample.c SMP_NALL).
+
 The header is cached (build/gen_samples.cache) under a hash of every
 input file, this script, sampleio.py and the Python version, so unchanged
 inputs skip the slow pitch detection.
@@ -52,6 +58,7 @@ SRC = Path(__file__).resolve().parents[1]
 GENDIR = SRC / "build" / "genwav"
 CACHE = SRC / "build" / "gen_samples.cache"
 CC0 = SRC / "assets" / "samples-cc0"
+EDDA = SRC / "assets" / "samples-edda"
 TR = 22050                                   # stored sample rate
 
 # CC0 library: set -> kind ("oneshot" decaying, "sus" looped sustain, "kit" one sample per key)
@@ -82,6 +89,15 @@ BREAK_HITS = [(0, "kick", 1.0), (0, "chh", 0.55), (2, "kick", 0.7), (2, "chh", 0
               (10, "kick", 0.9), (10, "ohh", 0.4), (12, "snare", 1.0), (12, "chh", 0.45), (14, "chh", 0.4),
               (14, "snare", 0.35)]
 SLC_PIANO_NOTE = 60                          # SLICE's SRC PIANO: the PIANO zone of this root (middle C)
+
+# EDDA OS, THE ARRIVAL: the kit's pads (GM note, WAV in assets/samples-edda, semitones: a pad that plays another
+# pad's sound retuned, no data of its own). The 8 lanes first (eng_drum.c DRUM_LANE_NOTE), then the notes a step can
+# name (sampleio.KIT_PAD_NOTES): the ogene's two bells (56, 53), the ekwe, the udu, the congas, the claves, a bottle
+EDDA_KIT = [(36, "kick", 0), (38, "snare", 0), (39, "clap", 0), (42, "shaker", 0), (46, "cabasa", 0),
+            (45, "conga", 0), (37, "xstick", 0), (56, "agogo_hi", 0),
+            (41, "conga", -4), (43, "ekwe", 0), (47, "conga", 3), (48, "udu", 0), (49, "claves", 0),
+            (50, "bottle", 0), (51, "shaker", -3), (53, "agogo_lo", 0)]
+EDDA_LOG = [(30, "logdrum_lo"), (42, "logdrum_hi")]   # the log drum: F#1 and F#2 (C4 = 60; the zones split at C2 / C#2)
 SLC_GRID, SLC_AUTO = 128, 32                # eng_slice.c slc_src_t
 
 ENV = {"wave":(5, 80, 100, 50), "kit": (0, 127, 127, 60), "multi": (0, 85, 0, 75),
@@ -244,6 +260,7 @@ def break_loop():
 class Builder:
     def __init__(self):
         self.zones, self.sets, self.blob, self.kinds = [], [], bytearray(), {}
+        self.xsets = []                         # EDDA OS: (name, z0, nz), outside SMP_SETS
         self.alias = {}                         # set index -> the set index it aliases
         self.brk = None
         self.pno = None
@@ -310,6 +327,48 @@ class Builder:
                                 key=KIT_BASE + k if kind == "kit" else None))
         self.add_set(name, kind, entries)
 
+    def edda_sets(self):
+        """THE ARRIVAL's kit (EKIT) and log drum (LOG): WAVs at their stored rates, after BREAK"""
+        cache = {}
+
+        def take(name):
+            if name not in cache:
+                sr, x = sio.read_wav(EDDA / f"{name}.wav")[:2]
+                pk = max(1, max(abs(v) for v in x))
+                s = [int(v * 30000 / pk) for v in x]
+                off, st = self.add(s, len(s))
+                cache[name] = dict(off=off, n=len(s), sr=sr)
+            return cache[name]
+        z0, zones = len(self.zones), []
+        for note, name, semi in EDDA_KIT:
+            d = take(name)
+            zones.append(dict(off=d["off"], n=d["n"], ls=d["n"], le=d["n"], looped=False, sr=d["sr"] * 2 ** (semi / 12),
+                              root16=note * 16, pred=0, idx=0, lo=note, hi=note))
+        self.zones += zones
+        self.xsets.append(("EKIT", z0, len(zones)))
+        z0, zones = len(self.zones), []
+        for (root, name), (lo, hi) in zip(EDDA_LOG, key_split([r for r, _ in EDDA_LOG])):
+            d = take(name)
+            zones.append(dict(off=d["off"], n=d["n"], ls=d["n"], le=d["n"], looped=False, sr=d["sr"], root16=root * 16,
+                              pred=0, idx=0, lo=lo, hi=hi))
+        self.zones += zones
+        self.xsets.append(("LOG", z0, len(zones)))
+        self.edda_bytes = sum((d["n"] + 1) // 2 for d in cache.values())
+
+    def xsets_header(self):
+        """SMP_XSETS: EDDA OS's sets after USR4 (eng_sample.c); SMP_NXSETS 0 when assets/samples-edda is missing"""
+        L = ["", "/* EDDA OS: THE ARRIVAL's sets (tools/edda_sounds.py), outside SMP_SETS: SET / SRC 9.. (eng_sample.c) */",
+             f"#define SMP_NXSETS {len(self.xsets)}", "static const smp_set_t SMP_XSETS[] = {"]
+        for name, z0, nz in self.xsets or [("NONE", 0, 1)]:
+            L.append(f'    {{"{name}", {z0}, {nz}}},')
+        L.append("};")
+        names = ", ".join(f'"{n}"' for n, _, _ in self.xsets)
+        L.append("#define SMP_XSET_NAMES_INIT " + names)
+        k = {n: i for i, (n, _, _) in enumerate(self.xsets)}
+        L.append(f"#define SMP_XSET_KIT {k.get('EKIT', -1)}")
+        L.append(f"#define SMP_XSET_LOG {k.get('LOG', -1)}")
+        return L
+
     def header(self):
         zones, sets, blob = self.zones, self.sets, self.blob
         L = ["/* generated by tools/gen_samples.py: IMA ADPCM sample sets */", "#pragma once",
@@ -359,6 +418,7 @@ class Builder:
         L.append("static const char *const SMP_SET_NAMES[] = {" + names + "};")
         L += self.break_header()
         L += self.piano_header()
+        L += self.xsets_header()
         return "\n".join(L) + "\n"
 
     @staticmethod
@@ -392,6 +452,7 @@ class Builder:
 
     def summary(self):
         brk = f", SLICE BREAK {self.brk['n']} samples" if self.brk else ""
+        brk += f", EDDA {len(self.xsets)} sets {getattr(self, 'edda_bytes', 0)} B" if self.xsets else ""
         brk += f", SLICE PIANO (shared) {self.pno['n']} samples" if self.pno else ""
         return f"samples: {len(self.sets)} sets, {len(self.zones)} zones, {len(self.blob)} B ADPCM{brk}"
 
@@ -408,7 +469,7 @@ def input_key(have_cc0):
     for p in (here / "gen_samples.py", here / "sampleio.py"):
         h.update(p.read_bytes())
     h.update(repr((sys.version_info[:2], have_cc0, slice_on())).encode())   # sum() differs across versions
-    files = sorted(GENDIR.glob("*.wav"))
+    files = sorted(GENDIR.glob("*.wav")) + sorted(EDDA.glob("*.wav"))
     if have_cc0:
         files += sorted(CC0.glob("*/*.wav"))
     for p in files:
@@ -441,6 +502,8 @@ def main(out):
     if slice_on():                                  # SLICE's BREAK: only when that engine is built
         b.slice_break()                             # last: the sets' offsets stay as they were
         b.slice_piano()                             # (no data of its own: the PIANO set's)
+    if EDDA.exists() and any(EDDA.glob("*.wav")):
+        b.edda_sets()                               # EDDA OS: after BREAK (every offset before stays)
     text = b.header()
     Path(out).write_text(text)
     CACHE.parent.mkdir(parents=True, exist_ok=True)

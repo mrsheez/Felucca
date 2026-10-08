@@ -1,9 +1,9 @@
 # EDDA OS — the Mr. Sheez performance firmware for the M-VAVE FM-1
 
 EDDA OS is a fork of **Felucca 1.1.5.1** (Hügelton Instruments, GPL-3.0) built for the Mr. Sheez live set:
-the key of the record on the decks, the EDDA rhythm language, the transition by subtraction on one key,
-a hard stop that re-enters on the one, 16-WAV drum kits, the sequencer out over MIDI with clock, and
-twelve full-screen visualisers. Everything Felucca does is still there and behaves as before unless a
+the thirteen songs of *EDDA: The Arrival* ready to play (section 2.21), the key of the record on the decks,
+the EDDA rhythm language, the transition by subtraction on one key, a hard stop that re-enters on the one,
+16-WAV drum kits, the sequencer out over MIDI with clock, and twelve full-screen visualisers. Everything Felucca does is still there and behaves as before unless a
 section below says otherwise.
 
 | | |
@@ -298,13 +298,72 @@ shape moves. HOME's own oscilloscope draws its trace the same way.
   tap A B B C for A, B ×2, C. Stopped only.
 
 ### 2.19 The voice bank and the palette
-FM6 patches **OGENE IRON, OJA FLUTE, HILIFE GTR, TALK DRUM, LOG DRUM** (presets OGENE, OJA, HILIFE, TALK
-DRUM, LOG DRUM), editable and exportable as `.syx` in the editor. The **EDDA** palette (MENU > DISPLAY >
+FM6 patches **OGENE IRON, OJA FLUTE, HILIFE GTR, TALK DRUM, LOG DRUM, EDDA EP** (presets OGENE, OJA, HILIFE,
+TALK DRUM, LOG DRUM, EDDA EP; slots E1–E6), editable and exportable as `.syx` in the editor. The **EDDA** palette (MENU > DISPLAY >
 COLOR): deep indigo, golden orange, electric blue; it passes Felucca's contrast lint.
 
 ### 2.20 What is kept with the settings
 SHOW CUES, SEQ OUT, RUN, REVEAL and SELECT PAGES survive power-off (with Felucca's other MENU settings).
 KEY lives on in the project (ROOT and SCALE); ACT starts from 1.
+
+### 2.21 THE ARRIVAL — the album's thirteen songs (SAVE > ARRIVAL)
+The first thirteen songs of *EDDA: The Arrival* live in the firmware as music the FM-1 plays: every song's
+instrumental, arranged start to finish, in its tempo and key, on four tracks. The voice is yours: each song
+leaves the room for the Igbo line it opens on.
+
+| # | Song | BPM | Key | Opens on | T1 | T2 | T3 | Length |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 01 | UP NEPA | 116 | 8A | Any moment now. (IHE) | log drum | highlife guitar stabs | tenor sax | 3:26 |
+| 02 | WE OUTSIDE | 115 | 6A | One more. (ABALI) | log drum | Rhodes | string drone | 3:28 |
+| 03 | OYA COME | 113 | 7A | Oya, come. (UZO) | log drum | grand piano | flute grains | 3:32 |
+| 04 | WHERE YOU SLEEP | 112 | 1A | The night still young. (NZUZO) | log drum | organ | flute (the oja) | 3:34 |
+| 05 | E GO BE | 116 | 5A | E go be. (NDIDI) | log drum | grand piano | highlife guitar riff | 3:31 |
+| 06 | I DEY WAKA | 139 half | 3A | the flute, then Nwayo… nwayo… (NWAYO) | 808 | flute grains | flute (the oja) | 3:06 |
+| 07 | BODY KNOW | 112 | 6A | Stop thinking. (EGWU) | log drum | organ stabs | tenor sax | 3:25 |
+| 08 | DO AM AGAIN | 125 | 10B | Do am again. (MEE YA OZO) | talking log drum | grand piano | filtered guitar loop | 3:12 |
+| 09 | YOU DEY WHINE ME | 124 | 9A | Just ask. (ANYA) | log drum | Rhodes | a sung lead | 3:21 |
+| 10 | TURN AM UP | 126 | 12B | Turn am up. (ELU) | log drum | grand piano | surf-picked guitar | 3:18 |
+| 11 | ENJOYMENT ONLY | 114 | 5A | Not in this house. (OFUMA) | log drum | grand piano | guitar + ogene loop | 3:30 |
+| 12 | RING ME | 116 | 7A | Ring am first. (OGENE) | log drum | the ogene | a choir hum | 3:26 |
+| 13 | JAPA AND COME BACK | 115 | 1A | I go come back. (IJE) | log drum | Rhodes | tenor sax | 3:28 |
+
+T4 is THE ARRIVAL's kit in every song. Each song has its sections (INTRO, GROOVE, the RUN, the DROP; DO AM
+AGAIN and TURN AM UP: BREAK, BUILD, DROP) and its arrangement as the SONG page's rows.
+
+**Playing one.** SAVE, turn to **ARRIVAL**: KNOB 1 (or PRESETS) picks the song, **OCT+** loads it, **PLAY**
+plays it from its first row (on another song than the one loaded, PLAY loads it first); PLAY again stops. A
+load stops the transport and sets the four sounds, section A's steps, the rows, the tempo, the delay and the
+reverb, and KEY to the song's Camelot code; the top bar says LOADED and then the line the song opens on. The
+SONG page names each row's section (the row playing counts its bars down). The tracks hold section A: loop it,
+play over it, edit it, save it as a project (the project keeps the song: its rows play the song's sections with
+your sounds). **TOOLS > CLEAR SONG** hands the SONG page back to the project slots.
+
+**The rules kept.** Everything on the grid (no swing); the kick and the log drum forward, the high percussion
+low; no rolls: a transition is a subtraction (the RUN: the shakers go, the log drum runs alone, a beat of
+silence, the drop); four on the floor only in the drops of DO AM AGAIN and TURN AM UP.
+
+**The sounds.** THE ARRIVAL's kit is DRUM KIT **EDDA**, 16 pads: real recordings from the Versilian Community
+Sample Library (CC0) — a shaker, a cabasa, claps, a cross-stick, a snare, congas, the agogo as the ogene's two
+bells, a log-drum hit as the ekwe, claves — and a designed kick, udu and glass bottle. The log drum is SAMPLE
+SET **LOG** (two designed zones a fifth apart, a pitch strike on the attack, its tail left to ring), played
+LEGATO so it slides; SET **EKIT** is the kit as a sample set. The Rhodes is FM6 **EDDA EP** (patch E6, TINE
+EP with a short release) through the track's drive. `assets/samples-edda/ATTRIBUTION.txt` names every source;
+`tools/edda_sounds.py` makes them again.
+
+**The mix.** Rendered on the host through the firmware's own code (the sequencer, the engines, the effects and
+the master, block by block) and measured with ITU-R BS.1770's K-weighting: every track sits within about 1.5 LU
+of its role's place in the drop (the log drum and the kit forward, the keys under the lead, the pads under the
+keys), the drops about 15 LU under full scale at MASTER full, the peaks at the master limiter's threshold
+(working on at most a quarter of the time, never more than 7 dB). WE OUTSIDE and OYA COME are the darkest:
+their 1–4 kHz is left to the voice. The shared budget of 8 voices never cuts a held note in any song: a
+part of notes now gives up its own release tail first, a kit's hits go before a held note, and a kit's lowest
+hit — the kick — rings out as a part's bass does.
+
+**Changing them.** The music is `tools/arrival_songs.py`, a score in Python (notes by name, drum rows as
+strings); `tools/gen_arrival.py` encodes it into 12 KB of `build/gen/edda_arrival.h` at build time.
+`build/host/arrival_render build/arrival` renders all thirteen to WAV (`[SONG] [SECONDS] [STEMS]`), and
+`tests/arrival_check.py` reports the balance per section and track and the LEVELs that would put each track in
+its place.
 
 ---
 
@@ -317,8 +376,9 @@ SELECT the tempo.
 **MENU > EDDA** (hold HOME, ALGORITHM to the EDDA tab): KEY · SHOW CUES · SEQ OUT · ACT · RUN · REVEAL.
 **MENU > CONTROL**: SELECT (TEMPO / PAGES).
 
-**New pages and knobs**: FX > FILTER (FILT) · FX > DLY > TIME 1/4D 1/8D 1/16D · SEQ > CHANCE KNOB 4 NUDGE ·
-DRUM EDIT 1 KIT USR1–4 · SAMPLE SET 8 (USR4) · SCL > CHORD VOIC LEAD.
+**New pages and knobs**: SAVE > ARRIVAL (KNOB 1 the song, OCT+ LOAD, PLAY) · FX > FILTER (FILT) · FX > DLY >
+TIME 1/4D 1/8D 1/16D · SEQ > CHANCE KNOB 4 NUDGE · DRUM EDIT 1 KIT USR1–4, EDDA · SAMPLE SET 8 (USR4), 9 EKIT,
+10 LOG · SCL > CHORD VOIC LEAD.
 
 **Gestures**: HOME on HOME = VIZ (again: next) · black keys with CHRD + QNT WHITE = CHORD+ · F3–B3 on SONG =
 sections A–D.
@@ -331,7 +391,7 @@ The web editor sees the new MENU rows (protocol ids 18–24), the 4th slot and t
 
 | SLOOP 2.4 | EDDA OS |
 | --- | --- |
-| FM6 with DX7 patches from the web editor | **In** (Felucca's FM6; `.syx` import and export, 13 factory patches) |
+| FM6 with DX7 patches from the web editor | **In** (Felucca's FM6; `.syx` import and export, 14 factory patches) |
 | Own drum kits: 16 WAVs on pads | **In** (2.8: KIT USR1–4, the editor's 16 pads, the kit builder) |
 | A 4th sample slot | **In** (2.9) |
 | A web editor in the FM-1's look | Felucca's editor; EDDA's rows, slots and kits appear in it |
@@ -350,8 +410,9 @@ The web editor sees the new MENU rows (protocol ids 18–24), the 4th slot and t
 | SELECT turns the pages | **In** (2.18, an option) |
 | Bigger values, the menu in sections | **In** (Felucca's LARGE and tabbed menu) |
 
-Beyond SLOOP: the Camelot lock and path, the run, the hard stop, REVEAL, MUTATE, the show cues, the exact
-grid, SEQ OUT's run-aware output, the West African pattern bank, the voice bank.
+Beyond SLOOP: THE ARRIVAL's thirteen songs with their own kit and log drum, the Camelot lock and path, the run,
+the hard stop, REVEAL, MUTATE, the show cues, the exact grid, SEQ OUT's run-aware output, the West African
+pattern bank, the voice bank.
 
 ---
 
@@ -361,8 +422,10 @@ grid, SEQ OUT's run-aware output, the West African pattern bank, the voice bank.
    bring it up on the mic knob.
 2. Set **KEY** to the Camelot of the record playing, or walk it with C5 / D5 / E5 as you mix the one-step
    path. Tap the tempo on GLO + F4, or send MIDI clock from the laptop and set CLOCK to it.
-3. Track 4 DRUM on your own kit (KIT USR1) with 3STEP or OGENE12; track 1 LOG DRUM with LOGDRUM; track 2
-   a pad or STABS; track 3 the lead (OJA, OGENE, HILIFE).
+3. For a song of the album: SAVE > ARRIVAL, the song, OCT+, PLAY (its tempo and key come with it: set the
+   decks to them, or sing over it alone). Otherwise track 4 DRUM on your own kit (KIT USR1, or EDDA) with
+   3STEP or OGENE12; track 1 LOG DRUM with LOGDRUM; track 2 a pad or STABS; track 3 the lead (OJA, OGENE,
+   HILIFE).
 4. REVEAL on for long passages; MUTATE when the room needs a new figure; **D4** to leave a record by
    subtraction; **E4** for the hard stop and the re-entry.
 5. USB to the stream machine: SEQ OUT +CLOCK drives a DAW or a second synth in time with the FM-1, the show

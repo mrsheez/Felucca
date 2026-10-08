@@ -370,6 +370,7 @@ static const char *const N_FM6_ALG[] = {"PAT", "1", "2", "3", "4", "5", "6", "7"
                                         "26", "27", "28", "29", "30", "31", "32", 0};
 static const char *const N_FM6_PATCH[] = {"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8",
                                            "E1", "E2", "E3", "E4", "E5",   /* EDDA OS: OGENE OJA HILIFE TALK LOG */
+                                           "E6",                           /* .. EDDA EP (THE ARRIVAL) */
                                            "OWN", 0};
 _Static_assert(NELEM(N_FM6_PATCH) == FM6_OWN + 2u, "a SLOT name per value");
 
@@ -389,6 +390,8 @@ static const preset_t FM6_PRESETS[] = {
     {"HILIFE", {0, 0, 0, 0, 0, 0, 0, 10}, {0, 0, 127, 0}, 0, 0, FX(0, 30, 25, 30), PAT(3)},
     {"TALK DRUM", {0, 0, 0, 0, 0, 0, 0, 11}, {0, 0, 127, 0}, 0, 1, FX(0, 0, 20, 35), PAT(8)},
     {"LOG DRUM", {0, 0, 0, 0, 0, 0, 0, 12}, {0, 0, 127, 0}, 0, 1, FX(8, 0, 0, 10), PAT(2)},
+    /* EDDA OS, THE ARRIVAL: TINE EP with a short release (the bank's Rhodes: chords struck again leave no tails) */
+    {"EDDA EP", {0, 0, 0, 0, 0, 0, 0, 13}, {0, 0, 127, 0}, 0, 0, FX(0, 45, 25, 35), PAT(6)},
 };
 
 static const engine_t ENG_FM6 = {

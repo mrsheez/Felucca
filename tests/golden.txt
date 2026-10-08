@@ -72,6 +72,7 @@ preset/FM6/09_OJA cee6cc1121d06aa4
 preset/FM6/10_HILIFE ed83c52ea09efd60
 preset/FM6/11_TALK_DRUM 84a43495c197cf58
 preset/FM6/12_LOG_DRUM 00b19c479484fce4
+preset/FM6/13_EDDA_EP 3d5692da3baf96bc
 preset/SLICE/00_CHOP 6d1e706b5119b570
 preset/SLICE/01_STUTTER 94226b45e8a75cf0
 drums/drum_gm_kit a88dcac7803e88d4
@@ -94,6 +95,6 @@ sends/ANALOG/delay a402a2254e8a0a84
 sends/ANALOG/reverb 217d0dceb6ded8e8
 sends/ANALOG/all 98b9543c25342780
 sends/ANALOG/dist 1ff75ac225e918e0
-song/4track_mix 2c7bb28890fad3f8
+song/4track_mix 377240d9d0e763dc
 slicer/gate/ANALOG_ACID af00cbb0cd0fe714
-slicer/song_gate_stut ba26367410e9db18
+slicer/song_gate_stut 0fe9af2d79c036d4

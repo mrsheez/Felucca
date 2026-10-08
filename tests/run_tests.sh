@@ -96,6 +96,12 @@
 #                   operator envelopes (stages, rates, the voice ending), bit-stable notes, a click-free retrigger, no DC /
 #                   clipping over the factory patches, the macros' directions, PTCH, pack / unpack and the SysEx
 #                   layouts, the 6-voice cap, the cost per voice; demos in build/fm6_demo/.
+# THE ARRIVAL (EDDA OS; tests/edda_test.c, tests/arrival_render.c): the album's thirteen songs (firmware/src/arrival.c):
+#                   titles, tempi and Camelot keys, every section in range, the arrangements, the load (sounds in the
+#                   song's key, the EDDA kit, the log drum), SAVE > ARRIVAL's knob, LOAD and PLAY, a project keeping the
+#                   song, CLEAR SONG; then each song played through the firmware's audio: 3 to 4 minutes, sounding, no
+#                   clipping, no held note cut by the voice budget, the master limiter at most 8 dB. WAVs and stems:
+#                   build/host/arrival_render build/arrival [SONG] [SECONDS] [STEMS]; the balance: tests/arrival_check.py.
 # ROBUST (tests/robust_test.c): damaged or crafted stored data and editor requests: a SLICE scan bounded by the slot,
 #                   a slot that fails its check leaves no zone, engine numbers past the last refused, a retained older
 #                   RAM project bounded, user preset patterns inside their fields, malformed requests never stop PLAY.
@@ -190,8 +196,12 @@ if [ -f build/gen/felucca_tables.h ]; then
     mkdir -p build/edda_demo
     python3 tests/edda_kit.py build/edda_demo/kit >/dev/null
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/edda_test" tests/edda_test.c -lm
-    run "EDDA OS: Camelot key, the bank, run / stop / fill / MUTATE / REVEAL, cues, MENU > EDDA, GLO keys, FM6 voices, user kits, USR4" \
+    run "EDDA OS: Camelot key, the bank, run / stop / fill / MUTATE / REVEAL, cues, MENU > EDDA, GLO keys, FM6 voices, user kits, USR4, THE ARRIVAL" \
         "$OUT/edda_test" build/edda_demo/kit
+    # EDDA OS: THE ARRIVAL's thirteen songs played through the firmware's audio (tests/arrival_render.c, no files written)
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/arrival_render" tests/arrival_render.c -lm
+    run "THE ARRIVAL: each song 3 to 4 minutes, sounding, no clipping, no held note cut, the limiter at most 8 dB" \
+        env ARRIVAL_CHECK=1 "$OUT/arrival_render" -
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/theme_test" tests/theme_test.c -lm
     run "themes: contrast, text blending and font metrics" "$OUT/theme_test"
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/text_ref_test" tests/text_ref_test.c -lm

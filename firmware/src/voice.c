@@ -6,8 +6,10 @@
  * Each synth part has its own NVOICE voices (so MONO / LEGATO / UNISON keep using
  * v[0..]), but only NVOICE of all the parts' voices sound at once: a part that starts
  * a voice while the budget is full takes one from any part (voice_victim): the oldest
- * released voice, else the oldest extra UNISON voice, else the oldest held voice of a
- * POLY part that is not its lowest note. A voice taken from another part fades out
+ * released voice, else the oldest extra UNISON voice or drum hit, else the oldest held
+ * voice of a POLY part that is not its lowest note (EDDA OS: a kit's lowest hit, its
+ * kick, is kept as that bass is; a part of notes gives up its own release tail before
+ * another part's voice: voice_alloc). A voice taken from another part fades out
  * over one block (stage 4: the envelope goes to 0, the block's amplitude ramp
  * declicks it); one of the part's own is restarted in place, as before. Extra UNISON
  * voices only start when there is room. */
@@ -88,6 +90,16 @@ static uint32_t lowest_held(const track_t *t)           /* index of the lowest h
     return low;
 }
 
+/* EDDA OS: a kit's (engine_t.oneshot) lowest hit still sounding, held or not (the kick, its bass), NVOICE = none */
+static uint32_t lowest_hit(const track_t *t)
+{
+    uint32_t i, low = NVOICE;
+    for (i = 0; i < NVOICE; i++)
+        if (t->v[i].active && t->v[i].stage != 4u && (low == NVOICE || t->v[i].note < t->v[low].note))
+            low = i;
+    return low;
+}
+
 /* the voice to give up for a new one (see the top); soft: only released voices and
  * extra voices of other non-POLY parts (also ones left after a mode change).
  * Returns its index, *pp its part; NVOICE = none */
@@ -96,19 +108,22 @@ static uint32_t voice_victim(const track_t *self, int soft, track_t **pp)
     uint32_t p, i, best = NVOICE, cat = 4;
     for (p = 0; p < NPART; p++) {
         track_t *t = &trk[p];
-        uint32_t mode = trk_vmode(t);
-        uint32_t low = mode == V_POLY ? lowest_held(t) : NVOICE;
+        uint32_t mode = trk_vmode(t), hits = ENGINES[t->engine]->oneshot;
+        uint32_t low = hits ? lowest_hit(t) : mode == V_POLY ? lowest_held(t) : NVOICE;
         if (soft && t == self)
             continue;
         for (i = 0; i < NVOICE; i++) {
             const voice_t *v = &t->v[i];
             uint32_t c;
-            if (!v->active || v->stage == 4u)
-                continue;
+            if (!v->active || v->stage == 4u || (hits && i == low))
+                continue;                               /* (EDDA OS: a kit's kick rings out, as a part's bass) */
             if (!v->gate)
                 c = 1;                                  /* released */
             else if (mode != V_POLY && i > 0)
                 c = 2;                                  /* extra UNISON, or a voice left by a mode / cap change */
+            else if (!soft && hits)
+                c = 2;                                  /* EDDA OS: a hit (its gate does not hold it: it rings out
+                                                         * as struck), before a held note */
             else if (!soft && mode == V_POLY && i != low)
                 c = 3;                                  /* held, not the bass */
             else
@@ -126,6 +141,9 @@ static uint32_t voice_victim(const track_t *self, int soft, track_t **pp)
 static uint32_t voice_kills;                            /* voices given up (budget, overload): console, hostsim */
 static void voice_kill(voice_t *v)                      /* fade out over the next block (env_tick stage 4) */
 {
+#ifdef VOICE_KILL_HOOK
+    VOICE_KILL_HOOK(v);                                 /* (host diagnostics: tests/arrival_render.c) */
+#endif
     v->gate = 0;
     v->stage = 4;
     voice_kills++;
@@ -177,7 +195,16 @@ static voice_t *voice_alloc(track_t *t, uint32_t note)
     }
     if (nfree && voices_busy() >= NVOICE) {
         track_t *vp = 0;
-        uint32_t k = voice_victim(t, 0, &vp);
+        uint32_t k = np;
+        if (!ENGINES[t->engine]->oneshot)               /* EDDA OS: a part of notes gives up its own release tail
+                                                         * first (its new note covers it; the other parts' notes and
+                                                         * hits ring on) */
+            for (i = 0; i < np; i++)
+                if (t->v[i].active && !t->v[i].gate && t->v[i].stage != 4u && (k == np || t->v[i].age < t->v[k].age))
+                    k = i;
+        if (k < np)
+            return &t->v[k];
+        k = voice_victim(t, 0, &vp);
         if (k < np && vp == t)
             return &t->v[k];                            /* our own: restart it in place (no click) */
         if (k < NVOICE)

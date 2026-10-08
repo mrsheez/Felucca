@@ -683,14 +683,16 @@ int main(int argc, char **argv)
     }
     /* ---------------------------------------------------------- the bank */
     {
-        int ok = FM6_NFACTORY == 13u && str_eq(N_FM6_PATCH[8], "E1") && str_eq(N_FM6_PATCH[12], "E5") &&
-                 str_eq(N_FM6_PATCH[FM6_OWN], "OWN") && NELEM(FM6_PRESETS) == 13u;
+        int ok = FM6_NFACTORY == 14u && str_eq(N_FM6_PATCH[8], "E1") && str_eq(N_FM6_PATCH[12], "E5") &&
+                 str_eq(N_FM6_PATCH[13], "E6") && str_eq(N_FM6_PATCH[FM6_OWN], "OWN") && NELEM(FM6_PRESETS) == 14u;
         ok &= !memcmp(FM6_FACTORY[8] + 118, "OGENE IRON", 10) && !memcmp(FM6_FACTORY[9] + 118, "OJA FLUTE ", 10) &&
               !memcmp(FM6_FACTORY[10] + 118, "HILIFE GTR", 10) && !memcmp(FM6_FACTORY[11] + 118, "TALK DRUM ", 10) &&
-              !memcmp(FM6_FACTORY[12] + 118, "LOG DRUM  ", 10);
+              !memcmp(FM6_FACTORY[12] + 118, "LOG DRUM  ", 10) && !memcmp(FM6_FACTORY[13] + 118, "EDDA EP   ", 10);
         ok &= str_eq(FM6_PRESETS[8].name, "OGENE") && FM6_PRESETS[8].e[7] == 8 && FM6_PRESETS[12].mono == 1 &&
-              str_eq(FM6_PRESETS[12].name, "LOG DRUM");
-        ck("FM6: thirteen factory patches, E1..E5 the EDDA voice bank, their presets select them, LOG DRUM is MONO", ok);
+              str_eq(FM6_PRESETS[12].name, "LOG DRUM") && str_eq(FM6_PRESETS[13].name, "EDDA EP") &&
+              FM6_PRESETS[13].e[7] == 13 && !FM6_PRESETS[13].mono;
+        ck("FM6: fourteen factory patches, E1..E6 the EDDA voice bank (E6: THE ARRIVAL's EP), their presets select them, "
+           "LOG DRUM is MONO", ok);
         reset();
         set_engine_of(&trk[1], ENGI_FM6); apply_preset_to(&trk[1], 8);
         ok = trk[1].p[P_E7] == 8 && str_eq(UI_PALETTES[UI_BW_INDEX + 1u].name, "EDDA") && NPALETTES == UI_BW_INDEX + 2u;
@@ -1347,17 +1349,20 @@ int main(int argc, char **argv)
     }
     /* ------------------------------------------------------ the user kits */
     {
-        int ok = ENG_DRUM.edit[0].max == DK_COUNT - 1 && DK_COUNT == 13u && str_eq(N_DRUM_KIT[DK_USR1], "USR1") &&
-                 str_eq(N_DRUM_KIT[DK_USR4], "USR4") && drum_kit_plays(DK_USR4) == DK_USR4 && DK_USR == 9u;
+        int ok = ENG_DRUM.edit[0].max == DK_COUNT - 1 && DK_COUNT == 14u && str_eq(N_DRUM_KIT[DK_USR1], "USR1") &&
+                 str_eq(N_DRUM_KIT[DK_USR4], "USR4") && drum_kit_plays(DK_USR4) == DK_USR4 && DK_USR == 9u &&
+                 str_eq(N_DRUM_KIT[DK_EDDA], "EDDA") && DK_EDDA == 13u && drum_kit_plays(DK_EDDA) == DK_EDDA;
         int16_t pp[P_COUNT];
         memset(pp, 0, sizeof pp);
         pp[P_E0] = DK_USR2;
         ok &= drum_user_kit(pp) == 1u && smp_user_addr(3) == 0xE7000u && smp_user_addr(2) == 0xC8000u &&
-              SMP_USER_SLOTS == 4u && str_eq(SMP_ALL_NAMES[SMP_NALL - 1u], "USR4");
+              SMP_USER_SLOTS == 4u && str_eq(SMP_ALL_NAMES[SMP_XBASE - 1u], "USR4") && SMP_XBASE == 9u;
+        pp[P_E0] = DK_EDDA;
+        ok &= drum_user_kit(pp) == SMP_USER_SLOTS && drum_smp_kit(pp) == KIT_SRC_EDDA;
 #ifdef FL_STORE_OK
         ok &= FL_STORE_OK(0xE7000u, 0x14000u) && !FL_STORE_OK(0xFB000u, 0x1000u) && !FL_STORE_OK(0xE6000u, 0x2000u);
 #endif
-        ck("DRUM KIT: USR1..USR4 after the synth kits (values 9..12); USR4 is the slot at 0xE7000 (in the flash guard)", ok);
+        ck("DRUM KIT: USR1..USR4 after the synth kits (values 9..12), EDDA 13; USR4 is the slot at 0xE7000 (in the flash guard)", ok);
         {   /* the track with a user kit: the synth kit's lane names, no model swaps */
             track_t *t = &trk[0];
             reset();
@@ -1487,11 +1492,133 @@ int main(int argc, char **argv)
         voices_off();
         song.master_q12 = 4096;
         host_preset(t, ENGI_SAMPLE, 0);
-        t->p[P_E0] = (int16_t)(SMP_NALL - 1u);
+        t->p[P_E0] = (int16_t)(SMP_XBASE - 1u);
         t->p[P_ATK] = 0; t->p[P_SUS] = 127;
         trk_note_on(t, 36, 100); v = kvoice(t, 36);
         ok &= v && (uint32_t)v->s[4] == (0x8000u | 3u << 5) && v->s[6] == 0 && render_peak(8) > 1500u;
         ck("USR4: DRUM KIT USR4 plays the kit from the 4th slot; SAMPLE SET 8 plays its kick", ok);
+    }
+    /* ------------------------------------------------------ THE ARRIVAL */
+    {   /* the songs (arrival.c, tools/arrival_songs.py): the album as written, each one decoding in range, its
+         * arrangement naming sections it has, three to four minutes long played through the sequencer */
+        static const struct { const char *name, *key; uint8_t bpm; } ALBUM[13] = {
+            {"UP NEPA", "8A", 116}, {"WE OUTSIDE", "6A", 115}, {"OYA COME", "7A", 113}, {"WHERE YOU SLEEP", "1A", 112},
+            {"E GO BE", "5A", 116}, {"I DEY WAKA", "3A", 139}, {"BODY KNOW", "6A", 112}, {"DO AM AGAIN", "10B", 125},
+            {"YOU DEY WHINE ME", "9A", 124}, {"TURN AM UP", "12B", 126}, {"ENJOYMENT ONLY", "5A", 114},
+            {"RING ME", "7A", 116}, {"JAPA AND COME BACK", "1A", 115}};
+        static chain_pattern_t cp;
+        uint32_t n, s, k, r, j, shortest = ~0u, longest = 0;
+        int ok = arv_count() == 13u, dec = 1, arr = 1, keyed = 1, kits = 1;
+        for (n = 0; n < arv_count() && ok; n++) {
+            const arv_song_t *sg = arv_song(n);
+            char nm[20], info[8], key[4];
+            arv_label(n, nm, sizeof nm, info);
+            edda_cam_name(sg->cam, key);
+            ok &= str_eq(nm, ALBUM[n].name) && sg->bpm == ALBUM[n].bpm && str_eq(key, ALBUM[n].key) &&
+                  sg->nsec >= 2u && sg->nsec <= 4u && sg->nrow >= 4u && sg->nrow <= CHAIN_ROWS;
+            for (s = 0; s < sg->nsec; s++) {
+                arv_section(n, s, &cp);
+                dec &= sg->sec[s].name[0] != 0;
+                for (k = 0; k < NTRK; k++) {
+                    dec &= cp.timing[k][0] >= 1 && cp.timing[k][0] <= NSTEP;
+                    for (i = 0; i < NSTEP; i++) {
+                        const step_t *st = &cp.step[k][i];
+                        dec &= st->n <= 4u && st->time <= ST_REST && st->probability <= 101u;
+                        for (j = 0; j < st->n; j++)
+                            dec &= st->note[j] >= 12u && st->note[j] <= 108u;
+                    }
+                }
+            }
+            for (r = 0; r < sg->nrow; r++)
+                arr &= sg->row[r].slot < sg->nsec && sg->row[r].repeat >= 1u && sg->row[r].repeat <= 16u;
+            reset();
+            arv_load(n);
+            for (k = 0; k < NTRK; k++) {                    /* the synth tracks in the song's key; T4 the EDDA kit */
+                const track_t *t = &trk[k];
+                if (k == 3u)
+                    kits &= t->eng_req == ENGI_DRUM && t->p[P_E0] == DK_EDDA;
+                else
+                    keyed &= t->p[P_ROOT] == (int16_t)edda_cam_root(sg->cam) &&
+                             t->p[P_SCALE] == (int16_t)edda_cam_scale(sg->cam) && t->p[P_QUANT] != QN_OFF;
+            }
+            kits &= n == 5u ? ENGINES[trk[0].eng_req] == &ENG_ANALOG
+                            : trk[0].eng_req == ENGI_SAMPLE && trk[0].p[P_E0] == (int16_t)SMP_XSET_LOG + SMP_XBASE;
+            {   /* played through: the sequencer's own clock from the chain's start to its end */
+                uint32_t nb = 0, sec10;
+                ok &= chain_prepare() == 0u;
+                while ((chain.armed || chain.running || song.playing) && nb < 300u * FS / CTL) {
+                    blocks(1);
+                    nb++;
+                }
+                sec10 = (uint32_t)((uint64_t)nb * CTL * 10u / FS);
+                shortest = sec10 < shortest ? sec10 : shortest;
+                longest = sec10 > longest ? sec10 : longest;
+            }
+            voices_off();
+        }
+        ck("THE ARRIVAL: thirteen songs, the album's titles, tempi and Camelot keys, 2..4 sections, 4..16 rows", ok);
+        ck("THE ARRIVAL: every section decodes in range (LEN, at most 4 notes C0..C8, ties, chances), named", dec);
+        ck("THE ARRIVAL: every arrangement row names a section of its song, 1..16 repeats", arr);
+        ck("THE ARRIVAL: loaded, the synth tracks in the song's key (ROOT SCALE, quantised), the key lock on it", keyed);
+        ck("THE ARRIVAL: T4 the EDDA kit, T1 the log drum (SAMPLE SET LOG; I DEY WAKA: the 808 on ANALOG)", kits);
+        printf("edda: THE ARRIVAL played through: %u.%u .. %u.%u s\n", shortest / 10u, shortest % 10u, longest / 10u,
+               longest % 10u);
+        ck("THE ARRIVAL: each song plays 3 to 4 minutes, then stops", shortest >= 1800u && longest <= 2400u);
+    }
+    {   /* SAVE > ARRIVAL: KNOB 1 picks, OCT+ loads (the sounds, section A, the rows, the tempo, the key, the name),
+         * PLAY plays the arrangement; the SONG page's rows are the song's sections; a project keeps it; CLEAR SONG ends it */
+        const arv_song_t *sg;
+        int ok;
+        reset();
+        go_title("ARRIVAL");
+        frame();
+        ok = cur_page()->graph == GR_BANK && cur_page()->fam == FAM_SAVE && act_cols() == 2u && act_col() == 2u &&
+             str_eq(act_name(1), "LOAD") && !arv_cur;
+        turn(EN_K1, 2);
+        ok &= ui.bpick == 2u && !arv_cur;
+        turn(EN_K1, 40);
+        ok &= ui.bpick == 12u;
+        turn(EN_K1, -40);
+        turn(EN_K1, 7);                                   /* DO AM AGAIN */
+        press(B_OCTUP);
+        sg = arv_song(7);
+        ok &= arv_cur == 8u && song.g[G_BPM] == 125 && edda.camelot == sg->cam && str_eq(proj_name, "DO AM AGAIN") && str_eq(ui.msg2, "DO AM AGAIN.") &&
+              chain_config.count == sg->nrow && trk[3].p[P_E0] == DK_EDDA && !song.playing && !chain.running &&
+              msg_is("LOADED DO AM AGAIN");
+        ck("SAVE > ARRIVAL: KNOB 1 picks the song (01..13), OCT+ loads it: sounds, tempo, key, rows, the name, its line", ok);
+        frame();
+        press(B_PLAY);
+        blocks(2);
+        ok = chain.running && song.playing && chain.row == 0u;
+        ok &= str_eq(arv_sec_name(0), "BREAK") && str_eq(arv_sec_name(3), "GROOVE") && !arv_sec_name(4)[0];
+        press(B_PLAY);
+        blocks(2);
+        ok &= !chain.running && !song.playing;
+        ck("SAVE > ARRIVAL: PLAY plays its arrangement from the first row (the SONG page: its sections by name); PLAY stops", ok);
+        turn(EN_K1, 1);                                   /* YOU DEY WHINE ME, not loaded: PLAY loads and plays it */
+        press(B_PLAY);
+        blocks(2);
+        ok = arv_cur == 9u && chain.running && song.g[G_BPM] == 124;
+        press(B_PLAY);
+        blocks(2);
+        ck("SAVE > ARRIVAL: PLAY on another song loads it first", ok && !chain.running);
+        stop_transport();
+        ok = project_save(1) == 1 || project_used(1);
+        go_title("ARRIVAL");
+        turn(EN_K1, -8);
+        press(B_OCTUP);                                   /* UP NEPA over it */
+        ok &= arv_cur == 1u;
+        project_load(1);
+        ok &= arv_cur == 9u && song.g[G_BPM] == 124 && chain_prepare() == 0u;
+        blocks(2);
+        ok &= chain.running;
+        transport_req = 2;
+        blocks(2);
+        stop_transport();
+        ck("a project saved after a load keeps the song (project_t.arv): loaded again, its rows play the song's sections", ok);
+        go_title("TOOLS"); turn(EN_K4, 1); press(B_OCTUP); press(B_OCTUP);
+        ok = !arv_cur && !chain_config.count && !arv_sec_name(0)[0];
+        ck("TOOLS > CLEAR SONG ends it: the SONG page's rows are the project slots' again", ok);
     }
     printf(bad ? "edda: %d FAILED\n" : "edda: all passed\n", bad);
     return bad != 0;

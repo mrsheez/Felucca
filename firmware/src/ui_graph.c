@@ -604,8 +604,8 @@ static struct {
 static uint32_t sample_wave_zone(const track_t *t)
 {
     uint32_t si = (uint32_t)t->p[P_E0] % SMP_NALL, i, zi = 0xFFFFu;
-    if (si < SMP_NSETS) {
-        const smp_set_t *set = &SMP_SETS[si];
+    const smp_set_t *set = smp_builtin(si);
+    if (set) {
         for (i = 0; i < set->nz; i++)
             if (last_note >= SMP_ZONES[set->z0 + i].lo && last_note <= SMP_ZONES[set->z0 + i].hi) zi = set->z0 + i;
         if (zi == 0xFFFFu && set->nz) zi = set->z0;
@@ -1037,8 +1037,10 @@ static uint32_t graph_signature(void)
             h = (h ^ chord_last[song.sel].note[i]) * 16777619u;
         h ^= (uint32_t)t->engine * 389u;             /* (MONO and kits follow the sounding engine) */
     }
+    if (pg->graph == GR_BANK)                        /* EDDA OS: the song picked, the one loaded, playing */
+        h ^= (ui.bpick + 1u) * 40503u + arv_cur * 7919u + (uint32_t)(song.playing || chain_busy()) * 104729u;
     if (pg->graph == GR_SONG) {
-        h ^= ui.song_row * 40503u + chain_config.count * 7919u;
+        h ^= ui.song_row * 40503u + chain_config.count * 7919u + arv_cur * 2654435761u;
         for (i = 0; i < CHAIN_ROWS; i++)
             h = (h ^ (chain_config.row[i].slot + 4u * chain_config.row[i].repeat)) * 16777619u;
         h ^= chain.running ? (chain.row + 1u) * 104729u + chain.remaining * 1299709u : 0u;
@@ -1252,6 +1254,35 @@ static void graph_pats(void)
         char tag[4], nm[13];
         pat_label(k, tag, nm);
         list_row(LIST_Y(row), k == cur, tag, T_MID, nm, T_TEXT, 232);
+    }
+}
+/* EDDA OS: SAVE > ARRIVAL, THE ARRIVAL's songs around the one picked: the number, the title, the tempo and key at the
+ * right ("116 8A"); the song the music was loaded from in the accent (playing: the arrow before it) */
+static void graph_bank(void)
+{
+    uint32_t n = arv_count(), cur = ui.bpick < n ? ui.bpick : n - 1u;
+    int32_t row, first = clamp((int32_t)cur - 3, 0, (int32_t)n > 7 ? (int32_t)n - 7 : 0);
+    for (row = 0; row < 7 && (uint32_t)(first + row) < n; row++) {
+        uint32_t k = (uint32_t)(first + row);
+        int32_t y = LIST_Y(row);
+        int sel = k == cur, here = arv_cur == k + 1u;
+        uint16_t bg = sel ? T_THEME : T_SURF;
+        char b[4], nm[20], info[8];
+        arv_label(k, nm, sizeof nm, info);
+        if (sel)
+            cv_rrect(6, y, 228, 16, 4, T_THEME, T_SURF);
+        if (here && (song.playing || chain_busy()))
+            cv_icon_on(9, y + 2, 12, ICON_X_RIGHT, sel ? T_INK : T_ACCENT, bg);
+        b[0] = (char)('0' + (k + 1u) / 10u);
+        b[1] = (char)('0' + (k + 1u) % 10u);
+        b[2] = 0;
+        GFX_HOOK_ALIGN(0, y, 0, y + 16, AL_V, "list row text centred up/down");
+        cv_text_on(24, y + CAP_IN(S, 16), &AF_S, b, sel ? T_INK : here ? T_ACCENT : T_MID, bg);
+        GFX_HOOK_ALIGN(0, y, 0, y + 16, AL_V, "list row text centred up/down");
+        cv_text_r(226, y + CAP_IN(S, 16), &AF_S, info, sel ? T_INK : T_MID, bg);
+        GFX_HOOK_ALIGN(0, y, 0, y + 16, AL_V, "list row text centred up/down");
+        cv_free_text(54, y + CAP_IN(S, 16), &AF_S, nm, sel ? T_INK : here ? T_ACCENT : T_TEXT, bg,
+                     226 - text_w(&AF_S, info) - 8 - 54);
     }
 }
 /* SEQ > AUTO LIST (ui_events.c): the track's records around the one selected, a row each: the kind (LOCK in the
@@ -1570,12 +1601,19 @@ static void graph_song(void)
         b[0] = 'x'; fmt_int(b + 1, chain_config.row[i].repeat);
         cv_text_on(82, y + 1, &AF_S, b, col, bg);
         if (i + 1u < chain_config.count) cv_text_on(122, y + 1, &AF_S, ">", dim, bg);
-        if (!graph_project_used(chain_config.row[i].slot)) cv_text_on(142, y + 1, &AF_S, "NOT SAVED", dim, bg);
-        else if (chain.running && i == chain.row) {
-            fmt_int(b, chain.remaining); str_cpy(b + str_len(b), " LEFT", 8);
-            cv_text_on(142, y + 1, &AF_S, b, sel ? T_INK : T_THEME, bg);
-        } else if (graph_project_name(chain_config.row[i].slot)[0]) {   /* the project's name, cut to fit */
-            cv_free_text(142, y + 1, &AF_S, graph_project_name(chain_config.row[i].slot), sel ? T_INK : T_MID, bg, 232 - 142);
+        {   /* EDDA OS: after a SAVE > ARRIVAL load the rows are the song's sections, named (a row past them: silent) */
+            const char *sec = arv_cur ? arv_sec_name(chain_config.row[i].slot) : "";
+            if (arv_cur ? !sec[0] : !graph_project_used(chain_config.row[i].slot))
+                cv_text_on(142, y + 1, &AF_S, arv_cur ? "SILENT" : "NOT SAVED", dim, bg);
+            else if (chain.running && i == chain.row) {
+                fmt_int(b, chain.remaining); str_cpy(b + str_len(b), " LEFT", 8);
+                cv_text_on(142, y + 1, &AF_S, b, sel ? T_INK : T_THEME, bg);
+            } else if (arv_cur) {
+                cv_free_text(142, y + 1, &AF_S, sec, sel ? T_INK : T_MID, bg, 232 - 142);
+            } else if (graph_project_name(chain_config.row[i].slot)[0]) {   /* the project's name, cut to fit */
+                cv_free_text(142, y + 1, &AF_S, graph_project_name(chain_config.row[i].slot), sel ? T_INK : T_MID, bg,
+                             232 - 142);
+            }
         }
     }
 }
@@ -1669,6 +1707,10 @@ static void draw_graph(void)
         case GR_PATS:
             cv_oy = 0;
             graph_pats();
+            break;
+        case GR_BANK:
+            cv_oy = 0;
+            graph_bank();
             break;
         case GR_EVENTS:
             cv_oy = 0;

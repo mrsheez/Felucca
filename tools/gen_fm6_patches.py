@@ -171,6 +171,17 @@ PATCHES = [
         op(ol=0),
         op(ol=0)],
         fb=0, pr=(96, 99, 99, 99), pl=(57, 50, 50, 50), lpms=0)),
+    # EDDA EP: THE ARRIVAL's electric piano (arrival_songs.py rhodes): TINE EP's tines and bark with a short release
+    # (the key let go, the note gone in about a third of a second: chords struck again and again leave no pile of
+    # tails in the shared voice budget) and a gentler tremolo
+    ("EDDA EP", voice("EDDA EP", 5, [
+        op(r=(96, 25, 25, 80), l=(99, 75, 0, 0), ol=98, kvs=2, rs=3),
+        op(r=(95, 50, 35, 82), l=(99, 75, 0, 0), ol=60, kvs=7, rs=3),
+        op(r=(95, 20, 20, 78), l=(99, 95, 0, 0), ol=90, kvs=2, det=8, rs=2),
+        op(r=(97, 62, 40, 80), l=(99, 60, 0, 0), ol=66, fc=14, kvs=6, rs=3),
+        op(r=(95, 30, 20, 78), l=(99, 90, 0, 0), ol=78, det=6, kvs=1),
+        op(r=(95, 40, 30, 80), l=(99, 80, 0, 0), ol=52, kvs=3)],
+        fb=3, lfs=34, lfd=22, lfw=4, lpms=2)),
 ]
 
 

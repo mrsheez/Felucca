@@ -58,17 +58,44 @@
 #define SMP_PRIMED (1u << 16)   /* ph[2]: the interpolator primed */
 
 enum { DK_STD, DK_HAND, DK_CYM, DK_HCYM, DK_80, DK_10, DK_66, DK_55, DK_77,
-       DK_USR1, DK_USR2, DK_USR3, DK_USR4, DK_COUNT };   /* (stored values; USR1..4: EDDA OS's user kits) */
+       DK_USR1, DK_USR2, DK_USR3, DK_USR4, DK_EDDA, DK_COUNT };   /* (stored values; USR1..4: EDDA OS's user kits;
+                                                                * EDDA: THE ARRIVAL's kit, built in) */
 #define DK_USR DK_USR1
 /* the kit a stored KIT value plays: HAND CYM H+CYM (retired after 1.0.4) -> 66 (a conga on TOM), 10 (a cymbal on
  * BELL), 77 (claves on RIM, a cymbal on BELL) */
 static const uint8_t DK_PLAYS[DK_COUNT] = {DK_STD, DK_66, DK_10, DK_77, DK_80, DK_10, DK_66, DK_55, DK_77,
-                                           DK_USR1, DK_USR2, DK_USR3, DK_USR4};
+                                           DK_USR1, DK_USR2, DK_USR3, DK_USR4, DK_EDDA};
 static uint32_t drum_kit_plays(int32_t v) { return DK_PLAYS[clamp(v, 0, DK_COUNT - 1)]; }
-static uint32_t drum_user_kit(const int16_t *p)      /* the user slot of the KIT, SMP_USER_SLOTS for a synth kit */
+static uint32_t drum_user_kit(const int16_t *p)      /* the user slot of the KIT, SMP_USER_SLOTS for any other kit */
 {
     uint32_t kit = drum_kit_plays(p[P_E0]);
-    return kit >= DK_USR ? kit - DK_USR : SMP_USER_SLOTS;
+    return kit >= DK_USR && kit <= DK_USR4 ? kit - DK_USR : SMP_USER_SLOTS;
+}
+/* EDDA OS: the sampled kits, one way: the source of the KIT's pads, 0..3 a user slot, KIT_SRC_EDDA the built-in
+ * EDDA set (SMP_XSETS[SMP_XSET_KIT]: THE ARRIVAL's kit), KIT_SRC_NONE a synth kit */
+#define KIT_SRC_EDDA SMP_USER_SLOTS
+#define KIT_SRC_NONE (SMP_USER_SLOTS + 1u)
+static uint32_t drum_smp_kit(const int16_t *p)
+{
+    uint32_t kit = drum_kit_plays(p[P_E0]);
+    if (kit == DK_EDDA)
+        return SMP_XSET_KIT >= 0 ? KIT_SRC_EDDA : KIT_SRC_NONE;   /* (no EDDA sounds in this build: the synth kit) */
+    return kit >= DK_USR ? kit - DK_USR : KIT_SRC_NONE;
+}
+/* the pad of a sampled kit for a note: its zone (smp_zone), 0xFFFF none */
+static uint32_t kit_zone(uint32_t src, uint32_t note)
+{
+    if (src == KIT_SRC_EDDA) {
+#if SMP_NXSETS
+        const smp_set_t *set = &SMP_XSETS[SMP_XSET_KIT];
+        uint32_t i;
+        for (i = 0; i < set->nz; i++)
+            if (note >= SMP_ZONES[set->z0 + i].lo && note <= SMP_ZONES[set->z0 + i].hi)
+                return set->z0 + i;
+#endif
+        return 0xFFFFu;
+    }
+    return smp_user_zone(src, note);
 }
 /* the model kits' pieces where a lane plays another than its own (the lane's name): 1 TOM -> CONGA, 2 RIM -> CLAVE,
  * 4 BELL -> CYM */
@@ -91,7 +118,8 @@ typedef struct {
 static drum_lane_t drum_kit[NPART][DV_NLANE] __attribute__((section(".pool")));
 
 /* 1..3 named as the kit they play: aliases, never shown or offered (EDITOR_PROTOCOL.md: retired values) */
-static const char *const N_DRUM_KIT[] = {"STD", "66", "10", "77", "80", "10", "66", "55", "77", "USR1", "USR2", "USR3", "USR4"};
+static const char *const N_DRUM_KIT[] = {"STD", "66", "10", "77", "80", "10", "66", "55", "77", "USR1", "USR2", "USR3", "USR4",
+                                         "EDDA"};
 static const char *const N_DRUM_KICK[] = {"PUNCH", "ROUND"};
 
 /* General MIDI notes 35..81 -> the drum (DVT_*; DVT_PUNCH: the kick KICK picks) and semitones from its
@@ -114,7 +142,7 @@ static uint32_t drum_gm(const int16_t *p, uint32_t note, int32_t *st)
     uint32_t kit = drum_kit_plays(p[P_E0]);           /* STD, the model kits (a user kit: as STD) */
     *st = DRUM_GM[n - 35u][1];
     if (kit >= DK_80 && kit < DK_USR)
-        return DV_KTYPE(kit - DK_80 + 1u, DV_TYPE_LANE[t]);
+        return DV_KTYPE(kit - DK_80 + 1u, DV_TYPE_LANE[t]);   /* (a sampled kit plays as STD where it has no pad) */
     return t == DVT_PUNCH && p[P_E6] > 0 ? DVT_ROUND : t;
 }
 
@@ -224,7 +252,7 @@ static voice_t *drum_reuse(track_t *t, uint32_t note)
     drum_lane_t *K = drum_kit_of(t);
     uint32_t lane = drum_lane(note), owner = K ? K[lane].owner : 0;
     voice_t *v;
-    if (drum_user_kit(t->p) < SMP_USER_SLOTS)            /* a user kit: a pad's voice is its note's (voice_alloc) */
+    if (drum_smp_kit(t->p) != KIT_SRC_NONE)             /* a sampled kit: a pad's voice is its note's (voice_alloc) */
         return 0;
     if (!owner || owner > NVOICE)
         return 0;
@@ -237,12 +265,12 @@ static voice_t *drum_reuse(track_t *t, uint32_t note)
 static void kit_note_on(track_t *t, voice_t *v, uint32_t slot)
 {
     const int16_t *p = t->p;
-    uint32_t lane = drum_lane(v->note), zi = smp_user_zone(slot, v->note), i, skip = 0, fade = 0;
+    uint32_t lane = drum_lane(v->note), zi = kit_zone(slot, v->note), i, skip = 0, fade = 0;
     int32_t st = 0, snap = p[P_E4] - 64;
     if (zi == 0xFFFFu) {                                 /* no pad of its own: its lane's pad, pitched the GM way */
         int32_t s2;
         drum_gm(p, v->note, &s2);
-        zi = smp_user_zone(slot, DRUM_LANE_NOTE[lane]);
+        zi = kit_zone(slot, DRUM_LANE_NOTE[lane]);
         st = s2;
     }
     if (snap > 0)
@@ -252,7 +280,7 @@ static void kit_note_on(track_t *t, voice_t *v, uint32_t slot)
     v->s[0] = (int32_t)lane;
     v->s[1] = v->s[2] = v->s[3] = 0;
     v->s[4] = fade ? 0 : 1 << 24;
-    v->s[5] = (int32_t)(zi == 0xFFFFu ? 0x8000u | slot << 5 : zi);
+    v->s[5] = (int32_t)(zi == 0xFFFFu ? 0x8000u | (slot & 3u) << 5 : zi);
     v->s[6] = zi == 0xFFFFu ? 2 : 1;                     /* an empty pad: a silent hit that ends at once */
     v->s[7] = 0;
     v->ph[0] = 0;
@@ -372,9 +400,10 @@ static void kit_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
 static void drum_note_on(track_t *t, voice_t *v)
 {
     drum_lane_t *K = drum_kit_of(t), *L;
-    uint32_t i = (uint32_t)(v - t->v), role, lane, uk = drum_user_kit(t->p);
+    uint32_t i = (uint32_t)(v - t->v), role, lane, uk = drum_smp_kit(t->p);
     int32_t st;
-    if (uk < SMP_USER_SLOTS) {                           /* EDDA OS: a user kit (the lane table untouched) */
+    if (uk != KIT_SRC_NONE) {                            /* EDDA OS: a sampled kit, a user slot's or the EDDA set's
+                                                          * (the lane table untouched) */
         kit_note_on(t, v, uk);
         return;
     }
