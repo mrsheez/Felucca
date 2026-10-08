@@ -49,6 +49,9 @@ PALETTES = [
     ("NIGHT",  (0, 0, 0),       (0, 24, 10),     (150, 230, 170), (56, 220, 100),  (255, 255, 255)),
     # 1.0.2: black and white (the derived tokens are set, not blended: bw()); the old MONO is GREY (id 0)
     ("MONO",   (0, 0, 0),       (0, 0, 0),       (255, 255, 255), (255, 255, 255), (255, 255, 255)),
+    # EDDA OS: the Envoy's colours. Deep indigo ground, royal-blue surfaces, the golden-orange of the
+    # "Blue Golden Star" ankara as the theme colour, electric blue (the Blue Hand) as the accent
+    ("EDDA",   (8, 14, 40),      (22, 34, 86),    (238, 242, 255), (242, 169, 0),   (96, 170, 255)),
 ]
 BW = "MONO"
 BW_GREY = (82, 82, 82)             # MONO's one mid grey (RGB565 10/20/10): DIM LINE RAISE LANE

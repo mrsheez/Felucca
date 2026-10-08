@@ -7,21 +7,24 @@
  * USB LEVEL; 1.1: CLICK, CLICK LEVEL, COUNT-IN), USB SERIAL, RESTORE LAST (1.2), then CALIBRATION (the setup screen: HARDWARE CALIBRATION) and ABOUT, the two rows with no
  * value (MI_VALUES: the rows before them hold one). 1.0.5: in four tabs (MI_TAB). */
 enum { MI_COLOR, MI_STYLE, MI_LARGE, MI_ANIM, MI_LEDS, MI_SCROFF, MI_HOLD, MI_ACCEL, MI_LATCH, MI_BPMLOCK, MI_SCLLED, MI_LOWCUT, MI_USB,
-       MI_CLICK, MI_CLKLVL, MI_COUNTIN, MI_SERIAL, MI_RESTORE, MI_PANEL, MI_ABOUT, MI_COUNT };   /* (1.1: the metronome's rows in
+       MI_CLICK, MI_CLKLVL, MI_COUNTIN,
+       MI_KEY, MI_CUES, MI_ACT, MI_RUNLEN, MI_REVEAL,   /* EDDA OS (edda.c): the key, the show cues, the act, the run, REVEAL */
+       MI_SERIAL, MI_RESTORE, MI_PANEL, MI_ABOUT, MI_COUNT };   /* (1.1: the metronome's rows in
                                                                                              * AUDIO; 1.2: RESTORE LAST in SYSTEM, SCALE LEDS
                                                                                              * in CONTROL) */
 #define MI_VALUES MI_PANEL
 static const char *const MI_NAME[MI_COUNT] = {"COLOR", "STYLE", "LARGE", "ANIM", "LEDS", "SCREEN OFF", "HOLD", "KNOB ACCEL", "FX LATCH", "BPM LOCK",
                                               "SCALE LEDS",
-                                              "SPEAKER EQ", "USB LEVEL", "CLICK", "CLICK LEVEL", "COUNT-IN", "USB SERIAL",
-                                              "RESTORE LAST", "CALIBRATION", "ABOUT"};
+                                              "SPEAKER EQ", "USB LEVEL", "CLICK", "CLICK LEVEL", "COUNT-IN",
+                                              "KEY", "SHOW CUES", "ACT", "RUN", "REVEAL",
+                                              "USB SERIAL", "RESTORE LAST", "CALIBRATION", "ABOUT"};
 /* 1.0.5: the MENU's tabs (ui_menu.c: ALGORITHM steps between them, PRESETS among one tab's rows; the editor gets a
  * row's tab after its MENU_DESC reply). A tab's rows follow each other in MI order (tests/ui_test.c checks it); at
  * most MTAB_ROWS each (the page does not scroll: ui_menu.c fits them). A new row joins a tab here, a new tab is
  * appended (its index is what the editor is told) */
-enum { MTAB_DISPLAY, MTAB_CONTROL, MTAB_AUDIO, MTAB_SYSTEM, MTAB_COUNT };
+enum { MTAB_DISPLAY, MTAB_CONTROL, MTAB_AUDIO, MTAB_EDDA, MTAB_SYSTEM, MTAB_COUNT };
 #define MTAB_ROWS 6u
-static const char *const MTAB_NAME[MTAB_COUNT] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM"};
+static const char *const MTAB_NAME[MTAB_COUNT] = {"DISPLAY", "CONTROL", "AUDIO", "EDDA", "SYSTEM"};
 static const uint8_t MI_TAB[MI_COUNT] = {
     MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY,   /* COLOR STYLE LARGE ANIM LEDS */
     MTAB_DISPLAY,                                                           /* SCREEN OFF (1.1.5) */
@@ -29,6 +32,7 @@ static const uint8_t MI_TAB[MI_COUNT] = {
     MTAB_CONTROL,                                                           /* SCALE LEDS (1.2) */
     MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO,             /* SPEAKER EQ, USB LEVEL, CLICK, CLICK LEVEL,
                                                                              * COUNT-IN */
+    MTAB_EDDA, MTAB_EDDA, MTAB_EDDA, MTAB_EDDA, MTAB_EDDA,                  /* KEY, SHOW CUES, ACT, RUN, REVEAL (EDDA OS) */
     MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM,                     /* USB SERIAL, RESTORE LAST, CALIBRATION,
                                                                              * ABOUT */
 };
@@ -107,10 +111,12 @@ static const menu_flag_t *menu_flag(uint32_t row)
 }
 
 /* a row's value as 0..menu_n(row) - 1 in the order the menu steps it (LEDS: OFF DIM LO DIM HI INV, LEDS_MENU) */
+static const char *const RUN_N[2] = {"SHORT", "LONG"};   /* EDDA: the run's length (edda.c edda_phase_beats) */
 static uint32_t menu_n(uint32_t row)
 {
     return row == MI_COLOR ? NPALETTES : row == MI_LOWCUT || (row >= MI_CLICK && row <= MI_COUNTIN) ? 3u :
-           row == MI_HOLD ? 4u : row == MI_LEDS ? LEDS_COUNT : row == MI_SCROFF ? NELEM(SCROFF_N) : 2u;
+           row == MI_HOLD ? 4u : row == MI_LEDS ? LEDS_COUNT : row == MI_SCROFF ? NELEM(SCROFF_N) :
+           row == MI_KEY ? 25u : row == MI_ACT ? ED_ACTS : 2u;
 }
 static uint32_t menu_get(uint32_t row)
 {
@@ -129,6 +135,11 @@ static uint32_t menu_get(uint32_t row)
         while (i + 1u < LEDS_COUNT && LEDS_MENU[i] != settings_leds)
             i++;
         return i;
+    case MI_KEY: return edda.camelot % 25u;              /* 0 OFF, 1..24 */
+    case MI_CUES: return edda.cues != 0;
+    case MI_ACT: return (edda.act ? edda.act : 1u) - 1u;
+    case MI_RUNLEN: return edda.run_len != 0;
+    case MI_REVEAL: return edda.reveal != 0;
     }
     return 0;
 }
@@ -147,6 +158,18 @@ static const char *menu_vname(uint32_t row, uint32_t v)
     case MI_COUNTIN: return COUNTIN_N[v % 3u];
     case MI_SCROFF: return SCROFF_N[v % NELEM(SCROFF_N)];
     case MI_LEDS: return LEDS_NAME[LEDS_MENU[v % LEDS_COUNT]];
+    case MI_KEY: {
+        static char kn[4];
+        edda_cam_name(v % 25u, kn);
+        return kn;
+    }
+    case MI_CUES: return N_ONOFF[v & 1u];
+    case MI_ACT: {
+        static const char *const A[ED_ACTS] = {"1 BULB", "2 BULBS", "3 BULBS", "4 BULBS", "5 BULBS"};
+        return A[v % ED_ACTS];
+    }
+    case MI_RUNLEN: return RUN_N[v & 1u];
+    case MI_REVEAL: return N_ONOFF[v & 1u];
     }
     return "";
 }
@@ -176,6 +199,11 @@ static void menu_put(uint32_t row, uint32_t v)
     case MI_SCROFF: scr_put(v); break;                 /* (read every frame: ui.c scr_frame) */
     case MI_LEDS: settings_leds = LEDS_MENU[v]; break;
     case MI_CLICK: case MI_CLKLVL: case MI_COUNTIN: rp_put(row - MI_CLICK, v); break;   /* (at once: click.c, seq.c) */
+    case MI_KEY: edda_camelot_apply(v % 25u); edda_cue_cc(ED_CUE_CC_KEY, edda.camelot); break;
+    case MI_CUES: edda.cues = (uint8_t)(v & 1u); break;
+    case MI_ACT: edda_act_set(v + 1u); break;
+    case MI_RUNLEN: edda.run_len = (uint8_t)(v & 1u); break;
+    case MI_REVEAL: edda.reveal = (uint8_t)(v & 1u); break;
     }
 }
 /* the menu's step, any of KNOB 1..4 or OCT+ (s > 0) / OCT- (s < 0): the next / previous value, stopping at the ends;

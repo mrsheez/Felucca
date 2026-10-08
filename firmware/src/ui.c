@@ -124,7 +124,7 @@ static struct {
     uint8_t hot_col, hot_t;      /* column whose knob was just turned (drawn white) */
     uint8_t menu;                /* 0 off, 1 list, 2 about + credits (HOME held) */
     uint8_t menu_sel;            /* MENU: the row (menu_items.c MI_*; its tab MI_TAB), kept while the device runs */
-    uint8_t menu_row[4];         /* MENU: the row last picked in each tab, from its first (ALGORITHM comes back to it) */
+    uint8_t menu_row[5];         /* MENU: the row last picked in each tab, from its first (ALGORITHM comes back to it) */
     uint16_t menu_scroll;        /* continuous ABOUT + CREDITS position, pixels */
     uint32_t menu_sig, home_t0;  /* HOME press time (btn_hold) */
     uint8_t force;               /* full redraw pending */
@@ -903,17 +903,26 @@ static void track_defaults_steps(track_t *t)
  * a user preset's pattern brings its stored LEN (at most 16), DIV, SWING and GATE too. The notes are
  * loaded as they are: the patterns are written for the register of their kind of sound, DRUM and
  * SLICE patterns are drum and slice numbers, and SCL TRANS / OCT transpose what plays */
-static uint32_t pat_count(void) { return NPATTERNS + up_pat_count(); }
+/* EDDA OS: the EDDA bank follows the factory patterns ("E01".."E16", edda.c EDDA_PAT), the user presets after it */
+#define NPAT_FIXED (NPATTERNS + EDDA_NPAT)
+static uint32_t pat_count(void) { return NPAT_FIXED + up_pat_count(); }
 
-static void pat_label(uint32_t n, char *tag, char *name)   /* tag: 4 bytes ("01", "U07"), name: 13 */
+static void pat_label(uint32_t n, char *tag, char *name)   /* tag: 4 bytes ("01", "E03", "U07"), name: 13 */
 {
     if (n < NPATTERNS) {
         tag[0] = (char)('0' + (n + 1u) / 10u);
         tag[1] = (char)('0' + (n + 1u) % 10u);
         tag[2] = 0;
         str_cpy(name, PATTERNS[n].name, 13);
+    } else if (n < NPAT_FIXED) {
+        uint32_t e = n - NPATTERNS + 1u;
+        tag[0] = 'E';
+        tag[1] = (char)('0' + e / 10u);
+        tag[2] = (char)('0' + e % 10u);
+        tag[3] = 0;
+        str_cpy(name, EDDA_PAT[n - NPATTERNS].name, 13);
     } else {
-        uint32_t k = up_pat_nth(n - NPATTERNS);
+        uint32_t k = up_pat_nth(n - NPAT_FIXED);
         up_slot_label(tag, k);
         up_name(k, name);
     }
@@ -924,8 +933,10 @@ static void pat_load(track_t *t, uint32_t n)
     load_begin(t, UNDO_PAT);
     if (n < NPATTERNS)
         load_pat16(t, PATTERNS[n].note, PATTERNS[n].flags);
+    else if (n < NPAT_FIXED)
+        edda_pat_fill(t, n - NPATTERNS);
     else
-        up_pat_load(t, up_pat_nth(n - NPATTERNS));
+        up_pat_load(t, up_pat_nth(n - NPAT_FIXED));
     pat_sig[trk_index(t)] = steps_sig(t);
     pat_last[trk_index(t)] = (uint8_t)(n + 1u);
     load_end(t);
@@ -1199,7 +1210,7 @@ static int32_t preset_pat_hint(void)
     const engine_t *e = ENGINES[TSEL->eng_req % NENGINES];
     uint32_t u = user_of(TSEL);
     if (u < UP_SLOTS)
-        return up_has_pat(u) ? (int32_t)(NPATTERNS + up_pat_rank(u)) : -1;
+        return up_has_pat(u) ? (int32_t)(NPAT_FIXED + up_pat_rank(u)) : -1;   /* (after the EDDA bank) */
     if (!e->npresets)
         return -1;
     u = e->presets[TSEL->preset % e->npresets].pat;

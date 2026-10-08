@@ -217,6 +217,7 @@ enum { ST_NOTE, ST_TIE, ST_REST };
 #define SF_SLIDE 2u
 #define SF_RATCH_SH 3u                   /* RATCH: the hits of a NOTE step - 1 (0..3: x1..x4, seq.c seq_ratchet); */
 #define SF_RATCH (3u << SF_RATCH_SH)     /* bits 3..4, so a user preset's pattern (flag 4 = tie) carries it too */
+#define SF_FILL 32u                      /* EDDA OS: a fill-only step: it plays while FILL is on (GLO + A4), else rests */
 #define NLANE 8                  /* drum lanes of a step (the DRUM engine's: eng_drum.c DRUM_LANE_NOTE) */
 typedef struct {                 /* acid-style step: up to 4 notes (POLY), time, accent, slide; drum hits */
     uint8_t note[4];

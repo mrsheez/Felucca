@@ -44,6 +44,7 @@ static volatile uint8_t transport_req;   /* 1 start, 2 stop, 3 restart (from the
 static volatile uint8_t panic_req;       /* bit per track: release every sounding note (preset / engine change) */
 static volatile uint8_t midi_hint;       /* MIDI IN played track n - 1, which is not the selected one (the UI says so) */
 
+#include "edda.h"               /* EDDA OS (edda.c, at the end of this file): the run's lane mask, the beat hook */
 static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
 
 static uint32_t trk_midi_ch(uint32_t i) { return i % NTRK; }   /* MIDI channel 0..15 of track i (keys -> MIDI out) */
@@ -729,6 +730,10 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
             seq_release(t);
             return;
         }
+        if ((s->flags & SF_FILL) && !edda.fill) {      /* EDDA OS: a fill-only step rests until FILL (GLO + A4) */
+            seq_release(t);
+            return;
+        }
     }
     if (s->time == ST_TIE) {
         if (t->seq_n) {
@@ -761,8 +766,9 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         m++;
     }
     for (i = 0; i < NLANE; i++)
-        if ((s->hit >> i) & 1u) {
-            nn[m] = DRUM_LANE_NOTE[i];
+        if (((s->hit >> i) & 1u) && !(((edda_lane_mute | edda_hole_mute) >> i) & 1u)) {   /* (EDDA: the run's and the
+                                                                                        * hole's lanes rest) */
+            nn[m] = DRUM_LANE_NOTE[edda_lane_map[i] & 7u];                 /* (REVEAL: the backbeat's lane moves) */
             vv[m] = (uint8_t)((s->acc >> i) & 1u ? 127u : vel);
             sk |= ((skip >> (8u + i)) & 1u) << m;
             m++;
@@ -1035,6 +1041,8 @@ static void events_block(uint32_t n)
                 seq_n = midi_clock_advance(fm1_ms);
         }
     }
+    edda_block(clock_mode ? seq_n : n);               /* EDDA OS: bars, the run, the stop, the cues; before the steps,
+                                                       * so a phase that starts on this one holds for its first step */
     chain_tick(seq_n);
     for (i = 0; i < NTRK; i++)
         seq_tick(&trk[i], seq_n);
@@ -1053,3 +1061,5 @@ static void events_block(uint32_t n)
     if (song.playing)
         song.tick++;
 }
+
+#include "edda.c"               /* EDDA OS: the Mr. Sheez performance layer (uses this file's statics) */

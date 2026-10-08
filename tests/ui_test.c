@@ -150,6 +150,7 @@ static void ui_power_on(void)
     memset(up_bank, 0, sizeof up_bank);
     for (i = 0; i < G_COUNT; i++)
         song.g[i] = GP[i].def;
+    edda_defaults();                                   /* EDDA OS */
     undo_depth++;
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
@@ -569,7 +570,7 @@ static int test_patterns(void)
     t->p[P_SSWING] = 0;
     up_store(6, "NOPAT");
     memset(up_rec(6)->note, 0, sizeof up_rec(6)->note);   /* .. a record with no pattern: not listed */
-    bad += check("user presets with a pattern are listed after the factory ones", pat_count() == NPATTERNS + 1u);
+    bad += check("user presets with a pattern are listed after the factory ones", pat_count() == NPAT_FIXED + 1u);   /* (EDDA bank between) */
     track_defaults_steps(t);
     turn(EN_K1, 20);                              /* (to the end of the list) */
     press(B_OCTUP);
@@ -1319,6 +1320,7 @@ static int test_display_preferences(void)
                  settings.palette == 7 && (turn(EN_K1, 1), settings.palette == 8u) && T_BG == 0u &&
                  str_eq(UI_PALETTES[8].name, "NIGHT") && (turn(EN_K1, 1), settings.palette == UI_BW_INDEX) &&
                  str_eq(UI_PALETTES[UI_BW_INDEX].name, "MONO") && T_BG == 0u && T_TEXT == 0xFFFFu &&
+                 (turn(EN_K1, 1), settings.palette == UI_BW_INDEX + 1u) && str_eq(UI_PALETTES[UI_BW_INDEX + 1u].name, "EDDA") &&
                  (turn(EN_K1, 1), settings.palette == UI_GREY_INDEX) && str_eq(UI_PALETTES[UI_GREY_INDEX].name, "GREY"));
     settings.lowcut = 2;
     ui.menu_sel = MI_LOWCUT;
@@ -1382,9 +1384,10 @@ static int test_menu_tabs(void)
             }
     }
     ui_prefs = 0;
-    bad += check("MENU tabs: DISPLAY CONTROL AUDIO SYSTEM (6 5 5 4 rows), 1..6 each in a run, fit the page; tab gaps constant (S, LARGE)",
-                 ok && MTAB_COUNT == 4u && str_eq(MTAB_NAME[0], "DISPLAY") && mtab_rows(MTAB_DISPLAY) == 6u &&
-                 mtab_rows(MTAB_CONTROL) == 5u && mtab_rows(MTAB_AUDIO) == 5u && mtab_rows(MTAB_SYSTEM) == 4u);
+    bad += check("MENU tabs: DISPLAY CONTROL AUDIO EDDA SYSTEM (6 5 5 5 4 rows), 1..6 each in a run, fit the page; tab gaps constant (S, LARGE)",
+                 ok && MTAB_COUNT == 5u && str_eq(MTAB_NAME[0], "DISPLAY") && mtab_rows(MTAB_DISPLAY) == 6u &&
+                 mtab_rows(MTAB_CONTROL) == 5u && mtab_rows(MTAB_AUDIO) == 5u && mtab_rows(MTAB_SYSTEM) == 4u &&
+                 mtab_rows(MTAB_EDDA) == 5u && str_eq(MTAB_NAME[MTAB_EDDA], "EDDA"));
 
     ui_power_on();
     hold(B_HOME);
@@ -1481,7 +1484,7 @@ static int test_menu_tabs(void)
     hold(B_HOME);
     bad += check("MENU: HOME pressed closes it, held too (no reopen); held opens it again at the same tab and row",
                  ok && ui.menu == 1 && ui.menu_sel == MI_USB);
-    turn(EN_ALGO, 1); turn(EN_PRESET, -1);            /* SYSTEM: ABOUT */
+    turn(EN_ALGO, 1); turn(EN_ALGO, 1); turn(EN_PRESET, -1);   /* SYSTEM (past EDDA): ABOUT */
     ok = ui.menu_sel == MI_ABOUT;
     frame();
     ok &= oct_leds() == OCT_BREATH;                     /* (OCT+ opens, OCT- does nothing: dark) */
@@ -3241,7 +3244,8 @@ static int test_quick_layers(void)
     ok = trk[1].p[P_MUTE] == 1 && ui.layer == LAYER_GLO && !gates() && mo_w == mo;
     a = leds_at(0); b2 = leds_at(250);
     ok &= ((a & b2) >> black(0)) & 1u && !(((a | b2) >> black(1)) & 1u);           /* T1 sounding lit, T2 muted dark */
-    ok &= ((a ^ b2) >> white(0)) & 1u && ((a ^ b2) >> white(7)) & 1u && !(((a | b2) >> white(5)) & 1u);
+    ok &= ((a ^ b2) >> white(0)) & 1u && ((a ^ b2) >> white(7)) & 1u && !(((a | b2) >> white(14)) & 1u);   /* (EDDA OS: D4..E5 breathe
+                                                                                                             * too; F5 is free) */
     key_up(black(1)); btn_up(B_GLO); frame();
     bad += check("GLO + black key 2: T2 MUTE latched (SET), silent, no MIDI; LEDs: sounding lit, muted dark", ok &&
                  trk[1].p[P_MUTE] == 1 && !ui.layer);

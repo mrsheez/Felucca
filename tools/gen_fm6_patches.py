@@ -118,6 +118,59 @@ PATCHES = [
         op(ol=0),
         op(ol=0)],
         fb=0, lpms=0)),
+    # ---- EDDA OS voice bank (F9..F13): the "future version" instruments of the EDDA project, every acoustic
+    # West African voice as an FM interpretation. Algorithm 5 pairs throughout (1<-2, 3<-4, 5<-6 fb).
+    # OGENE IRON: the Igbo double bell. Inharmonic modulator ratios (3.47, 1.41, 5.19) on three carriers that
+    # ring at different lengths; darker than GLASS BELL (lower modulator levels, the top pair quiet) for the
+    # dark-iron bell of the recorded tag. The pattern or the keys supply the bell's two pitches.
+    ("OGENE", voice("OGENE IRON", 5, [
+        op(r=(99, 36, 20, 38), l=(99, 70, 0, 0), ol=99, kvs=3),
+        op(r=(99, 48, 30, 40), l=(99, 60, 0, 0), ol=70, fc=3, ff=47, kvs=4),
+        op(r=(99, 42, 24, 40), l=(99, 65, 0, 0), ol=86, fc=1, ff=41, det=9, kvs=2),
+        op(r=(99, 55, 35, 45), l=(99, 55, 0, 0), ol=62, fc=4, ff=20, kvs=3),
+        op(r=(99, 62, 40, 48), l=(99, 40, 0, 0), ol=64, fc=5, ff=19, det=5),
+        op(r=(99, 70, 50, 50), l=(99, 40, 0, 0), ol=52, fc=7)],
+        fb=0, lpms=0)),
+    # OJA FLUTE: the Igbo notched flute. One sustaining pair (ratio 1, a little hollowness), an octave pair for
+    # air, and a quiet high pair that decays at once: the chiff of the breath. Slow-ish attack, triangle vibrato.
+    ("OJA", voice("OJA FLUTE", 5, [
+        op(r=(72, 40, 50, 58), l=(99, 92, 90, 0), ol=99, kvs=1),
+        op(r=(78, 45, 50, 58), l=(99, 85, 80, 0), ol=58, fc=1, kvs=3),
+        op(r=(68, 40, 50, 58), l=(99, 90, 88, 0), ol=70, fc=2, det=9, kvs=1),
+        op(r=(80, 50, 50, 58), l=(99, 70, 60, 0), ol=44, fc=2, kvs=2),
+        op(r=(99, 90, 99, 70), l=(99, 0, 0, 0), ol=46, fc=11, ff=30),
+        op(r=(99, 95, 99, 70), l=(99, 0, 0, 0), ol=60, fc=1, ff=50)],
+        fb=0, lfs=42, lfd=55, lpmd=2, lamd=0, lfw=0, lpms=3)),
+    # HILIFE GTR: the clean, bright highlife guitar line (palm-wine picking). Brighter and twangier than NYLON
+    # PICK: modulators at 1, 3 and 7 with a fast decay, carriers that ring a little longer, velocity on the tone.
+    ("HILIFE", voice("HILIFE GTR", 5, [
+        op(r=(99, 48, 30, 62), l=(99, 55, 0, 0), ol=99, kvs=2, rs=2),
+        op(r=(99, 74, 42, 62), l=(99, 35, 0, 0), ol=80, fc=3, kvs=5, rs=2),
+        op(r=(99, 56, 36, 62), l=(99, 40, 0, 0), ol=78, fc=1, det=9, kvs=2, rs=2),
+        op(r=(99, 82, 44, 62), l=(99, 25, 0, 0), ol=72, fc=7, kvs=4, rs=2),
+        op(r=(99, 60, 40, 62), l=(99, 30, 0, 0), ol=56, fc=2, det=6, kvs=1, rs=2),
+        op(r=(99, 85, 50, 62), l=(99, 20, 0, 0), ol=50, fc=1, kvs=3)],
+        fb=3, lpms=0)),
+    # TALK DRUM: the hourglass talking drum. A membrane (ratio 1 carrier, ratio 1 knock) whose pitch starts
+    # high and falls through the note (pitch EG), the "talk"; a slide between steps bends it the other way.
+    ("TALK", voice("TALK DRUM", 5, [
+        op(r=(99, 46, 30, 70), l=(99, 0, 0, 0), ol=99, kvs=2),
+        op(r=(99, 84, 60, 70), l=(99, 0, 0, 0), ol=72, fc=1, kvs=5),
+        op(r=(99, 54, 36, 70), l=(99, 0, 0, 0), ol=74, fc=1, ff=50, det=8, kvs=2),
+        op(r=(99, 90, 70, 70), l=(99, 0, 0, 0), ol=52, fc=3, kvs=4),
+        op(ol=0),
+        op(ol=0)],
+        fb=0, pr=(84, 80, 99, 99), pl=(72, 50, 50, 50), lpms=0)),
+    # LOG DRUM: the amapiano log drum bass: a tuned, woody sub (ratio 0.5 carrier with a knock modulator), a
+    # ratio 1 body that decays faster, and a small pitch drop at the start. Played MONO with slides.
+    ("LOG", voice("LOG DRUM", 5, [
+        op(r=(99, 44, 38, 64), l=(99, 0, 0, 0), ol=99, fc=0, kvs=1),
+        op(r=(99, 82, 99, 99), l=(99, 0, 0, 0), ol=64, fc=1, kvs=4),
+        op(r=(99, 58, 0, 70), l=(99, 0, 0, 0), ol=80, fc=1, det=8, kvs=2),
+        op(r=(99, 88, 99, 99), l=(99, 0, 0, 0), ol=42, fc=2, kvs=3),
+        op(ol=0),
+        op(ol=0)],
+        fb=0, pr=(96, 99, 99, 99), pl=(57, 50, 50, 50), lpms=0)),
 ]
 
 

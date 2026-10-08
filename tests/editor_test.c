@@ -77,6 +77,7 @@ static void reset(void)
     memset(&chain, 0, sizeof chain); chain_defaults(&chain_config);
     memset(&ed_w, 0, sizeof ed_w); memset(&ui, 0, sizeof ui);
     memset(&favorites, 0, sizeof favorites); memset(&settings, 0, sizeof settings); settings_init();
+    edda_defaults();                                   /* EDDA OS (as main.c felucca_init) */
     memset(proj_slot, 0, sizeof proj_slot); memset(up_bank, 0, sizeof up_bank);
     memset(&um, 0, sizeof um); memset(usr_nz, 0, sizeof usr_nz);
     host_progress = 1; host_erases = host_writes = host_wire_n = 0;
@@ -158,7 +159,7 @@ static int preferences(void)
         host_wire[n - 17] == 0 &&                        /* (no bank since 1.0.3) */
         host_wire[n - 16] == 0x53 && host_wire[n - 15] == 1 && host_wire[n - 14] == 3 &&
         host_wire[n - 13] == 0x50 && host_wire[n - 12] == 1 && host_wire[n - 11] == 3 &&   /* FM6 v2: no bank, preset patches */
-        host_wire[n - 10] == 0x4E && host_wire[n - 9] == 1 && host_wire[n - 8] == 18 &&   /* MENU settings: 18 items (1.2) */
+        host_wire[n - 10] == 0x4E && host_wire[n - 9] == 1 && host_wire[n - 8] == 23 &&   /* MENU settings: 23 items (1.2 + EDDA OS) */
         host_wire[n - 7] == 0x52 && host_wire[n - 6] == 1 && host_wire[n - 5] == 4 &&   /* RATCH */
         host_wire[n - 4] == 0x4C && host_wire[n - 3] == 1 && host_wire[n - 2] == 1);   /* 1.1 parameter locks */
     request(ED_UI_SET, a, 2);
@@ -725,7 +726,7 @@ static int usb_burst(void)
 }
 
 /* ---- MENU_DESC / MENU_SET (72, 73): the menu's settings over the editor ---- */
-typedef struct { uint32_t index, id, kind, nnames, tab, rest; int32_t value, min, max; char name[16], names[12][12], tabname[16]; } menu_item_t;
+typedef struct { uint32_t index, id, kind, nnames, tab, rest; int32_t value, min, max; char name[16], names[26][12], tabname[16]; } menu_item_t;
 static uint32_t menu_desc(uint32_t index, menu_item_t *it)   /* the reply's payload length; it parsed */
 {
     uint8_t a[1] = {(uint8_t)index};
@@ -738,7 +739,7 @@ static uint32_t menu_desc(uint32_t index, menu_item_t *it)   /* the reply's payl
     it->value = ed_rv(host_wire + 8); it->min = ed_rv(host_wire + 10); it->max = ed_rv(host_wire + 12);
     for (k = 0; p < n - 1u && host_wire[p] && k < 15u; ) it->name[k++] = (char)host_wire[p++];
     p++;
-    while (p < n - 1u && it->nnames < 12u && (int32_t)it->nnames < it->max - it->min + 1) {   /* (kind 0: max - min + 1) */
+    while (p < n - 1u && it->nnames < 26u && (int32_t)it->nnames < it->max - it->min + 1) {   /* (kind 0: max - min + 1) */
         for (k = 0; p < n - 1u && host_wire[p] && k < 11u; ) it->names[it->nnames][k++] = (char)host_wire[p++];
         p++; it->nnames++;
     }
@@ -759,16 +760,19 @@ static uint32_t menu_set(uint32_t id, int32_t v)            /* -> rc; host_wire[
 }
 static int menu_protocol(void)
 {
-    static const char *const WANT[18][2] = {
+    /* EDDA OS: 23 items; 1.0.4's 12, 1.1's and 1.2's six, then KEY SHOW CUES ACT RUN REVEAL (the EDDA tab between AUDIO and SYSTEM) */
+    static const char *const WANT[23][2] = {
         {"COLOR", 0}, {"STYLE", "FLAT,LINE"}, {"LARGE", "OFF,ON"}, {"ANIM", "ON,OFF"}, {"LEDS", "OFF,DIM LO,DIM HI,INV"},
         {"HOLD", "0.3 s,0.4 s,0.5 s,0.6 s"}, {"KNOB ACCEL", "OFF,ON"}, {"FX LATCH", "OFF,ON"}, {"BPM LOCK", "OFF,ON"},
         {"SPEAKER EQ", "FLAT,LOWCUT,BASS+"}, {"USB LEVEL", "MASTER,FIXED"}, {"USB SERIAL", "ON,OFF"},
         {"CLICK", "OFF,REC,ON"}, {"CLICK LEVEL", "LOW,MID,HIGH"}, {"COUNT-IN", "OFF,1 BAR,2 BARS"},   /* (1.1: appended) */
         {"RESTORE LAST", "ON,OFF"}, {"SCALE LEDS", "OFF,ON"},                                        /* (1.2) */
-        {"SCREEN OFF", "NEVER,5 MIN,15 MIN,30 MIN,60 MIN"}};
-    static const int32_t DEF[18] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3};   /* (COLOR: the default palette) */
-    static const uint8_t TAB[18] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 2, 2, 2, 3, 1, 0};      /* DISPLAY CONTROL AUDIO SYSTEM */
-    static const char *const TABN[4] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM"};
+        {"SCREEN OFF", "NEVER,5 MIN,15 MIN,30 MIN,60 MIN"},
+        {"KEY", "OFF,1A,1B,2A,2B,3A,3B,4A,4B,5A,5B,6A,6B,7A,7B,8A,8B,9A,9B,10A,10B,11A,11B,12A,12B"},
+        {"SHOW CUES", "OFF,ON"}, {"ACT", "1 BULB,2 BULBS,3 BULBS,4 BULBS,5 BULBS"}, {"RUN", "SHORT,LONG"}, {"REVEAL", "OFF,ON"}};
+    static const int32_t DEF[23] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 1, 0, 0, 0};   /* (COLOR: the default palette) */
+    static const uint8_t TAB[23] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 4, 2, 2, 2, 4, 1, 0, 3, 3, 3, 3, 3};      /* DISPLAY CONTROL AUDIO EDDA SYSTEM */
+    static const char *const TABN[5] = {"DISPLAY", "CONTROL", "AUDIO", "EDDA", "SYSTEM"};
     int bad = 0, ok = 1;
     uint32_t i, k, n;
     menu_item_t it;
@@ -777,7 +781,7 @@ static int menu_protocol(void)
     FILE *jf = json ? fopen(json, "w") : 0;
     reset();
     if (jf) fprintf(jf, "[");
-    for (i = 0; i < 18u; i++) {
+    for (i = 0; i < 23u; i++) {
         n = menu_desc(i, &it);
         joined[0] = 0;
         for (k = 0; k < it.nnames; k++) { if (k) strcat(joined, ","); strcat(joined, it.names[k]); }
@@ -797,8 +801,8 @@ static int menu_protocol(void)
         }
     }
     if (jf) { fprintf(jf, "]\n"); fclose(jf); }
-    bad += check("MENU_DESC: 18 items (1.0.4's 12 in the menu's order, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF), ids 0..17, names, defaults", ok);
-    bad += check("MENU_DESC (1.0.5): after the names each item's tab, index and name (DISPLAY CONTROL AUDIO SYSTEM)", ok);
+    bad += check("MENU_DESC: 23 items (1.0.4's 12 in the menu's order, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, EDDA OS's KEY, SHOW CUES, ACT, RUN, REVEAL), ids 0..22, names, defaults", ok);
+    bad += check("MENU_DESC (1.0.5): after the names each item's tab, index and name (DISPLAY CONTROL AUDIO EDDA SYSTEM)", ok);
     {   /* an older editor reads the names and stops: the tab is past them, nothing it reads moved */
         uint32_t m = menu_desc(4, &it), p = 14, q;
         for (q = 0; q < 1u + it.nnames; q++) { while (host_wire[p]) p++; p++; }   /* name, the names */
@@ -807,12 +811,12 @@ static int menu_protocol(void)
         bad += check("MENU_DESC: the tab comes after every byte of the 1.0.4 reply (older editors ignore it)", ok);
     }
     ok = 1;
-    for (i = 0; i < 18u; i++) {
+    for (i = 0; i < 23u; i++) {
         menu_desc(i, &it);
         ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "ABOUT");
     }
-    n = menu_desc(18, &it);
-    ok &= n == 2u && it.index == 18 && it.id == 127;
+    n = menu_desc(23, &it);
+    ok &= n == 2u && it.index == 23 && it.id == 127;
     n = menu_desc(127, &it);
     bad += check("MENU_DESC: no CALIBRATION / ABOUT; an index past the list answers index, 127 (no item)",
                  ok && n == 2u && it.index == 127 && it.id == 127);
@@ -845,8 +849,10 @@ static int menu_protocol(void)
     ok &= menu_set(16, 1) == 3 && (ui_rec_prefs & 0x40u) && click_mode == CLICK_ON && cin_bars == 2u;   /* (its own bit) */
     ok &= menu_set(17, 0) == 3 && scr_get() == 0u && menu_set(17, 9) == 3 && scr_get() == 4u &&   /* (clamped) */
           menu_set(17, 2) == 3 && scr_get() == 2u && ui_scr == 1u;
-    for (i = 0; i < 18u; i++) {                         /* MENU_DESC reads them back */
-        static const int32_t SET[18] = {2, 1, 1, 1, 1, 3, 1, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2};
+    ok &= menu_set(18, 15) == 3 && edda.camelot == 15u && trk[0].p[P_ROOT] == 9;   /* EDDA: KEY 8A over the editor */
+    ok &= menu_set(20, 2) == 3 && edda.act == 3u && menu_set(22, 1) == 3 && edda.reveal == 1u;
+    for (i = 0; i < 23u; i++) {                         /* MENU_DESC reads them back */
+        static const int32_t SET[23] = {2, 1, 1, 1, 1, 3, 1, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 15, 1, 2, 0, 1};
         menu_desc(i, &it);
         ok &= it.value == SET[i];
     }
@@ -870,7 +876,7 @@ static int menu_protocol(void)
         static uint8_t fav0[sizeof favorites], set0[sizeof settings];
         uint8_t hold0 = settings_hold, leds0 = settings_leds;
         memcpy(fav0, &favorites, sizeof favorites); memcpy(set0, &settings, sizeof settings);
-        ok = menu_set(18, 1) == 1 && host_wire[6] == 18 && ed_rv(host_wire + 7) == 1;
+        ok = menu_set(23, 1) == 1 && host_wire[6] == 23 && ed_rv(host_wire + 7) == 1;   /* (18..22: EDDA OS's ids) */
         ok &= menu_set(126, -3) == 1 && host_wire[6] == 126 && ed_rv(host_wire + 7) == -3;
         ok &= menu_set(127, 0) == 1 && host_wire[6] == 127;
         ok &= !memcmp(fav0, &favorites, sizeof favorites) && !memcmp(set0, &settings, sizeof settings) &&

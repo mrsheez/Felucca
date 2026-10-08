@@ -18,6 +18,7 @@ static const uint8_t ED_MENU[][2] = {
     {MI_RESTORE, 15},                                  /* 1.2 (Discussion #130), a row of SYSTEM */
     {MI_SCLLED, 16},                                   /* 1.2 (Discussion #127), a row of CONTROL */
     {MI_SCROFF, 17},                                   /* 1.1.5, a row of DISPLAY */
+    {MI_KEY, 18}, {MI_CUES, 19}, {MI_ACT, 20}, {MI_RUNLEN, 21}, {MI_REVEAL, 22},   /* EDDA OS (edda.c): the EDDA tab */
 };
 #define ED_MENU_N NELEM(ED_MENU)
 

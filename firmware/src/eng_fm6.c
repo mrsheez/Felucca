@@ -368,7 +368,9 @@ static void fm6_render(track_t *t, voice_t *v, int32_t *out, uint32_t len, const
 static const char *const N_FM6_ALG[] = {"PAT", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13",
                                         "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25",
                                         "26", "27", "28", "29", "30", "31", "32", 0};
-static const char *const N_FM6_PATCH[] = {"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "OWN", 0};
+static const char *const N_FM6_PATCH[] = {"F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8",
+                                           "E1", "E2", "E3", "E4", "E5",   /* EDDA OS: OGENE OJA HILIFE TALK LOG */
+                                           "OWN", 0};
 _Static_assert(NELEM(N_FM6_PATCH) == FM6_OWN + 2u, "a SLOT name per value");
 
 /* {ALG, FB, MLVL, MRAT, MEG, VMOD, DTUN, SLOT}: the factory patch F1..F8 as it is, DTUN on the pad */
@@ -381,6 +383,12 @@ static const preset_t FM6_PRESETS[] = {
     {"MARIMBA", {0, 0, 0, 0, 0, 0, 0, 5}, {0, 0, 127, 0}, 0, 0, FX(0, 0, 25, 40), PAT(3)},
     {"ORGAN", {0, 0, 0, 0, 0, 0, 0, 6}, {0, 0, 127, 0}, 0, 0, FX(10, 40, 0, 30), PAT(6)},
     {"PLUCK", {0, 0, 0, 0, 0, 0, 0, 7}, {0, 0, 127, 0}, 0, 0, FX(0, 20, 35, 30), PAT(13)},
+    /* EDDA OS: the voice bank (tools/gen_fm6_patches.py E1..E5): the "future version" instruments */
+    {"OGENE", {0, 0, 0, 0, 0, 0, 0, 8}, {0, 0, 127, 0}, 0, 0, FX(0, 8, 30, 55), PAT(7)},
+    {"OJA", {0, 0, 0, 0, 0, 0, 12, 9}, {0, 0, 127, 0}, 0, 1, FX(0, 15, 35, 60), PAT(4)},
+    {"HILIFE", {0, 0, 0, 0, 0, 0, 0, 10}, {0, 0, 127, 0}, 0, 0, FX(0, 30, 25, 30), PAT(3)},
+    {"TALK DRUM", {0, 0, 0, 0, 0, 0, 0, 11}, {0, 0, 127, 0}, 0, 1, FX(0, 0, 20, 35), PAT(8)},
+    {"LOG DRUM", {0, 0, 0, 0, 0, 0, 0, 12}, {0, 0, 127, 0}, 0, 1, FX(8, 0, 0, 10), PAT(2)},
 };
 
 static const engine_t ENG_FM6 = {

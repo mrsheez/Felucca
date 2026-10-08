@@ -457,8 +457,20 @@ static void layer_key(uint32_t l, uint32_t k)
         } else if (p == 4u) {
             for (i = 0; i < NTRK; i++)
                 trk[i].p[P_MUTE] = 0;
+        } else if (p == 5u) {                           /* EDDA: D4 the run (the drop by subtraction) */
+            edda_run_request();
+        } else if (p == 6u) {                           /* E4 the hard stop / the re-entry */
+            edda_stop_toggle();
         } else if (p == 7u) {
             glo_tap();
+        } else if (p == 8u) {                           /* G4 the next act (bulb) */
+            edda_act_next();
+        } else if (p == 9u) {                           /* A4 the fill: the fill-only steps through the next bar */
+            edda_fill_request();
+        } else if (p == 10u) {                          /* B4 mutate the bell lane on the next one */
+            edda_mutate_request();
+        } else if (p >= 11u && p <= 13u) {              /* C5 D5 E5: the key down / up the wheel, the relative */
+            edda_key_step(p == 11u ? -1 : p == 12u ? 1 : 0);
         }
     } else if (l == LAYER_SCL) {
         TSEL->p[P_ROOT] = (int16_t)((k + 5u) % 12u);    /* the key's note name (F3 = F) */
@@ -627,8 +639,9 @@ static uint32_t layer_leds(uint32_t *br)
             can = e < PF_N && ((ok >> e) & 1u);
             on = can && ((held >> e) & 1u);
         } else if (l == LAYER_GLO) {                    /* sounding lit; SOLO held lit, the others, C4, F4 breathe */
-            on = b ? p < NTRK && glo_sounding(p) : p < NTRK && ((lys.solo >> k) & 1u);
-            can = !b && (p < NTRK || p == 4u || (p == 7u && !song.g[G_CLOCK]));
+            on = b ? p < NTRK && glo_sounding(p) : p < NTRK ? ((lys.solo >> k) & 1u)
+               : p == 5u ? edda.phase != ED_IDLE || edda.armed : p == 6u ? edda.stopped : p == 9u ? edda.fill : 0u;
+            can = !b && (p < NTRK || p == 4u || (p == 7u && !song.g[G_CLOCK]) || (p >= 5u && p <= 13u && p != 7u));
         } else if (l == LAYER_SCL) {                    /* the root lit, the scale's notes breathe */
             e = (k + 5u + 12u - root) % 12u;
             on = e == 0u;
@@ -786,6 +799,10 @@ static void layer_glo(void)
     }
     n[0] = 'C';
     lcell(LC_X(0), 50, LC_H, n, ICON_MUTE, 0, "ALL", LS_OFF, 0);   /* (unmute all) */
+    n[0] = 'D';                                         /* EDDA: the run, lit while it runs */
+    lcell(LC_X(1), 50, LC_H, n, ICON_SUB, 0, "RUN", edda.phase != ED_IDLE || edda.armed ? LS_HELD : LS_OFF, 0);
+    n[0] = 'E';                                         /* the hard stop, lit while stopped */
+    lcell(LC_X(2), 50, LC_H, n, ICON_X_STOP, 0, "STOP", edda.stopped ? LS_HELD : LS_OFF, 0);
     n[0] = 'F';
     lcell(LC_X(3), 50, LC_H, n, ICON_TEMPO, 0, "TAP", song.g[G_CLOCK] ? LS_DIM : LS_OFF, 0);
     for (e = 0; e < NTRK; e++) {                        /* the black keys 1..4: MUTE, latched */

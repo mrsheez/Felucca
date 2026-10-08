@@ -184,14 +184,15 @@ static void menu_head(void)
  *                   CLOSE is in the header: the four would not fit in S (cv_key_row drops words, from the last)
  * Drawn in two bands (the canvas holds 124 rows) split in a gap between two rows; while the tabs slide only their
  * strip (24..58) is drawn again */
-static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_SPEAKER, ICON_X_COG};
+static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_SPEAKER, ICON_SCALE, ICON_X_COG};
 #define MT_Y 29                                        /* the tab bar */
 #define MT_H 24
-#define MT_IW 32                                       /* a cushion with its icon alone (the icon centred in it) */
+#define MT_IW 28                                       /* a cushion with its icon alone (the icon centred in it); 28 and a
+                                                        * gap of 6 (EDDA OS): five tabs fit the bar with the longest name shown */
 #define MT_NX 28                                       /* the name's pen in the one shown; 10 px after it */
 #define MT_X0 6
 #define MT_X1 234
-#define MT_GAP 8                                       /* between two tabs, always (the bar centred in MT_X0..MT_X1) */
+#define MT_GAP 6                                       /* between two tabs, always (the bar centred in MT_X0..MT_X1) */
 #define MT_ONE 64                                      /* mt.pos per tab */
 #define MP_Y 59                                        /* the rows' panel */
 #define MP_PAD 3
@@ -220,7 +221,7 @@ static void mt_follow(void)
         mt.pos = (int16_t)(mt.pos + d / 2);
     mt.frame = ui.frame;
 }
-static const aafont_t *mt_font(void) { return menu_large() ? &AF_M : &AF_S; }
+static const aafont_t *mt_font(void) { return &AF_S; }   /* (EDDA OS: the S face in LARGE too, so five tabs fit the bar) */
 /* the tabs at the place mt.pos, MT_GAP apart, centred: each one's share of the shown look (0 .. MT_ONE), x, width */
 static void mt_layout(int32_t *a, int32_t *x, int32_t *w)
 {
@@ -254,7 +255,7 @@ static void menu_tabs(void)                            /* (in screen rows: cv_oy
         cv_icon_in(x[k], MT_Y, MT_IW, MT_H, 16, MTAB_ICON[k], on ? T_INK : T_MID, bg);
         if (a[k] == MT_ONE) {                          /* (settled: its name) */
             GFX_HOOK_ALIGN(0, MT_Y, 0, MT_Y + MT_H, AL_V, "menu tab name centred up/down");
-            cv_text_on(x[k] + MT_NX, MT_Y + (menu_large() ? CAP_IN(M, MT_H) : CAP_IN(S, MT_H)), mt_font(), MTAB_NAME[k],
+            cv_text_on(x[k] + MT_NX, MT_Y + CAP_IN(S, MT_H), mt_font(), MTAB_NAME[k],
                        T_INK, T_ACCENT);
         }
     }
