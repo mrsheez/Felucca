@@ -746,7 +746,7 @@ static void seq_mo_on(const track_t *t, uint32_t note, uint32_t vel)
     seq_mo[k][w] |= b;
 }
 /* the notes track t started that it no longer holds (t->seq_notes), off; all: every one */
-static void seq_mo_sync(const track_t *t, uint32_t all)
+static __attribute__((noinline)) void seq_mo_sync(const track_t *t, uint32_t all)
 {
     uint32_t k = trk_index(t) % NTRK, w, i, j;
     for (w = 0; w < 4u; w++)
@@ -762,7 +762,7 @@ static void seq_mo_sync(const track_t *t, uint32_t all)
 }
 /* the owed note-offs, oldest track first, while the queue takes them (off the bus: none owed, the next host starts
  * clean: usb.c empties the queue for it) */
-static void seq_mo_flush(void)
+static __attribute__((noinline)) void seq_mo_flush(void)
 {
     uint32_t k, w, i;
     for (k = 0; k < NTRK; k++)
@@ -779,7 +779,7 @@ static void seq_mo_flush(void)
                 }
 }
 /* every block, before the steps (events_block): the owed note-offs, a change of SEQ OUT, the clock */
-static void seq_mo_block(uint32_t n)
+static __attribute__((noinline)) void seq_mo_block(uint32_t n)
 {
     uint32_t k;
     seq_mo_flush();

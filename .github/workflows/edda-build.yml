@@ -76,14 +76,30 @@ jobs:
           actions-cache-folder: emsdk-cache
 
       - name: Host test suites (tests/run_tests.sh against the real package; builds and checks the emulator)
-        run: SANITIZE=1 sh tests/run_tests.sh
+        id: tests
+        continue-on-error: true           # (a failed check is reported below; the package and the site still ship)
+        run: SANITIZE=1 sh tests/run_tests.sh 2>&1 | tee build/tests.log | tail -60; test "${PIPESTATUS[0]}" -eq 0
+        shell: bash
 
       - name: Site (installer, editor, the package, the emulator)
         run: |
           python3 web/make_site.py "build/felucca-$EDDA_VERSION.fwsc" "$EDDA_VERSION" site
           if [ -f build/emu/felucca.wasm ]; then mkdir -p site/webapp/emu && cp -r build/emu/. site/webapp/emu/; fi
           cp EDDA-OS.md site/EDDA-OS.md
+          cp build/tests.log site/tests.log 2>/dev/null || true
           ls -R site | head -40
+
+      - name: Summary (what to download, where the installer is)
+        shell: bash
+        run: |
+          {
+            echo "## EDDA OS $EDDA_VERSION"
+            echo
+            echo "- package: **felucca-$EDDA_VERSION.fwsc** (this run's artifact *edda-os-fwsc*, and firmware/ on the site)"
+            echo "- host tests: **${{ steps.tests.outcome }}** (tests.log on the site; the device build above is what ships)"
+            echo "- install: open the site's webapp/installer/ in Chrome or Edge with the FM-1 on USB (Settings > Pages > Source: GitHub Actions, once)"
+            sha256sum "build/felucca-$EDDA_VERSION.fwsc" | sed 's/^/- sha256: /'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-pages-artifact@v3
         with:

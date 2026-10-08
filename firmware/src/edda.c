@@ -448,7 +448,7 @@ static void edda_ui(uint32_t rq)
     RING_PUBLISH();
     edda_rq_w++;
 }
-static void edda_rq_run(void)
+static __attribute__((noinline)) void edda_rq_run(void)
 {
     while (edda_rq_r != edda_rq_w) {
         uint32_t rq;
