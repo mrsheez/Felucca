@@ -27,7 +27,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04              # (pinned: ubuntu-latest moves to 26.04 from 19 Oct 2026; JieLi's toolchain is known to run here)
     steps:
       - uses: actions/checkout@v4
 
@@ -167,7 +167,7 @@ jobs:
   pages:                            # (the default branch only: GitHub Pages deploys from it)
     needs: build
     if: github.ref_name == github.event.repository.default_branch
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04              # (pinned: ubuntu-latest moves to 26.04 from 19 Oct 2026; JieLi's toolchain is known to run here)
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
