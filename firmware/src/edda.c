@@ -17,8 +17,11 @@
  *                      the next one (the hard stop -> re-entry of the EDDA set). No tempo change, no restart.
  *   Show cues          USB MIDI OUT channel 16: bar / beat / act / phase as CCs, bar / run / drop / stop as
  *                      notes, for the visuals rig (edda.h). MENU > EDDA > CUES.
- * Nothing here changes a step the user wrote except through SEQ > PATTERNS, and nothing is stored: the
- * settings reset at power-on (the key lives on in the project's ROOT / SCALE). */
+ *   SEQ OUT            MENU > EDDA > SEQ OUT: the sequencer's notes on USB MIDI OUT (the track's channel), +CLOCK the
+ *                      clock with START / STOP (seq.c seq_mo_*); the run subtracts there too (edda_out_vel).
+ * Nothing here changes a step the user wrote except through SEQ > PATTERNS (and MUTATE, the bell lane). SHOW CUES, SEQ
+ * OUT, RUN and REVEAL are kept with the settings (ui.c edda_prefs); the key lives on in the project's ROOT / SCALE;
+ * the act starts from 1. The UI's actions (the GLO keys, MENU) reach here through edda_ui: run in the audio block. */
 
 /* ------------------------------------------------------------ Camelot --- */
 /* value 1..24 -> the wheel's number (1..12) and letter (0 A minor, 1 B major) */
@@ -258,6 +261,10 @@ static void edda_pat_fill(track_t *t, uint32_t n)
     t->p[P_SDIV] = (int16_t)p->div;
 }
 
+/* the UI's actions waiting for the audio block (edda_ui, edda_rq_run) */
+#define ED_RQ_N 8u
+static volatile uint8_t edda_rq[ED_RQ_N], edda_rq_w, edda_rq_r;
+
 /* ------------------------------------------------- the run, the stop --- */
 static void edda_cue(uint32_t cin_status, uint32_t d1, uint32_t d2)
 {
@@ -319,6 +326,7 @@ static void edda_phase_enter(uint32_t phase)
         edda_lane_mute = (uint8_t)((1u << 2) | (1u << 3) | (1u << 4) | (1u << 6));
         trk[ED_T_LEAD].p[P_MUTE] = 1;
         edda.stab_lvl0 = (uint32_t)(trk[ED_T_STABS].p[P_LEVEL] > 0 ? trk[ED_T_STABS].p[P_LEVEL] : 0);
+        edda.stab_q8 = 256;
         edda_cue_note(ED_CUE_NOTE_RUN);
         break;
     case ED_STABS:                                    /* the stabs filtered down: their level ramps to nothing */
@@ -386,6 +394,7 @@ static void edda_defaults(void)
     edda.camelot = 0;
     edda.cues = 0;                                    /* (opt-in: a lighting rig is a deliberate setup; nothing
                                                        * leaves MIDI OUT a DAW did not ask for) */
+    edda.seq_out = 0;                                 /* (opt-in too: the keys alone, as Felucca) */
     edda.act = 1;
     edda.run_len = 0;
     edda.reveal = 0;
@@ -396,6 +405,70 @@ static void edda_defaults(void)
     edda_reset_runtime();
     edda.playing = 0;
     edda.beat = 0;
+    edda.stab_q8 = 256;
+    edda_rq_r = edda_rq_w;                            /* (power-on, before the audio runs: nothing asked yet) */
+}
+
+/* the settings kept with MENU's (edda.h ED_PREFS): from the stored byte (power-on, a settings backup restored) */
+static void edda_prefs_apply(uint32_t b)
+{
+    uint32_t so = (b >> 1) & 3u;
+    edda.cues = (uint8_t)(b & 1u);
+    edda.seq_out = (uint8_t)(so == 3u ? 0u : so);
+    edda.run_len = (uint8_t)((b >> 3) & 1u);
+    edda.reveal = (uint8_t)((b >> 4) & 1u);
+}
+static uint32_t edda_prefs_bits(void)
+{
+    return (edda.cues & 1u) | (uint32_t)(edda.seq_out % 3u) << 1 | (edda.run_len & 1u) << 3 | (edda.reveal & 1u) << 4;
+}
+
+/* SEQ OUT: the run subtracts on MIDI OUT as it does in the mix: the lanes it rests are never sent (seq_step), the tracks
+ * it mutes send nothing (seq.c seq_mo_muted), and the stabs, whose LEVEL it ramps (a level is not sent: a track at 0 may
+ * be playing an outboard synth), go down in velocity with the ramp and rest from LOG on */
+static uint32_t edda_out_vel(uint32_t k, uint32_t vel)
+{
+    if (k != ED_T_STABS || edda.phase == ED_IDLE || edda.phase == ED_SHAKERS)
+        return vel;
+    return edda.phase == ED_STABS ? vel * edda.stab_q8 >> 8 : 0u;
+}
+
+/* the UI's actions (edda.h ED_RQ_*): one producer (the main loop: the GLO keys, MENU, the editor), one consumer (the
+ * audio block, edda_block): what they change and the cues they send happen where the steps and MIDI OUT happen (a cue
+ * from the main loop could meet one from the audio side in MIDI OUT's queue, which has one producer) */
+static void edda_act_next(void);
+static void edda_fill_request(void);
+static void edda_mutate_request(void);
+static void edda_key_step(int32_t how);
+static void edda_ui(uint32_t rq)
+{
+    if ((uint8_t)(edda_rq_w - edda_rq_r) >= ED_RQ_N)
+        return;                                       /* (eight presses inside one block: not by hand) */
+    edda_rq[edda_rq_w % ED_RQ_N] = (uint8_t)rq;
+    RING_PUBLISH();
+    edda_rq_w++;
+}
+static void edda_rq_run(void)
+{
+    while (edda_rq_r != edda_rq_w) {
+        uint32_t rq;
+        RING_PUBLISH();
+        rq = edda_rq[edda_rq_r % ED_RQ_N];
+        RING_PUBLISH();
+        edda_rq_r++;
+        switch (rq) {
+        case ED_RQ_RUN: edda_run_request(); break;
+        case ED_RQ_STOP: edda_stop_toggle(); break;
+        case ED_RQ_ACT: edda_act_next(); break;
+        case ED_RQ_FILL: edda_fill_request(); break;
+        case ED_RQ_MUTATE: edda_mutate_request(); break;
+        case ED_RQ_KEY_DN: edda_key_step(-1); break;
+        case ED_RQ_KEY_UP: edda_key_step(1); break;
+        case ED_RQ_KEY_REL: edda_key_step(0); break;
+        case ED_RQ_CUE_KEY: edda_cue_cc(ED_CUE_CC_KEY, edda.camelot); break;
+        case ED_RQ_CUE_ACT: edda_cue_cc(ED_CUE_CC_ACT, edda.act); break;
+        }
+    }
 }
 
 /* every block from events_block, before the steps play, with the samples the beat clock is about to move by (n):
@@ -406,6 +479,7 @@ static void edda_defaults(void)
 static void edda_block(uint32_t n)
 {
     uint32_t beat_now, new_beat, new_bar;
+    edda_rq_run();                                    /* (the UI's, first: stopped too) */
     if (!song.playing) {
         if (edda.playing)
             edda_reset_runtime();
@@ -470,8 +544,11 @@ static void edda_block(uint32_t n)
         uint32_t total = edda_phase_beats(ED_STABS), bs = beat_samples();
         uint32_t done = (total - edda.left) * bs + (beat_pos < bs ? beat_pos : bs);   /* samples into the phase */
         uint32_t span = total * bs;
-        if (span)
-            trk[ED_T_STABS].p[P_LEVEL] = (int16_t)(edda.stab_lvl0 - edda.stab_lvl0 * (done > span ? span : done) / span);
+        if (span) {
+            done = done > span ? span : done;
+            trk[ED_T_STABS].p[P_LEVEL] = (int16_t)(edda.stab_lvl0 - edda.stab_lvl0 * done / span);
+            edda.stab_q8 = (uint16_t)(256u - done * 256u / span);   /* (SEQ OUT: edda_out_vel; done * 256 fits to 2 BPM) */
+        }
     }
 }
 
@@ -577,9 +654,4 @@ static void edda_act_next(void)
     edda_cue_cc(ED_CUE_CC_ACT, edda.act);
 }
 
-/* MENU > EDDA: ACT set by hand (the bulbs): the rig hears it at once */
-static void edda_act_set(uint32_t act)
-{
-    edda.act = (uint8_t)(act < 1u ? 1u : act > ED_ACTS ? ED_ACTS : act);
-    edda_cue_cc(ED_CUE_CC_ACT, edda.act);
-}
+/* (MENU > EDDA > ACT sets edda.act and asks for its cue: menu_items.c, ED_RQ_CUE_ACT) */

@@ -458,19 +458,19 @@ static void layer_key(uint32_t l, uint32_t k)
             for (i = 0; i < NTRK; i++)
                 trk[i].p[P_MUTE] = 0;
         } else if (p == 5u) {                           /* EDDA: D4 the run (the drop by subtraction) */
-            edda_run_request();
+            edda_ui(ED_RQ_RUN);                         /* (EDDA's actions: run by the next audio block, edda.c edda_ui) */
         } else if (p == 6u) {                           /* E4 the hard stop / the re-entry */
-            edda_stop_toggle();
+            edda_ui(ED_RQ_STOP);
         } else if (p == 7u) {
             glo_tap();
         } else if (p == 8u) {                           /* G4 the next act (bulb) */
-            edda_act_next();
+            edda_ui(ED_RQ_ACT);
         } else if (p == 9u) {                           /* A4 the fill: the fill-only steps through the next bar */
-            edda_fill_request();
+            edda_ui(ED_RQ_FILL);
         } else if (p == 10u) {                          /* B4 mutate the bell lane on the next one */
-            edda_mutate_request();
+            edda_ui(ED_RQ_MUTATE);
         } else if (p >= 11u && p <= 13u) {              /* C5 D5 E5: the key down / up the wheel, the relative */
-            edda_key_step(p == 11u ? -1 : p == 12u ? 1 : 0);
+            edda_ui(p == 11u ? ED_RQ_KEY_DN : p == 12u ? ED_RQ_KEY_UP : ED_RQ_KEY_REL);
         }
     } else if (l == LAYER_SCL) {
         TSEL->p[P_ROOT] = (int16_t)((k + 5u) % 12u);    /* the key's note name (F3 = F) */

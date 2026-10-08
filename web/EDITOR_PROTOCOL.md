@@ -155,7 +155,7 @@ at 1..3 and hides 6 5 8: what it sets still plays the right kit, and the device 
 
 | cmd | Request args | Reply args |
 | --- | --- | --- |
-| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) (below); older firmware ends earlier |
+| 1 INFO | — | version string, NENGINES, P_COUNT, G_COUNT, NSTEP, P_E0, then NENGINES engine-name strings, then (v3) NTRK (4), then (v6) CHAIN_ROWS (16), then the tagged blocks `55 01 uiCaps`, `4D 01 64 01`, `42 01 3`, `46 01 nfactory nbank`, `53 01 3`, (1.0.3) `50 01 3` and (1.0.4) `4E 01 count` (MENU settings; 12, 1.1: 15, 1.2: 17, 1.1.5: 18, EDDA OS: 24) and (1.0.5) `52 01 4` (ratchet) and (1.1) `4C 01 1` (parameter locks) (below); older firmware ends earlier |
 | 2 GET | scope, id | scope, id, v14 |
 | 3 SET | scope, id, v14 | scope, id, v14 (the value after clamping). Setting global `G_ENGSEL` (id from DESC label "ENG") changes the engine: its defaults, then its first preset (as on the device) |
 | 4 DUMP | — | engine, preset, then P_COUNT × v14 (the selected track), then G_COUNT × v14 (globals) |
@@ -779,12 +779,13 @@ is told: no list of settings is fixed in the editor. INFO advertises `4E 01 coun
   A tab may hold items with no value that are not offered (this firmware: SYSTEM also holds CALIBRATION and ABOUT).
   For a kind it does not know, an editor cannot find the tab (it does not know that kind's bytes).
 
-This firmware (count 18; tabs 0 DISPLAY, 1 CONTROL, 2 AUDIO, 3 SYSTEM; 1.0.5 had the first 12, 1.1 the first 15, 1.2
-before SCALE LEDS the first 16, before SCREEN OFF the first 17):
+This firmware (count 24; tabs 0 DISPLAY, 1 CONTROL, 2 AUDIO, 3 EDDA, 4 SYSTEM; 1.0.5 had the first 12, 1.1 the first
+15, 1.2 before SCALE LEDS the first 16, before SCREEN OFF the first 17, Felucca 1.1.5 the first 18 and tabs 0..3 with
+3 SYSTEM: EDDA OS shows its tab before SYSTEM, so SYSTEM's index is 4 here; group by the tab names, as above):
 
 | index | id | name | kind | values (min 0) | default | tab |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0 | 0 | COLOR | 0 | 0..9: GREY GREEN AMBER ICE VIOLET ROSE PAPER HI-CON NIGHT MONO (the order of `UI_PALETTES`) | GREY | 0 DISPLAY |
+| 0 | 0 | COLOR | 0 | 0..10: GREY GREEN AMBER ICE VIOLET ROSE PAPER HI-CON NIGHT MONO EDDA (the order of `UI_PALETTES`; EDDA: EDDA OS) | GREY | 0 DISPLAY |
 | 1 | 1 | STYLE | 0 | 0 FLAT, 1 LINE | FLAT | 0 DISPLAY |
 | 2 | 2 | LARGE | 0 | 0 OFF, 1 ON | OFF | 0 DISPLAY |
 | 3 | 3 | ANIM | 0 | 0 ON, 1 OFF | ON | 0 DISPLAY |
@@ -802,6 +803,18 @@ before SCALE LEDS the first 16, before SCREEN OFF the first 17):
 | 15 | 15 | RESTORE LAST | 0 | 0 ON, 1 OFF (1.2) | ON | 3 SYSTEM |
 | 16 | 16 | SCALE LEDS | 0 | 0 OFF, 1 ON (1.2) | OFF | 1 CONTROL |
 | 17 | 17 | SCREEN OFF | 0 | 0 NEVER, 1 "5 MIN", 2 "15 MIN", 3 "30 MIN", 4 "60 MIN" (1.1.5) | 30 MIN | 0 DISPLAY |
+| 18 | 18 | KEY | 0 | 0 OFF, 1..24: 1A 1B 2A 2B .. 12A 12B (the Camelot wheel; EDDA OS) | OFF | 3 EDDA |
+| 19 | 19 | SHOW CUES | 0 | 0 OFF, 1 ON (EDDA OS) | OFF | 3 EDDA |
+| 20 | 20 | ACT | 0 | 0 "1 BULB" .. 4 "5 BULBS" (EDDA OS) | 1 BULB | 3 EDDA |
+| 21 | 21 | RUN | 0 | 0 SHORT, 1 LONG (EDDA OS) | SHORT | 3 EDDA |
+| 22 | 22 | REVEAL | 0 | 0 OFF, 1 ON (EDDA OS) | OFF | 3 EDDA |
+| 23 | 23 | SEQ OUT | 0 | 0 OFF, 1 NOTES, 2 +CLOCK (EDDA OS) | OFF | 3 EDDA |
+
+EDDA OS's EDDA tab shows KEY, SHOW CUES, SEQ OUT, ACT, RUN, REVEAL (index 18, 19, 23, 20, 21, 22; EDDA-OS.md). KEY sets
+ROOT and SCALE of every synth track (the project keeps them); ACT is the show's act (from 1 at power-on); SHOW CUES,
+SEQ OUT, RUN and REVEAL are kept with the settings. SEQ OUT: NOTES sends what the sequencer plays on USB MIDI OUT
+(each track on its channel, 1..4, as its keys; drum lanes as their GM notes), +CLOCK adds MIDI clock (24 a beat),
+START and STOP on the internal clock. Applied at once; OFF ends every note it started.
 
 The device's AUDIO tab shows SPEAKER EQ, USB LEVEL, CLICK, CLICK LEVEL, COUNT-IN (index 9, 10, 12, 13, 14).
 CLICK: the metronome while the transport runs: OFF, REC (while a track is armed), ON (always); CLICK LEVEL its
@@ -826,7 +839,7 @@ Example (bytes in hex): `F0 7D 46 4C 48 04 F7` asks for index 4; the reply
 `F0 7D 46 4C 48 04 04 00 02 40 00 40 03 40 4C 45 44 53 00 4F 46 46 00 44 49 4D 20 4C 4F 00 44 49 4D 20 48 49 00 49 4E 56 00 00 44 49 53 50 4C 41 59 00 F7`
 is index 4, id 4, kind 0, value 2 (`02 40`), min 0 (`00 40`), max 3 (`03 40`), "LEDS", then "OFF" "DIM LO"
 "DIM HI" "INV", then tab 0 "DISPLAY" (1.0.4 firmware: the same reply without `00 44 49 53 50 4C 41 59 00`). `F0 7D 46 4C 49 04 03 40 F7` sets LEDS to INV and answers `F0 7D 46 4C 49 00 04 03 40 F7` (rc 0).
-`F0 7D 46 4C 49 00 32 40 F7` (COLOR 50) answers `F0 7D 46 4C 49 00 00 09 40 F7` (clamped to 9, MONO).
+`F0 7D 46 4C 49 00 32 40 F7` (COLOR 50) answers `F0 7D 46 4C 49 00 00 0A 40 F7` (clamped to 10, EDDA; Felucca: 9, MONO).
 `F0 7D 46 4C 49 0E 01 40 F7` sets COUNT-IN to 1 BAR and answers `F0 7D 46 4C 49 00 0E 01 40 F7` (1.1).
 `F0 7D 46 4C 48 12 F7` answers `F0 7D 46 4C 48 12 7F F7` (no index 18; before SCREEN OFF: none past 16, `11`; 1.2 before SCALE LEDS: none past 15, `10`; 1.1 firmware: none past 14, `0F`; 1.0.5: none past 11, `0C`).
 

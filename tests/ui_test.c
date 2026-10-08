@@ -150,7 +150,8 @@ static void ui_power_on(void)
     memset(up_bank, 0, sizeof up_bank);
     for (i = 0; i < G_COUNT; i++)
         song.g[i] = GP[i].def;
-    edda_defaults();                                   /* EDDA OS */
+    edda_defaults();                                   /* EDDA OS (and MENU > EDDA as saved: main.c) */
+    edda_prefs_apply(edda_prefs);
     undo_depth++;
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
@@ -1384,10 +1385,10 @@ static int test_menu_tabs(void)
             }
     }
     ui_prefs = 0;
-    bad += check("MENU tabs: DISPLAY CONTROL AUDIO EDDA SYSTEM (6 5 5 5 4 rows), 1..6 each in a run, fit the page; tab gaps constant (S, LARGE)",
+    bad += check("MENU tabs: DISPLAY CONTROL AUDIO EDDA SYSTEM (6 5 5 6 4 rows), 1..6 each in a run, fit the page; tab gaps constant (S, LARGE)",
                  ok && MTAB_COUNT == 5u && str_eq(MTAB_NAME[0], "DISPLAY") && mtab_rows(MTAB_DISPLAY) == 6u &&
                  mtab_rows(MTAB_CONTROL) == 5u && mtab_rows(MTAB_AUDIO) == 5u && mtab_rows(MTAB_SYSTEM) == 4u &&
-                 mtab_rows(MTAB_EDDA) == 5u && str_eq(MTAB_NAME[MTAB_EDDA], "EDDA"));
+                 mtab_rows(MTAB_EDDA) == 6u && str_eq(MTAB_NAME[MTAB_EDDA], "EDDA"));
 
     ui_power_on();
     hold(B_HOME);

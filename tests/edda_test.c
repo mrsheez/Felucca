@@ -251,6 +251,89 @@ static int has_note(const track_t *t, uint32_t note)
     return 0;
 }
 
+/* ---- SEQ OUT: USB MIDI OUT as a host reads it (drained after every block), each message with its block */
+#define MO_MAX 65536u
+static uint32_t mo_log[MO_MAX], mo_blk[MO_MAX], mo_n, mo_b;
+static uint32_t st_blk[8192], st_idx[8192], st_n;       /* the blocks track 0 moved to a step in, and the step */
+static void mo_reset(void) { mo_r = mo_w; mo_n = mo_b = 0; st_n = 0; }
+static void mo_drain(void)
+{
+    while (mo_r != mo_w) {
+        if (mo_n < MO_MAX) {
+            mo_log[mo_n] = midi_out_q[mo_r % MQ];
+            mo_blk[mo_n++] = mo_b;
+        }
+        mo_r++;
+    }
+}
+static void mo_run(uint32_t nblocks)
+{
+    while (nblocks--) {
+        uint32_t i0 = trk[0].seq_idx, p0 = trk[0].seq_pos;
+        events_block(CTL);
+        if (song.playing && (trk[0].seq_idx != i0 || p0 >= 0x7FFFFFFFu) && trk[0].seq_pos < 0x7FFFFFFFu && st_n < 8192u) {
+            st_blk[st_n] = mo_b;
+            st_idx[st_n++] = trk[0].seq_idx;
+        }
+        mo_drain();
+        mo_b++;
+    }
+}
+static uint32_t mo_st(uint32_t i) { return (mo_log[i] >> 8) & 0xFFu; }
+static uint32_t mo_d1(uint32_t i) { return (mo_log[i] >> 16) & 0x7Fu; }
+static uint32_t mo_d2(uint32_t i) { return (mo_log[i] >> 24) & 0x7Fu; }
+static int mo_on(uint32_t i) { return (mo_st(i) & 0xF0u) == 0x90u && mo_d2(i); }
+static int mo_off(uint32_t i) { return (mo_st(i) & 0xF0u) == 0x80u || ((mo_st(i) & 0xF0u) == 0x90u && !mo_d2(i)); }
+/* every note-on followed by its note-off, never on twice, nothing left on, the cue channel aside: the note-ons, -1 broken */
+static int32_t mo_pairs(void)
+{
+    static uint8_t on[16][128];
+    uint32_t i, c, x, ons = 0;
+    memset(on, 0, sizeof on);
+    for (i = 0; i < mo_n; i++) {
+        c = mo_st(i) & 15u;
+        x = mo_d1(i);
+        if (mo_st(i) >= 0xF0u || c == ED_CUE_CH)
+            continue;
+        if (mo_on(i)) {
+            if (on[c][x])
+                return -1;
+            on[c][x] = 1;
+            ons++;
+        } else if (mo_off(i)) {
+            if (!on[c][x])
+                return -1;
+            on[c][x] = 0;
+        }
+    }
+    for (c = 0; c < 16u; c++)
+        for (x = 0; x < 128u; x++)
+            if (on[c][x])
+                return -1;
+    return (int32_t)ons;
+}
+static uint32_t mo_count(uint32_t st)                 /* the messages of status st (0xF8, 0x90 | ch: its note-ons..) */
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < mo_n; i++)
+        n += mo_st(i) == st && ((st & 0xF0u) != 0x90u || mo_d2(i));
+    return n;
+}
+/* channel ch's notes as text, "+60/90 -60 .." (on / velocity, off), at most max characters */
+static void mo_text(uint32_t ch, char *out, uint32_t max)
+{
+    uint32_t i, n = 0;
+    out[0] = 0;
+    for (i = 0; i < mo_n && n + 12u < max; i++) {
+        if ((mo_st(i) & 15u) != ch || mo_st(i) >= 0xF0u)
+            continue;
+        if (mo_on(i))
+            n += (uint32_t)snprintf(out + n, max - n, "%s+%u/%u", n ? " " : "", mo_d1(i), mo_d2(i));
+        else if (mo_off(i))
+            n += (uint32_t)snprintf(out + n, max - n, "%s-%u", n ? " " : "", mo_d1(i));
+    }
+}
+
 int main(int argc, char **argv)
 {
     uint32_t i, j, k, n[3], m0;
@@ -504,7 +587,7 @@ int main(int argc, char **argv)
         to_next_bar(); ok &= edda.fill;                   /* the rest of this bar and the next */
         to_next_bar(); ok &= !edda.fill && cues_cc(m0, ED_CUE_CC_FILL, &k) == 2u && k == 0u;
         edda_fill_request(); edda_fill_request(); ok &= !edda.fill;   /* pressed twice: off at once */
-        lay_combo(B_GLO, white(9)); ok &= edda.fill;
+        lay_combo(B_GLO, white(9)); blocks(1); ok &= edda.fill;   /* (the UI's actions: run by the next block) */
         key_up(white(9)); btn_up(B_GLO); frame();
         ck("A4 FILL: on through the end of the next bar, the cue; again: off; the GLO key sets it", ok);
     }
@@ -540,19 +623,25 @@ int main(int argc, char **argv)
         int ok;
         reset();
         ok = menu_n(MI_KEY) == 25u && menu_n(MI_ACT) == ED_ACTS && menu_n(MI_CUES) == 2u && menu_n(MI_RUNLEN) == 2u &&
-             menu_n(MI_REVEAL) == 2u && MI_TAB[MI_KEY] == MTAB_EDDA && MI_TAB[MI_REVEAL] == MTAB_EDDA &&
-             str_eq(MTAB_NAME[MTAB_EDDA], "EDDA") && mtab_rows(MTAB_EDDA) == 5u && str_eq(MI_NAME[MI_KEY], "KEY") &&
-             MI_KEY < MI_VALUES && MI_REVEAL < MI_VALUES;
-        ck("MENU > EDDA: KEY (25 values), SHOW CUES, ACT (5), RUN, REVEAL; all value rows, one tab", ok);
+             menu_n(MI_REVEAL) == 2u && menu_n(MI_SEQOUT) == 3u && MI_TAB[MI_KEY] == MTAB_EDDA && MI_TAB[MI_REVEAL] == MTAB_EDDA &&
+             MI_TAB[MI_SEQOUT] == MTAB_EDDA && MI_SEQOUT == MI_CUES + 1u &&
+             str_eq(MTAB_NAME[MTAB_EDDA], "EDDA") && mtab_rows(MTAB_EDDA) == 6u && str_eq(MI_NAME[MI_KEY], "KEY") &&
+             str_eq(MI_NAME[MI_SEQOUT], "SEQ OUT") && MI_KEY < MI_VALUES && MI_REVEAL < MI_VALUES;
+        ck("MENU > EDDA: KEY (25 values), SHOW CUES, SEQ OUT (3), ACT (5), RUN, REVEAL; all value rows, one tab", ok);
         ok = str_eq(menu_vname(MI_KEY, 15), "8A") && str_eq(menu_vname(MI_KEY, 0), "OFF") && str_eq(menu_vname(MI_KEY, 24), "12B") &&
              str_eq(menu_vname(MI_ACT, 0), "1 BULB") && str_eq(menu_vname(MI_ACT, 4), "5 BULBS") &&
-             str_eq(menu_vname(MI_RUNLEN, 1), "LONG") && str_eq(menu_vname(MI_CUES, 1), "ON");
+             str_eq(menu_vname(MI_RUNLEN, 1), "LONG") && str_eq(menu_vname(MI_CUES, 1), "ON") &&
+             str_eq(menu_vname(MI_SEQOUT, 0), "OFF") && str_eq(menu_vname(MI_SEQOUT, 1), "NOTES") &&
+             str_eq(menu_vname(MI_SEQOUT, 2), "+CLOCK");
         ck("the rows' value names", ok);
         menu_put(MI_KEY, 15);
         ok = menu_get(MI_KEY) == 15u && trk[0].p[P_ROOT] == 9 && trk[0].p[P_SCALE] == (int16_t)ED_SC_MIN &&
-             cues_cc(0, ED_CUE_CC_KEY, &m0) == 1u && m0 == 15u;
+             cues_cc(0, ED_CUE_CC_KEY, &m0) == 0u;     /* (the cue: from the audio block, never the main loop) */
+        blocks(1);
+        ok &= cues_cc(0, ED_CUE_CC_KEY, &m0) == 1u && m0 == 15u;
         m0 = mo_w;
-        menu_put(MI_ACT, 2); ok &= edda.act == 3 && menu_get(MI_ACT) == 2u && cues_cc(m0, ED_CUE_CC_ACT, &k) == 1u && k == 3u;
+        menu_put(MI_ACT, 2); blocks(1);
+        ok &= edda.act == 3 && menu_get(MI_ACT) == 2u && cues_cc(m0, ED_CUE_CC_ACT, &k) == 1u && k == 3u;
         menu_put(MI_CUES, 0); ok &= !edda.cues;
         menu_put(MI_REVEAL, 1); ok &= edda.reveal == 1;
         menu_put(MI_RUNLEN, 1); ok &= edda.run_len == 1;
@@ -566,21 +655,22 @@ int main(int argc, char **argv)
         int ok;
         reset(); seq_start(); beats(1);
         lay_combo(B_GLO, white(5));
-        ok = ui.layer == LAYER_GLO && edda.armed && !gates();
+        ok = ui.layer == LAYER_GLO && !edda.armed && !gates();   /* (asked: the audio block runs it) */
+        blocks(1); ok &= edda.armed;
         key_up(white(5)); btn_up(B_GLO); frame();
-        lay_combo(B_GLO, white(8)); ok &= edda.act == 2;
+        lay_combo(B_GLO, white(8)); blocks(1); ok &= edda.act == 2;
         key_up(white(8)); btn_up(B_GLO); frame();
-        lay_combo(B_GLO, white(12)); ok &= edda.camelot == 17u;   /* (from the selected track's A minor 8A: 9A) */
+        lay_combo(B_GLO, white(12)); blocks(1); ok &= edda.camelot == 17u;   /* (from the selected track's A minor 8A: 9A) */
         key_up(white(12)); btn_up(B_GLO); frame();
-        lay_combo(B_GLO, white(11)); ok &= edda.camelot == 15u;
+        lay_combo(B_GLO, white(11)); blocks(1); ok &= edda.camelot == 15u;
         key_up(white(11)); btn_up(B_GLO); frame();
-        lay_combo(B_GLO, white(13)); ok &= edda.camelot == 16u;
+        lay_combo(B_GLO, white(13)); blocks(1); ok &= edda.camelot == 16u;
         key_up(white(13)); btn_up(B_GLO); frame();
-        lay_combo(B_GLO, white(10)); ok &= edda.mutate;
+        lay_combo(B_GLO, white(10)); blocks(1); ok &= edda.mutate;
         key_up(white(10)); btn_up(B_GLO); frame();
-        lay_combo(B_GLO, white(6)); ok &= edda.stopped;
+        lay_combo(B_GLO, white(6)); blocks(1); ok &= edda.stopped;
         key_up(white(6)); btn_up(B_GLO); frame();
-        ok &= !ui.layer && !gates();
+        ok &= !ui.layer && !gates() && edda_rq_r == edda_rq_w;
         ck("GLO + D4 arms the run, E4 stops, G4 the next act, B4 MUTATE, C5 / D5 / E5 the key path; keys silent", ok);
         {
             uint32_t a = leds_at(0), b2 = leds_at(250);
@@ -974,6 +1064,286 @@ int main(int argc, char **argv)
         ok &= param_turn(&GP[G_DTIME], 1, 1) == 12 && param_turn(&GP[G_DTIME], 12, 1) == 4 &&   /* 1/8 -> 1/16D -> 8T */
               param_turn(&GP[G_DTIME], 0, -1) == 10 && param_turn(&GP[G_DTIME], 10, -1) == 6;   /* 1/4 -> 1/4D -> 1/2 */
         ck("dotted echoes: DLY TIME 1/4D 1/8D 1/16D (3/2 of the plain ones, values 10..12), between their neighbours on the knob", ok);
+    }
+    /* ------------------------------------------------------ SEQ OUT */
+    {
+        track_t *t = &trk[0], *d = &trk[3];
+        int ok;
+        uint32_t loops, b0;
+        char txt[2048];
+        static const char LOOP[] = "+60/90 -60 +62/127 +65/127 +69/127 -62 -65 -69 +48/100 +55/100 -48 -55 +57/80 -57 "
+                                   "+59/80 -59 +59/80 -59 +59/80 -59";
+        reset(); edda.cues = 0; mt_quiet();
+        track_defaults_steps(t);
+        t->p[P_SLEN] = 8; t->p[P_SDIV] = 2; t->p[P_SSWING] = 0; t->p[P_AMODE] = 0; t->p[P_SGATE] = 64;
+        t->step[0] = (step_t){{60, 0, 0, 0}, 1, ST_NOTE, 0, 90, 0, 0};
+        t->step[1] = (step_t){{62, 65, 69, 0}, 3, ST_NOTE, SF_ACCENT, 90, 0, 0};   /* a chord, accented */
+        t->step[2] = (step_t){{0, 0, 0, 0}, 0, ST_REST, 0, 0, 0, 0};
+        t->step[3] = (step_t){{48, 0, 0, 0}, 1, ST_NOTE, SF_SLIDE, 100, 0, 0};      /* a slide into 55 */
+        t->step[4] = (step_t){{55, 0, 0, 0}, 1, ST_NOTE, 0, 100, 0, 0};
+        t->step[5] = (step_t){{57, 0, 0, 0}, 1, ST_NOTE, 0, 80, 0, 0};
+        t->step[6] = (step_t){{0, 0, 0, 0}, 0, ST_TIE, 0, 0, 0, 0};                  /* 57 held through it */
+        t->step[7] = (step_t){{59, 0, 0, 0}, 1, ST_NOTE, 0, 80, 0, 0};
+        step_set_ratchet(&t->step[7], 3);
+        blocks(2);
+        mo_reset();
+        seq_start(); mo_run(4u * 22050u / CTL);                                          /* two bars, OFF */
+        transport_req = 2; mo_run(2);
+        ok = mo_n == 0u && !edda.seq_out;
+        ck("SEQ OUT OFF (the default): the sequencer sends nothing (the keys still do)", ok);
+        menu_put(MI_SEQOUT, 1);
+        mo_reset();
+        seq_start(); mo_run(8u * 22050u / CTL + 1u);                                     /* two bars: 4 loops, the 5th not yet */
+        transport_req = 2; mo_run(2);
+        mo_text(0, txt, sizeof txt);
+        for (ok = 1, loops = 0, b0 = 0; loops < 4u; loops++) {
+            ok &= !strncmp(txt + b0, LOOP, sizeof LOOP - 1u);
+            b0 += sizeof LOOP;                                                           /* (the space after it) */
+        }
+        if (!ok) printf("  %s\n", txt);
+        ck("NOTES: channel 1, the velocities (accent 127), the chord, a slide legato (55 on before 48 off), a TIE held, RATCH x3", ok);
+        ok = mo_pairs() == 4 * 10;
+        ck("every note-on has its note-off, never on twice, none left on after STOP", ok);
+        {   /* the slide: 48's note-off right after 55's note-on, in the block step 5 plays in (legato, not at 55's gate) */
+            uint32_t i, on55 = mo_n, off48 = mo_n;
+            for (i = 0; i < mo_n && (on55 == mo_n || off48 == mo_n); i++) {
+                if (on55 == mo_n && mo_on(i) && mo_d1(i) == 55u)
+                    on55 = i;
+                if (off48 == mo_n && mo_off(i) && mo_d1(i) == 48u)
+                    off48 = i;
+            }
+            ok = on55 < mo_n && off48 == on55 + 1u && mo_blk[off48] == mo_blk[on55];
+            ck("a slide on MIDI: the next note on, then (the same block) the slid-from note off: legato", ok);
+        }
+        {   /* each step's note-ons leave in the block the step fires in */
+            uint32_t i, k, j;
+            for (ok = st_n >= 30u, k = 0; k < st_n; k++) {
+                const step_t *st = &t->step[st_idx[k]];
+                if (st->time != ST_NOTE)
+                    continue;
+                for (j = 0; j < st->n; j++) {
+                    for (i = 0; i < mo_n && !(mo_on(i) && mo_d1(i) == st->note[j] && mo_blk[i] == st_blk[k]); i++)
+                        ;
+                    ok &= i < mo_n;
+                }
+            }
+            ck("each step's notes go out in the very block the step plays in", ok);
+        }
+        /* drums: the lanes as their GM notes on the drum track's channel (4); the run's lanes never go out */
+        reset(); edda.cues = 0; mt_quiet(); menu_put(MI_SEQOUT, 1);
+        track_defaults_steps(t); t->p[P_SLEN] = 4;
+        d->p[P_SLEN] = 4; d->p[P_SDIV] = 2; d->p[P_SSWING] = 0;
+        d->step[0] = (step_t){{0, 0, 0, 0}, 0, ST_NOTE, 0, 100, 1u | 8u, 1u, 0};       /* kick (accent) + hat */
+        d->step[1] = (step_t){{0, 0, 0, 0}, 0, ST_NOTE, 0, 100, 8u, 0, 0};
+        d->step[2] = (step_t){{0, 0, 0, 0}, 0, ST_NOTE, 0, 100, 2u | 8u, 0, 0};          /* snare + hat */
+        blocks(2); mo_reset();
+        seq_start(); mo_run(22050u / CTL);
+        transport_req = 2; mo_run(2);
+        mo_text(3, txt, sizeof txt);
+        ok = !strcmp(txt, "+36/127 +42/100 -36 -42 +42/100 -42 +38/100 +42/100 -38 -42") && mo_count(0x93u) == 5u &&
+             mo_count(0x90u) == 0u && mo_pairs() == 5;
+        ok &= strstr(txt, "+38/100") != 0;
+        if (!ok) printf("  %s\n", txt);
+        mo_reset();
+        edda_lane_mute = 8u;                                                             /* (as the run: the hats rest) */
+        seq_start(); mo_run(22050u / CTL);
+        transport_req = 2; mo_run(2);
+        edda_lane_mute = 0;
+        mo_text(3, txt, sizeof txt);
+        ok &= !strstr(txt, "42") && mo_count(0x93u) == 2u && mo_pairs() == 2;
+        ck("drum lanes: their GM notes on the track's channel (KICK 36, SNARE 38, HAT 42), accents 127; rested lanes never sent", ok);
+        /* mutes: a muted track starts nothing; one muted while its note sounds still ends it; the FX layer's mute too */
+        reset(); edda.cues = 0; mt_quiet(); menu_put(MI_SEQOUT, 1);
+        track_defaults_steps(t);
+        t->p[P_SLEN] = 4; t->p[P_SDIV] = 2; t->p[P_SGATE] = 120;
+        t->step[0] = (step_t){{60, 0, 0, 0}, 1, ST_NOTE, 0, 96, 0, 0};
+        t->step[2] = (step_t){{64, 0, 0, 0}, 1, ST_NOTE, 0, 96, 0, 0};
+        blocks(2); mo_reset();
+        seq_start(); mo_run(1);
+        ok = mo_count(0x90u) == 1u;                                                      /* 60 on */
+        t->p[P_MUTE] = 1;
+        mo_run(22050u / CTL);                                                            /* 60 ends, 64 never starts */
+        ok &= mo_count(0x90u) == 1u && mo_count(0x80u) == 1u;
+        t->p[P_MUTE] = 0;
+        pf.act |= 1u << PF_M1;                                                           /* (the FX layer's mute) */
+        mo_run(22050u / CTL);
+        ok &= mo_count(0x90u) == 1u;
+        pf.act &= ~(1u << PF_M1);
+        mo_run(22050u / CTL);
+        ok &= mo_count(0x90u) == 3u;
+        transport_req = 2; mo_run(2);
+        ok &= mo_pairs() == 3;
+        ck("MUTE (and the FX layer's): a muted track sends no note-on, the note it was playing still ends", ok);
+        /* SEQ OUT turned OFF with a note on: it ends at once; nothing after */
+        reset(); edda.cues = 0; mt_quiet(); menu_put(MI_SEQOUT, 1);
+        track_defaults_steps(t);
+        t->p[P_SLEN] = 1; t->p[P_SDIV] = 9;                                               /* (one long step) */
+        t->step[0] = (step_t){{60, 0, 0, 0}, 1, ST_NOTE, 0, 96, 0, 0};
+        blocks(2); mo_reset();
+        seq_start(); mo_run(4);
+        ok = mo_count(0x90u) == 1u && mo_count(0x80u) == 0u;
+        menu_put(MI_SEQOUT, 0); mo_run(1);
+        ok &= mo_count(0x80u) == 1u;
+        mo_run(4u * 22050u / CTL);
+        ok &= mo_n == 2u && mo_pairs() == 1;
+        transport_req = 2; mo_run(2);
+        ck("SEQ OUT OFF while a note sounds: its note-off at once, then nothing", ok);
+        /* the queue full: a note-off is owed, sent first when there is room; a note-on leaves room for them */
+        reset(); edda.cues = 0; mt_quiet(); menu_put(MI_SEQOUT, 1);
+        track_defaults_steps(t);
+        t->p[P_SLEN] = 2; t->p[P_SDIV] = 2; t->p[P_SGATE] = 64;
+        t->step[0] = (step_t){{60, 0, 0, 0}, 1, ST_NOTE, 0, 96, 0, 0};
+        t->step[1] = (step_t){{62, 0, 0, 0}, 1, ST_NOTE, 0, 96, 0, 0};
+        blocks(2); mo_reset();
+        seq_start(); events_block(CTL);                                                  /* 60 on (not drained) */
+        ok = mo_w - mo_r == 1u;
+        while (mo_w - mo_r < MQ)
+            midi_out_event(0xFEu << 8 | 0x0Fu);                                          /* (a host not reading) */
+        for (k = 0; k < 2000u && t->seq_n; k++)
+            events_block(CTL);                                                           /* 60's gate ends */
+        ok &= seq_mo_owe[0][1] == 1u << (60 - 32) && !seq_mo[0][1];
+        for (k = 0; k < 2000u && t->seq_idx != 1u; k++)
+            events_block(CTL);                                                           /* 62: no room, not sent */
+        ok &= !(seq_mo[0][1] >> (62 - 32) & 1u);
+        mo_r = mo_w - 4u;                                                                /* (the host reads a few) */
+        events_block(CTL);
+        ok &= !seq_mo_owe[0][1] && midi_out_q[(mo_w - 1u) % MQ] == (0x08u | 0x80u << 8 | 60u << 16);
+        ck("the queue full: 60's note-off owed and sent first when the host reads; 62 not started (room kept for offs)", ok);
+        mo_r = mo_w;
+        transport_req = 2; blocks(2);
+        /* +CLOCK: START and the first pulse with step 1, 24 a beat on the exact grid (the steps' own), STOP after the
+         * notes' offs; free-running while stopped; nothing on an external clock */
+        reset(); edda.cues = 0; mt_quiet(); menu_put(MI_SEQOUT, 2);
+        track_defaults_steps(t);
+        t->p[P_SLEN] = 16; t->p[P_SDIV] = 2; t->p[P_SSWING] = 0; t->p[P_SGATE] = 64;
+        for (k = 0; k < 16u; k++)
+            t->step[k] = (step_t){{(uint8_t)(48u + k), 0, 0, 0}, 1, ST_NOTE, 0, 96, 0, 0};
+        song.g[G_BPM] = 128;
+        blocks(2); mo_reset();
+        mo_run(44100u / CTL);                                                            /* a second, stopped */
+        k = mo_count(0xF8u);
+        ok = k >= 50u && k <= 52u && !mo_count(0xFAu);                                    /* (128 BPM: 51.2 a second) */
+        if (!ok) printf("  stopped: %u pulses\n", k);
+        mo_reset();
+        seq_start();
+        mo_run(10u * 60u * 44100u / CTL);                                                /* ten minutes */
+        {
+            uint32_t i, f = 0, j = 0, fa = mo_n, steps_ok = 1, nsteps = 0;
+            for (i = 0; i < mo_n && fa == mo_n; i++)
+                if (mo_st(i) == 0xFAu)
+                    fa = i;
+            ok &= fa == 0u && mo_st(1) == 0xF8u && mo_blk[0] == 0u && mo_st(2) == 0x90u;   /* START, a pulse, step 1 */
+            /* pulse 6k with step k (1/16): the same block, every step for ten minutes */
+            for (i = 0; i < mo_n; i++) {
+                if (mo_st(i) != 0xF8u)
+                    continue;
+                if (f % 6u == 0u) {
+                    while (j < st_n && st_blk[j] < mo_blk[i])
+                        j++;
+                    steps_ok &= j < st_n && st_blk[j] == mo_blk[i];
+                    nsteps++;
+                }
+                f++;
+            }
+            {   /* the count: pulse j at floor(j N / 24 D) samples (N 2646000, D 128): those at or before the last block */
+                uint64_t x = (uint64_t)(mo_b - 1u) * CTL, want = ((x + 1u) * 24u * 128u + 2646000u - 1u) / 2646000u;
+                ok &= f == (uint32_t)want;
+                if (f != (uint32_t)want) printf("  pulses %u, the grid %u\n", f, (uint32_t)want);
+            }
+            ok &= steps_ok && nsteps > 5000u;
+        }
+        transport_req = 2; mo_run(2);
+        {   /* STOP once, after every note's off (the clock runs on: the pulses after it) */
+            uint32_t i, fc = mo_n;
+            for (i = 0; i < mo_n; i++) {
+                if (mo_st(i) == 0xFCu)
+                    fc = i;
+                ok &= !(fc < mo_n && mo_st(i) < 0xF0u);
+            }
+            ok &= fc < mo_n && mo_pairs() == 5120 && mo_count(0xFCu) == 1u;
+        }
+        ck("+CLOCK: START then a pulse with step 1; 24 a beat, pulse 6k in step k's block for 10 min at 128 BPM; STOP after the offs", ok);
+        mo_reset();
+        transport_req = 3; song.playing = 1; mo_run(4);                                  /* (GLO + PLAY from stopped: a restart) */
+        ok = mo_count(0xFAu) == 1u;
+        transport_req = 3; mo_run(4);                                                    /* GLO + PLAY playing: STOP, START */
+        ok &= mo_count(0xFCu) == 1u && mo_count(0xFAu) == 2u;
+        transport_req = 2; mo_run(2);
+        mo_reset();
+        song.g[G_CLOCK] = 1; mo_run(4);                                                  /* external clock: nothing of ours */
+        transport_req = 1; mo_run(44100u / CTL);
+        ok &= !mo_count(0xF8u) && !mo_count(0xFAu) && !mo_count(0xFCu);
+        song.g[G_CLOCK] = 0; mo_run(4);
+        mo_reset(); mo_run(44100u / CTL);
+        ok &= mo_count(0xF8u) >= 50u && !mo_count(0xFAu);
+        ck("GLO + PLAY: STOP and START; CLK EXT: no clock, START or STOP of ours; back on INT: the pulses again", ok);
+        /* +CLOCK chosen while playing: the pulses from now, no START mid-bar (the next PLAY sends it) */
+        reset(); edda.cues = 0; mt_quiet(); menu_put(MI_SEQOUT, 1);
+        blocks(2); seq_start(); blocks(100);
+        mo_reset(); menu_put(MI_SEQOUT, 2); mo_run(22050u / CTL);
+        ok = !mo_count(0xFAu) && mo_count(0xF8u) >= 23u && mo_count(0xF8u) <= 25u;
+        menu_put(MI_SEQOUT, 1); mo_run(4);
+        ok &= mo_count(0xFCu) == 0u;                                                     /* (never started: no STOP) */
+        menu_put(MI_SEQOUT, 2); transport_req = 2; mo_run(2); transport_req = 1; mo_run(2);
+        ok &= mo_count(0xFAu) == 1u;
+        menu_put(MI_SEQOUT, 1); mo_run(2);
+        ok &= mo_count(0xFCu) == 1u;                                                     /* (+CLOCK left while running) */
+        transport_req = 2; mo_run(2);
+        ck("+CLOCK chosen while playing: the pulses, no START mid-bar; NOTES again: STOP for what had started", ok);
+        /* the run on SEQ OUT: the stabs' velocity follows their ramp, from LOG on they rest; the lead (muted) is silent */
+        reset(); edda.cues = 0; mt_quiet(); menu_put(MI_SEQOUT, 1);
+        {
+            track_t *sb = &trk[ED_T_STABS];
+            uint32_t i, v_first = 0, v_last = 0, log_on = 0, n_st = 0;
+            track_defaults_steps(sb);
+            sb->p[P_SLEN] = 4; sb->p[P_SDIV] = 2; sb->p[P_SGATE] = 32; sb->p[P_LEVEL] = 100;
+            sb->step[0] = (step_t){{67, 0, 0, 0}, 1, ST_NOTE, 0, 120, 0, 0};
+            blocks(2); mo_reset();
+            seq_start(); mo_run(1);
+            edda_run_request(); to_next_bar();                                           /* SHAKERS */
+            mo_run(4u * 22050u / CTL + 4u);                                              /* (a bar of it) */
+            mo_reset();
+            mo_run(4u * 22050u / CTL);                                                   /* STABS, a bar */
+            for (i = 0; i < mo_n; i++)
+                if (mo_on(i) && (mo_st(i) & 15u) == ED_T_STABS) {
+                    v_first = v_first ? v_first : mo_d2(i);
+                    v_last = mo_d2(i);
+                    n_st++;
+                }
+            ok = edda.phase == ED_LOG && n_st >= 3u && v_first <= 120u && v_last < v_first && v_last < 40u;
+            if (!ok) printf("  stabs: %u ons, %u .. %u, phase %u\n", n_st, v_first, v_last, edda.phase);
+            mo_reset(); mo_run(8u * 22050u / CTL);                                       /* LOG: two bars */
+            for (i = 0; i < mo_n; i++)
+                log_on += mo_on(i) && (mo_st(i) & 15u) == ED_T_STABS;
+            ok &= !log_on;
+            transport_req = 2; mo_run(2);
+            ck("the run on SEQ OUT: the stabs fade by velocity over STABS, none from LOG on (a LEVEL itself is never sent)", ok);
+        }
+        /* the setting is kept: edda_prefs, applied at power-on; a stored 3 (no value) reads as OFF */
+        reset();
+        menu_put(MI_SEQOUT, 2); menu_put(MI_CUES, 1); menu_put(MI_RUNLEN, 1); menu_put(MI_REVEAL, 1);
+        ok = edda_prefs == (1u | 2u << 1 | 1u << 3 | 1u << 4) && edda_prefs_bits() == edda_prefs;
+        {
+            persist_t p;
+            uint8_t keep = edda_prefs;
+            memset(&p, 0, sizeof p);
+            settings_export(&p);
+            ok &= p.favorites.factory[15][26] == keep;
+            edda_defaults();
+            ok &= !edda.seq_out && !edda.cues && !edda.run_len && !edda.reveal;
+            edda_prefs_apply(edda_prefs);
+            ok &= edda.seq_out == 2u && edda.cues && edda.run_len && edda.reveal;
+            menu_put(MI_SEQOUT, 0);
+            ok &= edda_prefs == (1u | 1u << 3 | 1u << 4);
+            p.favorites.factory[15][26] = (uint8_t)(6u | 1u | 0x80u);                    /* SEQ OUT 3; a future bit */
+            ok &= settings_import(&p, sizeof p) && p.favorites.factory[15][26] == (1u | 0x80u);
+            edda_prefs_apply(edda_prefs);
+            ok &= !edda.seq_out && edda.cues && !edda.run_len && !edda.reveal;
+            menu_put(MI_REVEAL, 1);
+            ok &= edda_prefs == (1u | 1u << 4 | 0x80u);                                  /* (the future bit kept) */
+        }
+        ck("SHOW CUES, SEQ OUT, RUN, REVEAL kept with the settings (one byte); applied at power-on; SEQ OUT 3 reads OFF", ok);
+        reset();
     }
     /* ------------------------------------------------------ the user kits */
     {

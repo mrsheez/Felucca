@@ -143,6 +143,7 @@ static uint32_t ed_bk_commit(void)
         memcpy(&ed_bk_settings, raw, sizeof ed_bk_settings);
         settings_import(&ed_bk_settings, sizeof ed_bk_settings);
         panel_init(); settings_init(); palette_set(settings.palette);
+        edda_prefs_apply(edda_prefs);                /* (EDDA OS: MENU > EDDA as restored) */
 #if FELUCCA_FLASH
         persist_saved = ed_bk_settings; persist_pending = 0;
 #endif

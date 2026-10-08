@@ -186,14 +186,17 @@ static int midi_enqueue(uint32_t pkt, uint32_t source)
     return 1;
 }
 
-static void midi_out_event(uint32_t pkt)            /* from the audio ISR */
+static int midi_out_event(uint32_t pkt)             /* from the audio ISR; 0: not queued (no host, the queue full) */
 {
     if (usb.config && mo_w - mo_r < MQ) {
         midi_out_q[mo_w % MQ] = pkt;
         RING_PUBLISH();
         mo_w++;
+        return 1;
     }
+    return 0;
 }
+static uint32_t midi_out_room(void) { return usb.config ? MQ - (mo_w - mo_r) : 0u; }   /* (EDDA OS: SEQ OUT, seq.c) */
 
 /* ------------------------------------------------------- descriptors --- */
 /* Two functions: audio + MIDI (0 audio control, 1 MIDI streaming, 2 audio streaming with FELUCCA_UAC)

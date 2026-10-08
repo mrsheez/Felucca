@@ -694,6 +694,145 @@ static void keyboard_block(void)
     kb_prev = cur;
 }
 
+/* ---------------------------------------------------------- SEQ OUT --- */
+/* EDDA OS, MENU > EDDA > SEQ OUT (edda.seq_out): what the sequencer plays goes out on USB MIDI OUT as notes on the
+ * track's channel (1..4, the keys' own: trk_midi_ch), a drum lane as its GM note (DRUM_LANE_NOTE, as REVEAL maps it),
+ * at the step's velocity (an accent 127); +CLOCK adds the clock, 24 to the beat on the exact grid (fx.c grid_step: it
+ * meets the steps on every beat), START on PLAY (the first pulse with it, as step 1 fires) and STOP, while the clock is
+ * the device's own (CLK INT; it runs on stopped, so what follows keeps the tempo; never echoed to a clock it follows).
+ * Pairs: seq_mo holds the notes on at the receiver, per track; one goes out once (a slide's held-over note, a TIE:
+ * nothing in between) and its note-off always follows (the gate's end, the next step, a rest, the chance, STOP, a
+ * slide: the new note on before the old one off, legato), seq_mo_sync checking them against the notes the sequencer
+ * holds. A muted track starts nothing (MUTE, the run's and the stop's, the FX layer's mutes and solos); the run's
+ * stabs fade by velocity (edda.c edda_out_vel). A note-off the queue has no room for is owed (seq_mo_owe), sent first
+ * in the next block; a note-on leaves SEQ_MO_KEEP slots for them. The keys' notes stay the keys' (key_on), the ones
+ * live recording holds too (seq_step skip). SEQ OUT OFF: every note it started ends (seq_mo_block) */
+#define SEQ_MO_KEEP 8u
+#define MCLK_START 0xFFFFFFFFu
+static uint32_t seq_mo[NTRK][4], seq_mo_owe[NTRK][4];   /* bit n % 32 of word n / 32: note n */
+static uint8_t seq_mo_mode;                    /* the SEQ OUT the last block saw */
+static uint8_t mclk_run;                       /* +CLOCK: START sent, STOP owed */
+static uint32_t mclk_pos, mclk_len;            /* +CLOCK: the samples into the pulse, its length (MCLK_START: PLAY) */
+static uint16_t mclk_frac;
+static uint32_t seq_mo_ch(uint32_t k) { return trk_midi_ch(k); }
+static int seq_mo_muted(uint32_t k)
+{
+    return trk[k].p[P_MUTE] || ((pf.act >> (PF_M1 + k)) & 1u);
+}
+static void seq_mo_off_k(uint32_t k, uint32_t note)   /* note's off (bit set in seq_mo[k]: cleared) */
+{
+    uint32_t w = (note >> 5) & 3u, b = 1u << (note & 31u);
+    seq_mo[k][w] &= ~b;
+    if (!midi_out_event(0x08u | (0x80u | seq_mo_ch(k)) << 8 | (note & 0x7Fu) << 16) && usb.config)
+        seq_mo_owe[k][w] |= b;                  /* (the queue full: the next block's first) */
+}
+/* track t starts note: once, unless muted; vel 1..127 */
+static void seq_mo_on(const track_t *t, uint32_t note, uint32_t vel)
+{
+    uint32_t k = trk_index(t) % NTRK, w = (note >> 5) & 3u, b = 1u << (note & 31u);
+    if (!edda.seq_out || note > 127u || (seq_mo[k][w] & b) || seq_mo_muted(k))
+        return;
+    vel = edda_out_vel(k, vel > 127u ? 127u : vel);
+    if (!vel)
+        return;
+    if (seq_mo_owe[k][w] & b) {                 /* its last note-off first */
+        if (!midi_out_event(0x08u | (0x80u | seq_mo_ch(k)) << 8 | note << 16))
+            return;
+        seq_mo_owe[k][w] &= ~b;
+    }
+    if (midi_out_room() <= SEQ_MO_KEEP)
+        return;
+    midi_out_event(0x09u | (0x90u | seq_mo_ch(k)) << 8 | note << 16 | vel << 24);
+    seq_mo[k][w] |= b;
+}
+/* the notes track t started that it no longer holds (t->seq_notes), off; all: every one */
+static void seq_mo_sync(const track_t *t, uint32_t all)
+{
+    uint32_t k = trk_index(t) % NTRK, w, i, j;
+    for (w = 0; w < 4u; w++)
+        for (i = 0; i < 32u && seq_mo[k][w] >> i; i++) {
+            uint32_t note = w * 32u + i;
+            if (!((seq_mo[k][w] >> i) & 1u))
+                continue;
+            for (j = 0; !all && j < t->seq_n && t->seq_notes[j] != note; j++)
+                ;
+            if (all || j == t->seq_n)
+                seq_mo_off_k(k, note);
+        }
+}
+/* the owed note-offs, oldest track first, while the queue takes them (off the bus: none owed, the next host starts
+ * clean: usb.c empties the queue for it) */
+static void seq_mo_flush(void)
+{
+    uint32_t k, w, i;
+    for (k = 0; k < NTRK; k++)
+        for (w = 0; w < 4u; w++)
+            for (i = 0; i < 32u && seq_mo_owe[k][w] >> i; i++)
+                if ((seq_mo_owe[k][w] >> i) & 1u) {
+                    if (!usb.config) {
+                        seq_mo_owe[k][w] = 0;
+                        break;
+                    }
+                    if (!midi_out_event(0x08u | (0x80u | seq_mo_ch(k)) << 8 | (w * 32u + i) << 16))
+                        return;
+                    seq_mo_owe[k][w] &= ~(1u << i);
+                }
+}
+/* every block, before the steps (events_block): the owed note-offs, a change of SEQ OUT, the clock */
+static void seq_mo_block(uint32_t n)
+{
+    uint32_t k;
+    seq_mo_flush();
+    if (edda.seq_out != seq_mo_mode) {
+        if (!edda.seq_out)
+            for (k = 0; k < NTRK; k++)
+                seq_mo_sync(&trk[k], 1);
+        if (seq_mo_mode == 2u && mclk_run) {    /* (+CLOCK left: what followed it stops) */
+            midi_out_event(0xFCu << 8 | 0x0Fu);
+            mclk_run = 0;
+        }
+        if (edda.seq_out == 2u && mclk_pos != MCLK_START) {   /* (+CLOCK from now: the pulses; START with the next
+                                                                * PLAY, or this block's) */
+            mclk_pos = 0;
+            mclk_frac = 0;
+            mclk_len = grid_step(1, 24, &mclk_frac);
+        }
+        seq_mo_mode = edda.seq_out;
+    }
+    if (seq_mo_mode != 2u || song.g[G_CLOCK]) {
+        if (mclk_pos == MCLK_START)             /* (a PLAY with no clock to start: never a START later, mid-bar) */
+            mclk_pos = 0;
+        return;
+    }
+    if (mclk_pos == MCLK_START) {               /* PLAY (seq_start, this block): START, the first pulse with step 1 */
+        midi_out_event(0xFAu << 8 | 0x0Fu);
+        midi_out_event(0xF8u << 8 | 0x0Fu);
+        mclk_run = 1;
+        mclk_pos = 0;
+        mclk_frac = 0;
+        mclk_len = grid_step(1, 24, &mclk_frac);
+        return;
+    }
+    mclk_pos += n;
+    while (mclk_pos >= mclk_len) {              /* (as seq_tick: the remainder kept, the grid's lengths) */
+        mclk_pos -= mclk_len;
+        mclk_len = grid_step(1, 24, &mclk_frac);
+        midi_out_event(0xF8u << 8 | 0x0Fu);
+    }
+}
+static void seq_mo_stop(void)                   /* the transport stopped (seq_stop, after the notes' offs) */
+{
+    if (mclk_run) {
+        midi_out_event(0xFCu << 8 | 0x0Fu);
+        mclk_run = 0;
+    }
+    if (mclk_pos == MCLK_START) {               /* (a PLAY that never reached the clock: free-running again) */
+        mclk_pos = 0;
+        mclk_frac = 0;
+        mclk_len = grid_step(1, 24, &mclk_frac);
+    }
+}
+
 /* -------------------------------------------------------- sequencer --- */
 static void seq_start(void)
 {
@@ -714,6 +853,7 @@ static void seq_start(void)
     beat_frac = 0;
     beat_len = grid_step(1, 1, &beat_frac);        /* (EDDA OS: the exact beat, as the tracks count it) */
     clk_pos = CLK_START;                           /* the metronome's first beat with step 0 */
+    mclk_pos = MCLK_START;                         /* (EDDA OS SEQ OUT +CLOCK: START, its first pulse with step 0) */
     song.playing = 1;
     slicer_start();                                /* slicer.c: its step 0 with the sequencer's */
     perf_start();                                  /* perform.c: its 1/16 grid too */
@@ -727,6 +867,7 @@ static void seq_release(track_t *t)
     t->seq_n = 0;
     t->seq_hold = 0;
     t->slide_glide = 0;                             /* live MONO / LEG keys must not glide after it */
+    seq_mo_sync(t, 1);                              /* (EDDA OS SEQ OUT: their note-offs) */
 }
 
 static void seq_stop(void)
@@ -745,6 +886,7 @@ static void seq_stop(void)
         trk[i].rh_n = 0;                           /* a recorded note held over the stop: as far as it got */
         trk[i].rat_left = 0;
     }
+    seq_mo_stop();                                 /* (EDDA OS SEQ OUT +CLOCK: STOP, after the notes' offs) */
     chain_stop();
     motion_end();
 }
@@ -828,8 +970,10 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     if (!slide_in)
         seq_release(t);
     for (i = 0; i < m; i++)
-        if (!((sk >> i) & 1u))
+        if (!((sk >> i) & 1u)) {
             trk_note_on(t, nn[i], vv[i]);
+            seq_mo_on(t, nn[i], vv[i]);              /* (EDDA OS SEQ OUT) */
+        }
     if (slide_in)                                   /* release what is not held over */
         for (i = 0; i < t->seq_n; i++) {
             for (j = 0; j < m && nn[j] != t->seq_notes[i]; j++)
@@ -841,6 +985,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     for (i = 0; i < m; i++)
         if (!((sk >> i) & 1u))
             t->seq_notes[t->seq_n++] = nn[i];
+    seq_mo_sync(t, 0);                              /* (SEQ OUT: a slide's old notes off after the new ones on) */
     t->seq_off = gate;
     t->seq_hold = hits == 1u && ((s->flags & SF_SLIDE) != 0 || next_tie);   /* next step a TIE: keep the notes to it */
 }
@@ -1054,6 +1199,7 @@ static void events_block(uint32_t n)
         for (i = 0; i < NTRK; i++) {
             trk[i].rh_n = trk[i].rskip_n = 0;
             trk[i].seq_n = trk[i].seq_hold = trk[i].slide_glide = trk[i].rat_left = 0;
+            seq_mo_sync(&trk[i], 1);                   /* (EDDA OS SEQ OUT: what it sent ends too) */
         }
         pr |= (1u << NTRK) - 1u;
         RING_PUBLISH();
@@ -1108,6 +1254,7 @@ static void events_block(uint32_t n)
                 seq_n = midi_clock_advance(fm1_ms);
         }
     }
+    seq_mo_block(n);                                  /* EDDA OS SEQ OUT: owed note-offs, OFF, +CLOCK's pulses (CLK INT) */
     edda_block(clock_mode ? seq_n : n);               /* EDDA OS: bars, the run, the stop, the cues; before the steps,
                                                        * so a phase that starts on this one holds for its first step */
     strum_tick(n);                                    /* EDDA OS: CHORD+ STRUM's waiting notes (chord.c) */

@@ -28,11 +28,14 @@ enum { ED_IDLE, ED_SHAKERS, ED_STABS, ED_LOG, ED_SILENCE, ED_DROP };
 #define ED_ACTS 5u               /* EDDA: five parts, five bulbs */
 
 typedef struct {
-    /* settings (MENU > EDDA; runtime, a project keeps the key through ROOT / SCL) */
+    /* settings (MENU > EDDA: SHOW CUES, SEQ OUT, RUN, REVEAL kept with the settings, edda_prefs; the key in the
+     * project, through ROOT / SCALE; the act from 1 at power-on) */
     uint8_t camelot;             /* 0 OFF, 1..24: 1A 1B 2A 2B .. 12A 12B (edda_camelot_apply) */
     uint8_t cues;                /* show cues on MIDI OUT: 0 OFF, 1 ON */
     uint8_t act;                 /* bulbs lit, 1..ED_ACTS */
     uint8_t run_len;             /* the run: 0 SHORT (1 + 1 + 2 bars), 1 LONG (2 + 2 + 2 bars) */
+    uint8_t seq_out;             /* SEQ OUT: the sequencer's notes on USB MIDI OUT: 0 OFF, 1 NOTES, 2 +CLOCK (seq.c
+                                  * seq_mo_*: the clock, START and STOP too, on CLK INT) */
     /* runtime */
     uint8_t phase;               /* ED_IDLE.. */
     uint8_t left;                /* beats left in the phase */
@@ -45,6 +48,7 @@ typedef struct {
     int16_t lvl[4];              /* the levels before the run / the stop (restored at the drop) */
     uint8_t mute[4];             /* .. and the mutes */
     uint32_t stab_lvl0;          /* the stabs' level the ramp starts from (Q0) */
+    uint16_t stab_q8;            /* .. how much of it is left, 256 (all) .. 0 (SEQ OUT's velocities follow it) */
     /* REVEAL (MENU > EDDA): the entrainment / novelty arrangement: every 8th bar the kick rests (the hole), bars
      * 17..24 of every 32 the backbeat moves from SNARE to RIM (the reveal) */
     uint8_t reveal;
@@ -61,6 +65,19 @@ static uint8_t edda_lane_map[8] = {0, 1, 2, 3, 4, 5, 6, 7};   /* the lane a lane
 
 static void edda_block(uint32_t n);
 static void edda_defaults(void);
+/* the settings kept with MENU's (ui.c edda_prefs, a byte of the settings): bit 0 SHOW CUES, bits 1..2 SEQ OUT (3: no
+ * value, read as OFF), bit 3 RUN LONG, bit 4 REVEAL; 0: every one's default. The key lives on in the project (ROOT /
+ * SCALE), the act and the run start afresh */
+#define ED_PREFS 0x1Fu
+static void edda_prefs_apply(uint32_t b);
+static uint32_t edda_prefs_bits(void);
+/* SEQ OUT (seq.c seq_mo_on): a step's velocity on track k as the run leaves it (0: nothing goes out) */
+static uint32_t edda_out_vel(uint32_t k, uint32_t vel);
+/* the UI's EDDA actions (ui_layer.c the GLO keys, menu_items.c MENU > EDDA): queued, run by edda_block at the start of
+ * the next audio block, where the sequencer and MIDI OUT live (one context changes the run and sends the cues) */
+enum { ED_RQ_RUN = 1, ED_RQ_STOP, ED_RQ_ACT, ED_RQ_FILL, ED_RQ_MUTATE, ED_RQ_KEY_DN, ED_RQ_KEY_UP, ED_RQ_KEY_REL,
+       ED_RQ_CUE_KEY, ED_RQ_CUE_ACT };
+static void edda_ui(uint32_t rq);
 static void edda_reveal_bar(uint32_t b);
 static void edda_mutate_now(void);
 static void edda_cue_note(uint32_t note);

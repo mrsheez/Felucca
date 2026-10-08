@@ -82,6 +82,9 @@ static void rp_put(uint32_t f, uint32_t v)
  * 0 in older ones = FLAT; 2, the retired PIXEL (1.0.1), reads as LINE; anything else unknown as FLAT (settings_persist.c). gfx.c draws from its copy, ux.style
  * (ui_draw.c style_apply) */
 #define ui_style (favorites.factory[15][29])
+/* EDDA OS: MENU > EDDA's SHOW CUES, SEQ OUT, RUN, REVEAL (edda.h ED_PREFS: their bits, 0 every one's default) in another
+ * byte no engine uses, saved with the settings; applied at power-on (main.c felucca_init) and on a settings restore */
+#define edda_prefs (favorites.factory[15][26])
 static void draw_rules(uint32_t y, uint32_t h);       /* (ui_draw.c) */
 
 static uint8_t sync_reload;                  /* engine / preset / project / user preset loaded: editor RELOAD push */
