@@ -506,14 +506,17 @@ static void vz_span(int32_t s, int32_t *lo, int32_t *hi)
 #define VZ_GLOW2 6400                    /* SCOPE: the glow's reach, squared (Q4: 5 px) */
 /* SCOPE as a phosphor screen, a column at a time: the light of the graticule, of the fill between the curve and the
  * zero line, of the last picture's curve and of the glow (64ths of THEME over the background: vz.lum), then the curve:
- * a THEME body 2.2 px across round a white-hot core (vz.hot). A pixel's distance from the curve: the nearest of the
- * columns' spans within reach (alpha max beta min: no square roots) */
+ * a THEME body 2.5 px across round a white-hot core (vz.hot), by each pixel's distance from it (ui_graph.c
+ * trace_dist: smooth where it is steep). The glow's distance: from the columns' spans within reach (alpha max beta
+ * min, no square roots) */
 static void vz_scope(void)
 {
     static const uint8_t REACH[5] = {80, 78, 73, 64, 48};       /* the glow's reach (Q4 rows) 0..4 columns away */
     static const uint8_t DIV[8] = {16, 42, 68, 94, 146, 172, 198, 224};   /* the divisions, 26 px apart */
     int16_t lo[240], hi[240];
+    uint16_t kq[240];
     uint8_t gl[VZ_SPLIT], bd[VZ_SPLIT], hc[VZ_SPLIT], al[VZ_SPLIT];   /* this column by row: glow, body, core, light */
+    const int16_t *tq = vz.trace;
     int32_t X, r, j;
     for (X = 0; X < 240; X++) {
         int32_t a, b;
@@ -521,19 +524,18 @@ static void vz_scope(void)
         lo[X] = (int16_t)a;
         hi[X] = (int16_t)b;
     }
+    trace_prep(tq, 240, kq);
     for (X = 0; X < 240; X++) {
-        int32_t s, yq = vz.trace[X], fa = (lo[X] + 15) >> 4, fb = hi[X] >> 4;   /* (on its own span: all at full) */
+        int32_t s, yq = tq[X], fa = (lo[X] + 15) >> 4, fb = hi[X] >> 4, ra, rb;   /* (on its own span: the glow at full) */
         uint16_t *col = cv_px + X;
         memset(gl, 0, sizeof gl);
         memset(bd, 0, sizeof bd);
         memset(hc, 0, sizeof hc);
         memset(al, 0, sizeof al);
-        for (r = fa < vz_y0 ? vz_y0 : fa; r <= fb && r < vz_y1; r++) {
+        for (r = fa < vz_y0 ? vz_y0 : fa; r <= fb && r < vz_y1; r++)
             gl[r - vz_y0] = 26;
-            bd[r - vz_y0] = hc[r - vz_y0] = 16;
-        }
-        for (s = X - 4; s <= X + 4; s++) {                       /* the glow, the body, the core */
-            int32_t m = X > s ? X - s : s - X, k2 = 256 * m * m, ra, rb, l, h;
+        for (s = X - 4; s <= X + 4; s++) {                       /* the glow */
+            int32_t m = X > s ? X - s : s - X, k2 = 256 * m * m, l, h;
             if (s < 0 || s > 239)
                 continue;
             l = lo[s];
@@ -551,18 +553,33 @@ static void vz_scope(void)
                 g = t * t * 43 >> 12;                            /* (a smooth bump: 26 at the curve) */
                 if (g > gl[j])
                     gl[j] = (uint8_t)g;
-                if (m <= 1 && d2 < 1600) {                       /* (within 2.5 px) */
-                    int32_t k = m * 16, mx = k > dv ? k : dv, mn = k > dv ? dv : k, d = mx + (mn * 3 >> 3);
-                    int32_t b = 26 - d, c = 16 - d;              /* (the body 1.1 px each side, the core 0.5, +- half a pixel) */
-                    if (b > bd[j])
-                        bd[j] = (uint8_t)(b > 16 ? 16 : b);
-                    if (c > hc[j])
-                        hc[j] = (uint8_t)(c > 16 ? 16 : c);
-                }
             }
         }
+        ra = yq;                                                 /* the body and the core: within 2.5 px */
+        rb = yq;
+        if (X) {
+            ra = tq[X - 1] < ra ? tq[X - 1] : ra;
+            rb = tq[X - 1] > rb ? tq[X - 1] : rb;
+        }
+        if (X < 239) {
+            ra = tq[X + 1] < ra ? tq[X + 1] : ra;
+            rb = tq[X + 1] > rb ? tq[X + 1] : rb;
+        }
+        ra = (ra - 40 + 15) >> 4;
+        rb = (rb + 40) >> 4;
+        ra = ra < vz_y0 ? vz_y0 : ra;
+        rb = rb >= vz_y1 ? vz_y1 - 1 : rb;
+        for (r = ra; r <= rb; r++) {
+            int32_t d = trace_dist(tq, 240, kq, X, r * 16), b = 28 - d, c = 20 - d;   /* (the body whole to 0.75 px, the
+                                                                                         * core to 0.25, a pixel of edge) */
+            j = r - vz_y0;
+            bd[j] = (uint8_t)(b < 0 ? 0 : b > 16 ? 16 : b);
+            hc[j] = (uint8_t)(c < 0 ? 0 : c > 16 ? 16 : c);
+        }
         if (yq < VZ_AXIS - 16 || yq > VZ_AXIS + 16) {           /* the fill: 12/64 at the curve, nothing at the zero line */
-            int32_t fi = 12 * 16 * 256 / (yq - VZ_AXIS), ra = yq < VZ_AXIS ? (yq >> 4) + 1 : 121, rb = yq < VZ_AXIS ? 119 : (yq - 1) >> 4;
+            int32_t fi = 12 * 16 * 256 / (yq - VZ_AXIS);
+            ra = yq < VZ_AXIS ? (yq >> 4) + 1 : 121;
+            rb = yq < VZ_AXIS ? 119 : (yq - 1) >> 4;
             ra = ra < vz_y0 ? vz_y0 : ra;
             rb = rb >= vz_y1 ? vz_y1 - 1 : rb;
             for (r = ra; r <= rb; r++)

@@ -138,9 +138,10 @@ jobs:
               echo "(the log's last lines:)"
               tail -5 build/tests.log || true
               echo '```'
-              echo "(tests/target_budget.py's OVER BUDGET on drum_render or fm1_alnk0_irq is EDDA OS's added audio work: the user kits,"
-              echo "SEQ OUT, the run, the exact grid; the host CPU check in tests/regress.c is the one that bounds it. After a good"
-              echo "test on the FM-1: BUDGET_UPDATE=1 python3 tests/target_budget.py build/felucca.dis tests/target_budget.txt)"
+              echo "(tests/target_budget.py's OVER BUDGET on drum_render, fm1_alnk0_irq, slicer_track or perf_begin is EDDA OS's added"
+              echo "audio work: the user kits, SEQ OUT, the run, the exact grid's clocks; a static count, the host CPU check in"
+              echo "tests/regress.c times the renders and bounds it. After a good test on the FM-1:"
+              echo "BUDGET_UPDATE=1 python3 tests/target_budget.py build/felucca.dis tests/target_budget.txt)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

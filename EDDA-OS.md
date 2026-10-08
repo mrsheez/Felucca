@@ -12,7 +12,7 @@ section below says otherwise.
 | Base | Felucca 1.1.5.1 (hugelton/Felucca `main`, merged); EDDA OS's commits sit on top (`git log main..edda`) |
 | Licence | GPL-3.0-only, as Felucca |
 | Verified | 3,517 host checks pass (Felucca's suites and `tests/edda_test.c`, under ASan/UBSan); the whole firmware compiles for a 32-bit target |
-| Not yet | flashed onto an FM-1 (section 7); the package itself builds with JieLi's compiler on GitHub |
+| Not yet | flashed onto an FM-1 (section 7); the package builds with JieLi's compiler on GitHub and its suites pass there |
 | Install | from a Windows laptop with Chrome or Edge; no Mac or Linux needed (section 1) |
 
 ---
@@ -384,17 +384,21 @@ external clock), the settings round trip, VIZ navigation and the spectrum's band
 keys. Every screen, in every palette, passes Felucca's layout lint (0 findings over 163 screens × 11 palettes).
 The web editor's protocol and kit builder tests pass; the browser emulator's source builds and runs natively.
 
-**Built with JieLi's compiler** (GitHub Actions, run 37803676056, every visualiser in): the image is 472,580
-bytes of the 581,564-byte app slot, RAM (.data + .bss) 93,688 of 98,304 bytes, the pool 334,788 of 344,064
-bytes (9,276 spare; the build requires 8,192), register access in `hal/` only. The whole firmware also compiles
-for a 32-bit RISC-V target with no new warnings. The package carries JieLi's own SDK files when the run can
-reach gitee (its summary says which; `tools/get_sdk_files.sh` checks them against `tools/build.py`).
+**Built with JieLi's compiler** (GitHub Actions, runs 37803676056 and 37805034320, every visualiser in): the
+image is 472,580 bytes of the 581,564-byte app slot, RAM (.data + .bss) 93,688 of 98,304 bytes, the pool
+334,788 of 344,064 bytes (9,276 spare; the build requires 8,192), register access in `hal/` only. The package
+carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s SHA-256s,
+so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real
+package, sanitizers and fuzzers included, and the browser emulator builds to WebAssembly and plays (2.1 % of real
+time for a heavy song), except the static cost check below.
 
-**Not yet:** a flash onto an FM-1 and listening tests of the voices and kits. On a CI run,
-`tests/target_budget.py` may report the drum render and the audio interrupt over Felucca's budget: that is
-EDDA's added audio work (the kits, SEQ OUT, the run, the exact grid), bounded by the host CPU check that
-passes; after a good test on the FM-1, `BUDGET_UPDATE=1 python3 tests/target_budget.py build/felucca.dis
-tests/target_budget.txt` re-bases it.
+**Not yet:** a flash onto an FM-1 and listening tests of the voices and kits. `tests/target_budget.py`, a static
+count of the instructions in the audio code's loops from JieLi's disassembly, reports four functions over
+Felucca's figures, all EDDA's intended work: `drum_render` (the user kits' sample voice now inside it; its
+per-sample loop has no divides), the audio interrupt `fm1_alnk0_irq` (+19 %: SEQ OUT, the run, the cues),
+`slicer_track` (+59 %) and `perf_begin` (+29 %: both the exact grid's clocks). The host CPU check, which times
+the renders, passes with nothing over budget. After a good test on the FM-1, `BUDGET_UPDATE=1 python3
+tests/target_budget.py build/felucca.dis tests/target_budget.txt` re-bases the static figures.
 
 ---
 

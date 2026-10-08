@@ -5,13 +5,93 @@
  * MOD, lists: presets, user presets, patterns, project slots, song), the HOME oscilloscope, the
  * instrument diagrams; the MIXER page draws four SURF columns instead. Each graph is redrawn only when
  * graph_signature() changes. The look:
- * curves THEME (2 px), guides and empty marks RAISE, captions MID / DIM, the active thing ACCENT,
+ * curves THEME (2 px, anti-aliased: graph_trace), guides and empty marks RAISE, captions MID / DIM, the active thing ACCENT,
  * bars rounded; a list's selected row is a THEME bar with INK text. */
 #define PANEL_X0 10                                  /* the graphs' inner area: x 10..230 */
 #define PANEL_W 220
 #define GOY 11                                       /* graphs drawn on a 100 px scale sit at y 11..111 */
 /* the height ADSR and LFO are drawn on: 100 px, or (MENU > LARGE's strip: draw_graph) the strip's ~ 56 */
 static int32_t graph_ht = 100;
+
+/* EDDA OS: anti-aliased curves y(x) (the ADSR, LFO and FILTER curves, the oscilloscope; ui_viz.c's SCOPE), their rows
+ * in sixteenths of a pixel (Q4), a pixel's centre at its whole value. kq[x]: 16 / the length of segment x .. x + 1, Q12 */
+#define TRACE_MAX 240
+static void trace_prep(const int16_t *yq, int32_t n, uint16_t *kq)
+{
+    int32_t x;
+    for (x = 0; x + 1 < n; x++) {
+        int32_t dy = yq[x + 1] - yq[x];
+        kq[x] = (uint16_t)((16 << 12) / (int32_t)isqrt32((uint32_t)(256 + dy * dy)));
+    }
+}
+static int32_t trace_amb(int32_t a, int32_t b) { return a > b ? a + (b * 3 >> 3) : b + (a * 3 >> 3); }   /* ~hypot */
+/* the distance (Q4) from the centre of the pixel at column x, row rq / 16 to the curve: to the nearer of the two
+ * segments meeting in that column (perpendicular, or to the nearer end) */
+static int32_t trace_dist(const int16_t *yq, int32_t n, const uint16_t *kq, int32_t x, int32_t rq)
+{
+    int32_t m = yq[x], d = rq > m ? rq - m : m - rq, e;
+    if (x) {                                         /* the segment from the column before */
+        int32_t dy = m - yq[x - 1], ry = rq - yq[x - 1], t = 256 + ry * dy;
+        if (t <= 0)
+            e = trace_amb(16, ry < 0 ? -ry : ry);
+        else if (t >= 256 + dy * dy)
+            e = d;
+        else
+            e = ((dy > ry ? dy - ry : ry - dy) * kq[x - 1]) >> 12;
+        d = e < d ? e : d;
+    }
+    if (x + 1 < n) {                                 /* .. the one to the column after */
+        int32_t dy = yq[x + 1] - m, ry = rq - m, t = ry * dy;
+        if (t >= 256 + dy * dy) {
+            int32_t rb = rq - yq[x + 1];
+            e = trace_amb(16, rb < 0 ? -rb : rb);
+        } else if (t > 0)
+            e = ((ry < 0 ? -ry : ry) * kq[x]) >> 12;
+        else
+            e = ry < 0 ? -ry : ry;
+        d = e < d ? e : d;
+    }
+    return d;
+}
+/* a curve 2 px across: n columns from canvas x x0, a pixel covered by its distance (1 px either side, half a pixel of
+ * edge), so a steep stretch is as smooth as a flat one; over the panel and the RAISE guides through the text's ramps */
+static void graph_trace(int32_t x0, int32_t n, const int16_t *yq, uint16_t c)
+{
+    uint16_t kq[TRACE_MAX];
+    const uint16_t *rs = ramp(c, T_SURF), *rr = ramp(c, T_RAISE);
+    uint16_t sv = swap16(T_SURF), sr = swap16(T_RAISE), sc = swap16(c);
+    int32_t x;
+    n = n > (int32_t)TRACE_MAX ? (int32_t)TRACE_MAX : n;
+    trace_prep(yq, n, kq);
+    for (x = 0; x < n; x++) {
+        int32_t ra = yq[x], rb = yq[x], r;
+        if ((uint32_t)(x0 + x) >= cv_w)
+            continue;
+        if (x) {
+            ra = yq[x - 1] < ra ? yq[x - 1] : ra;
+            rb = yq[x - 1] > rb ? yq[x - 1] : rb;
+        }
+        if (x + 1 < n) {
+            ra = yq[x + 1] < ra ? yq[x + 1] : ra;
+            rb = yq[x + 1] > rb ? yq[x + 1] : rb;
+        }
+        for (r = (ra - 24 + 15) >> 4; r <= (rb + 24) >> 4; r++) {
+            int32_t yy = r + cv_oy, cov;
+            uint16_t *px;
+            if ((uint32_t)yy >= cv_h || (cov = 24 - trace_dist(yq, n, kq, x, r * 16)) <= 0)
+                continue;
+            px = cv_px + (uint32_t)yy * cv_w + (uint32_t)(x0 + x);
+            if (cov >= 16)
+                *px = sc;
+            else if (*px == sv)
+                *px = rs[cov];
+            else if (*px == sr)
+                *px = rr[cov];
+            else
+                *px = swap16(ux_mix(swap16(*px), c, cov * 100 / 16));
+        }
+    }
+}
 
 /* Matches voice.c: attack is linear, decay and release are exponential
  * (env += (target - env) * k each tick, ~99 % after the set time). Time
@@ -21,47 +101,40 @@ static void graph_adsr(const track_t *t, uint16_t c)
     const page_t *pg = cur_page();
     int32_t a = 4 + t->p[pg->id[0]] * 50 / 127, d = 6 + t->p[pg->id[1]] * 50 / 127, r = 6 + t->p[pg->id[3]] * 60 / 127;
     int32_t top = 6 * graph_ht / 100, bot = 88 * graph_ht / 100, sus = t->p[pg->id[2]] * 1000 / 127;   /* 0..1000 */
-    int32_t x0 = 12, x1 = x0 + a, x3 = 226 - r, i, px, py;
+    int32_t x0 = 12, x1 = x0 + a, x3 = 226 - r, x;
     int32_t e = 32768;                                                  /* exp(-4.6 u), Q15 */
-#define EGY(lvl) (bot - (lvl) * (bot - top) / 1000)
+    int16_t yq[TRACE_MAX];                                              /* (the curve column by column, Q4) */
+#define EGQ(lvl) (int16_t)(bot * 16 - (lvl) * (bot - top) * 16 / 1000)
     cv_rect(PANEL_X0, bot + 2, PANEL_W, 1, T_RAISE);
-    cv_line_t(x0, bot, x1, top, c, 2);                                  /* attack: linear */
-    px = x1;
-    py = top;
-    for (i = 1; i <= d; i++) {                                          /* decay: exponential to SUS */
-        int32_t lvl;
+    for (x = x0; x <= x1; x++)                                          /* attack: linear */
+        yq[x - x0] = (int16_t)(bot * 16 - (bot - top) * 16 * (x - x0) / a);
+    for (; x <= x1 + d; x++) {                                          /* decay: exponential to SUS */
         e = (e * (32768 - 150733 / d)) >> 15;           /* k^d = exp(-4.6) */
-        lvl = sus + ((1000 - sus) * e >> 15);
-        cv_line_t(px, py, x1 + i, EGY(lvl), c, 2);
-        px = x1 + i;
-        py = EGY(lvl);
+        yq[x - x0] = EGQ(sus + ((1000 - sus) * e >> 15));
     }
-    cv_line_t(px, py, x3, EGY(sus), c, 2);                               /* sustain */
-    px = x3;
-    py = EGY(sus);
-    e = 32768;
-    for (i = 1; i <= r; i++) {                                          /* release: exponential to 0 */
+    for (; x <= x3; x++)                                                /* sustain */
+        yq[x - x0] = EGQ(sus);
+    for (e = 32768; x <= 226; x++) {                                    /* release: exponential to 0 */
         e = (e * (32768 - 150733 / r)) >> 15;
-        cv_line_t(px, py, x3 + i, EGY(sus * e >> 15), c, 2);
-        px = x3 + i;
-        py = EGY(sus * e >> 15);
+        yq[x - x0] = EGQ(sus * e >> 15);
     }
-#undef EGY
+#undef EGQ
+    graph_trace(x0, 226 - x0 + 1, yq, c);
 }
 
 static void graph_lfo(const track_t *t, uint16_t c)
 {
-    int32_t x, cy = graph_ht / 2, a = 38 * graph_ht / 100, py = cy;
+    int32_t x, cy = graph_ht / 2, a = 38 * graph_ht / 100;
     uint32_t ph = (uint32_t)t->p[P_LPHASE] << 25;
+    int16_t yq[PANEL_W];
     cv_rect(PANEL_X0, cy, PANEL_W, 1, T_RAISE);
-    for (x = 0; x < PANEL_W; x++) {                  /* two cycles (lfo_wave only reads the track) */
-        int32_t y = cy - lfo_wave((track_t *)t, ph + (uint32_t)x * (0xFFFFFFFFu / (PANEL_W / 2u))) * a / 32768;
+    for (x = 0; x < PANEL_W; x++) {                  /* two cycles (lfo_wave only reads the track), Q4 */
+        int32_t y = cy * 16 - lfo_wave((track_t *)t, ph + (uint32_t)x * (0xFFFFFFFFu / (PANEL_W / 2u))) * a / 2048;
         if (t->p[P_LWAVE] == 4)
-            y = cy - ((int32_t)((x / 20 * 2654435761u) >> 16) - 32768) * a / 32768;
-        if (x)
-            cv_line_t(PANEL_X0 + x - 1, py, PANEL_X0 + x, y, c, 2);
-        py = y;
+            y = cy * 16 - ((int32_t)((x / 20 * 2654435761u) >> 16) - 32768) * a / 2048;
+        yq[x] = (int16_t)y;
     }
+    graph_trace(PANEL_X0, PANEL_W, yq, c);
 }
 
 /* step bar x of step i of a 16-step row: 4 groups, as the footer (9 px bars, 13 px apart, 4 px between groups),
@@ -404,7 +477,8 @@ static void graph_chord(const track_t *t, uint16_t c)
  * cutoff's octave marked, the knob's side named */
 static void graph_filter(const track_t *t, uint16_t c)
 {
-    int32_t v = t->p[P_ED_FX], i, prev = -1, w = 216;              /* the graph: x 12..228, y 20..92 */
+    int32_t v = t->p[P_ED_FX], i, w = 216;                          /* the graph: x 12..228, y 20..92 */
+    int16_t yq[217];
     static const char *const OCT[6] = {"20", "100", "500", "2K", "8K", ""};   /* (20K: the right edge, unlabelled) */
     char b[12];
     const char *unit;
@@ -419,21 +493,19 @@ static void graph_filter(const track_t *t, uint16_t c)
             cv_text_on(x + 2, 94, &AF_S, OCT[i], T_DIM, T_SURF);
     }
     for (i = 0; i <= w; i++) {                          /* the curve: 10 octaves over 216 px, 12 dB / octave past the cutoff, 6 dB = 6 px */
-        int32_t oct = i * 1000 / w, db = 0, y;           /* thousandths of 10 octaves above 20 Hz */
+        int32_t oct = i * 1000 / w, db = 0;              /* thousandths of 10 octaves above 20 Hz; db in sixteenths */
         if (v < 0) {
             int32_t fc = 1000 - (-v) * 750 / 64 - 30;    /* the cutoff in thousandths: 18 kHz = 0.97 */
             if (oct > fc)
-                db = (oct - fc) * 120 / 100;             /* 12 dB per octave (100 thousandths) */
+                db = (oct - fc) * 120 * 16 / 100;        /* 12 dB per octave (100 thousandths) */
         } else if (v > 0) {
             int32_t fc = v * 860 / 63;                   /* 20 Hz .. 7.8 kHz */
             if (oct < fc)
-                db = (fc - oct) * 120 / 100;
+                db = (fc - oct) * 120 * 16 / 100;
         }
-        y = 22 + (db > 66 ? 66 : db);                    /* 1 px per dB, the floor -66 dB */
-        if (prev >= 0)
-            cv_line_t(11 + i, prev, 12 + i, y, c, 2);
-        prev = y;
+        yq[i] = (int16_t)(22 * 16 + (db > 66 * 16 ? 66 * 16 : db));   /* 1 px per dB, the floor -66 dB */
     }
+    graph_trace(12, w + 1, yq, c);
 }
 /* the four sends as faders under their cards: a RAISE slot, the THEME fill from the bottom, a cap */
 static void graph_fx(const track_t *t, uint16_t c)
@@ -1446,17 +1518,14 @@ static void draw_tracks(void)
     }
 }
 /* oscilloscope of the output, triggered on a rising zero crossing: a RAISE centre line, the trace 2 px (in silence
- * a flat line on it; MENU > SCREEN OFF keeps it from staying on the panel for hours). EDDA OS: the trace anti-aliased,
- * its rows in sixteenths of a pixel: a column covers the rows the curve passes through between half-way to either
- * neighbour, a pixel by its distance from the nearest of three columns' (alpha max beta min) */
+ * a flat line on it; MENU > SCREEN OFF keeps it from staying on the panel for hours). EDDA OS: anti-aliased, its rows
+ * in sixteenths of a pixel (graph_trace) */
 static int16_t scope_snap[SCOPE_N];          /* the scope as a frame saw it (and EDDA OS's visualisers: ui_viz.c) */
 static void graph_scope(uint16_t c)
 {
-    int16_t *snap = scope_snap, yq[PANEL_W], lo[PANEL_W], hi[PANEL_W];
+    int16_t *snap = scope_snap, yq[PANEL_W];
     uint32_t w = scope_w, i, trig = 0;
     int32_t cy = (int32_t)cv_h / 2, x, peak = 1500, a = cv_h == H_GRAPH ? 46 : cy - 6;   /* (LARGE: the strip) */
-    const uint16_t *rs = ramp(c, T_SURF), *rr = ramp(c, T_RAISE);
-    uint16_t sv = swap16(T_SURF), sr = swap16(T_RAISE), sc = swap16(c);
     for (i = 0; i < SCOPE_N; i++) {
         snap[i] = scope_buf[(w + i) & (SCOPE_N - 1u)];
         if (snap[i] > peak)
@@ -1474,51 +1543,7 @@ static void graph_scope(uint16_t c)
         int32_t y = cy * 16 - snap[trig + (uint32_t)x] * a * 16 / peak;
         yq[x] = (int16_t)(y < 32 ? 32 : y > ((int32_t)cv_h - 3) * 16 ? ((int32_t)cv_h - 3) * 16 : y);
     }
-    for (x = 0; x < PANEL_W; x++) {                  /* .. each column's span */
-        int32_t m = yq[x], p = x ? (yq[x - 1] + m) >> 1 : m, n = x + 1 < PANEL_W ? (yq[x + 1] + m) >> 1 : m;
-        lo[x] = (int16_t)(m < p ? (m < n ? m : n) : (p < n ? p : n));
-        hi[x] = (int16_t)(m > p ? (m > n ? m : n) : (p > n ? p : n));
-    }
-    for (x = 0; x < PANEL_W; x++) {
-        int32_t s, r, ra = 1 << 20, rb = -1, fa = (lo[x] + 15) >> 4, fb = hi[x] >> 4;   /* (on its own span: whole) */
-        for (s = x - 1; s <= x + 1; s++)
-            if (s >= 0 && s < PANEL_W) {
-                ra = lo[s] < ra ? lo[s] : ra;
-                rb = hi[s] > rb ? hi[s] : rb;
-            }
-        ra = (ra - 24 + 15) >> 4;
-        rb = (rb + 24) >> 4;
-        for (r = ra; r <= rb; r++) {
-            int32_t best = 0, rq = r * 16, yy = r + cv_oy;
-            uint16_t *px;
-            if (r >= fa && r <= fb) {
-                if ((uint32_t)yy < cv_h)
-                    cv_px[(uint32_t)yy * cv_w + (uint32_t)(PANEL_X0 + x)] = sc;
-                continue;
-            }
-            for (s = x - 1; s <= x + 1; s++) {
-                int32_t dv, k, d;
-                if (s < 0 || s >= PANEL_W)
-                    continue;
-                dv = rq < lo[s] ? lo[s] - rq : rq > hi[s] ? rq - hi[s] : 0;
-                k = s == x ? 0 : 16;
-                d = (k > dv ? k + (dv * 3 >> 3) : dv + (k * 3 >> 3));
-                d = 24 - d;                          /* (1 px either side, half a pixel of edge) */
-                best = d > best ? d : best;
-            }
-            if (best <= 0 || (uint32_t)yy >= cv_h)
-                continue;
-            px = cv_px + (uint32_t)yy * cv_w + (uint32_t)(PANEL_X0 + x);
-            if (best >= 16)
-                *px = sc;
-            else if (*px == sv)
-                *px = rs[best];
-            else if (*px == sr)
-                *px = rr[best];
-            else
-                *px = swap16(ux_mix(swap16(*px), c, best * 100 / 16));
-        }
-    }
+    graph_trace(PANEL_X0, PANEL_W, yq, c);
 }
 
 /* SONG is a playing order of the four stored project patterns. Letters match
