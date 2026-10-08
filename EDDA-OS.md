@@ -263,12 +263,14 @@ the layers keep working; a page button leaves; the screen stays on while one sho
 
 | | | |
 | --- | --- | --- |
-| **SCOPE** — the output, a glowing trace, last picture as afterimage | **SPECTRUM** — 40 bands 43 Hz–10.5 kHz, held peaks, a reflection | **WATERFALL** — the last 40 spectra, newest on top |
-| **ORBIT** — the output against itself a quarter period later; a tone is a circle | **TUNNEL** — a twisting square a beat, the bar's one lit | **PULSE** — rings on the beat over turning spokes, the level at the core |
+| **SCOPE** — the output on a phosphor screen: a white-hot trace in its glow, a graticule, the last picture as afterimage | **SPECTRUM** — 80 bands 43 Hz–10.5 kHz in heat colours, held peaks, a reflection | **WATERFALL** — the last 60 spectra, newest on top, blended between bands and rows |
+| **ORBIT** — the output against itself a quarter period later on an instrument face; a tone is a circle | **TUNNEL** — a twisting square a beat, the bar's one lit | **PULSE** — rings on the beat over turning spokes, the level as a sun at the core |
 | **STARS** — speed from the tempo, a rush after each beat | **GRID** — the four tracks' steps round the playheads | **RAIN** — the notes sounding, falling, C2–B6 across |
-| **WHEEL** — the Camelot wheel: the key, its neighbours, the roots sounding | **BULBS** — the act, the run's phase and beats, the bar | **CLOCK** — the tempo in big figures, bar.beat, the beat filling |
+| **WHEEL** — the Camelot wheel: the key, its neighbours, the roots sounding | **BULBS** — the act as lit bulbs, their halos on the beat; the run's phase and beats, the bar | **CLOCK** — the tempo in lamp segments, bar.beat, the beat filling |
 
-Drawn from one snapshot of the music per picture, in the palette's colours (GREY and MONO stay gray).
+Drawn from one snapshot of the music per picture, in the palette's colours (GREY and MONO stay gray). Every
+edge is anti-aliased: lines, rings and discs by their coverage, positions to a sixteenth of a pixel where a
+shape moves. HOME's own oscilloscope draws its trace the same way.
 
 ### 2.18 Faster hands
 - **SELECT PAGES** (MENU > CONTROL > SELECT): the SELECT knob turns through every page, HOME at either end;
@@ -355,7 +357,7 @@ grid, SEQ OUT's run-aware output, the West African pattern bank, the voice bank.
 ```
 sh edda-build.sh                   # Linux x86-64 (or WSL2): the toolchain, the vendored SDK files -> build/felucca.fwsc
 SANITIZE=1 sh tests/run_tests.sh   # every suite; tests/run_host_only.sh without a package
-EDDA_VIZ=0 ./build.sh              # the same firmware without the visualisers (~9 KB less code)
+EDDA_VIZ=0 ./build.sh              # the same firmware without the visualisers (~17 KB less code)
 ```
 
 Felucca's `BUILDING.md` covers macOS with Docker and the build options. `.github/workflows/edda-build.yml`

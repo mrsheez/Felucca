@@ -1446,13 +1446,17 @@ static void draw_tracks(void)
     }
 }
 /* oscilloscope of the output, triggered on a rising zero crossing: a RAISE centre line, the trace 2 px (in silence
- * a flat line on it; MENU > SCREEN OFF keeps it from staying on the panel for hours) */
+ * a flat line on it; MENU > SCREEN OFF keeps it from staying on the panel for hours). EDDA OS: the trace anti-aliased,
+ * its rows in sixteenths of a pixel: a column covers the rows the curve passes through between half-way to either
+ * neighbour, a pixel by its distance from the nearest of three columns' (alpha max beta min) */
 static int16_t scope_snap[SCOPE_N];          /* the scope as a frame saw it (and EDDA OS's visualisers: ui_viz.c) */
 static void graph_scope(uint16_t c)
 {
-    int16_t *snap = scope_snap;
+    int16_t *snap = scope_snap, yq[PANEL_W], lo[PANEL_W], hi[PANEL_W];
     uint32_t w = scope_w, i, trig = 0;
-    int32_t cy = (int32_t)cv_h / 2, py = cy, x, peak = 1500, a = cv_h == H_GRAPH ? 46 : cy - 6;   /* (LARGE: the strip) */
+    int32_t cy = (int32_t)cv_h / 2, x, peak = 1500, a = cv_h == H_GRAPH ? 46 : cy - 6;   /* (LARGE: the strip) */
+    const uint16_t *rs = ramp(c, T_SURF), *rr = ramp(c, T_RAISE);
+    uint16_t sv = swap16(T_SURF), sr = swap16(T_RAISE), sc = swap16(c);
     for (i = 0; i < SCOPE_N; i++) {
         snap[i] = scope_buf[(w + i) & (SCOPE_N - 1u)];
         if (snap[i] > peak)
@@ -1466,11 +1470,54 @@ static void graph_scope(uint16_t c)
             break;
         }
     cv_rect(PANEL_X0, cy, PANEL_W, 1, T_RAISE);
+    for (x = 0; x < PANEL_W; x++) {                  /* the curve (auto-scaled), Q4 rows */
+        int32_t y = cy * 16 - snap[trig + (uint32_t)x] * a * 16 / peak;
+        yq[x] = (int16_t)(y < 32 ? 32 : y > ((int32_t)cv_h - 3) * 16 ? ((int32_t)cv_h - 3) * 16 : y);
+    }
+    for (x = 0; x < PANEL_W; x++) {                  /* .. each column's span */
+        int32_t m = yq[x], p = x ? (yq[x - 1] + m) >> 1 : m, n = x + 1 < PANEL_W ? (yq[x + 1] + m) >> 1 : m;
+        lo[x] = (int16_t)(m < p ? (m < n ? m : n) : (p < n ? p : n));
+        hi[x] = (int16_t)(m > p ? (m > n ? m : n) : (p > n ? p : n));
+    }
     for (x = 0; x < PANEL_W; x++) {
-        int32_t y = cy - snap[trig + (uint32_t)x] * a / peak;    /* auto-scaled */
-        if (x)
-            cv_line_t(PANEL_X0 - 1 + x, py, PANEL_X0 + x, y, c, 2);
-        py = y;
+        int32_t s, r, ra = 1 << 20, rb = -1, fa = (lo[x] + 15) >> 4, fb = hi[x] >> 4;   /* (on its own span: whole) */
+        for (s = x - 1; s <= x + 1; s++)
+            if (s >= 0 && s < PANEL_W) {
+                ra = lo[s] < ra ? lo[s] : ra;
+                rb = hi[s] > rb ? hi[s] : rb;
+            }
+        ra = (ra - 24 + 15) >> 4;
+        rb = (rb + 24) >> 4;
+        for (r = ra; r <= rb; r++) {
+            int32_t best = 0, rq = r * 16, yy = r + cv_oy;
+            uint16_t *px;
+            if (r >= fa && r <= fb) {
+                if ((uint32_t)yy < cv_h)
+                    cv_px[(uint32_t)yy * cv_w + (uint32_t)(PANEL_X0 + x)] = sc;
+                continue;
+            }
+            for (s = x - 1; s <= x + 1; s++) {
+                int32_t dv, k, d;
+                if (s < 0 || s >= PANEL_W)
+                    continue;
+                dv = rq < lo[s] ? lo[s] - rq : rq > hi[s] ? rq - hi[s] : 0;
+                k = s == x ? 0 : 16;
+                d = (k > dv ? k + (dv * 3 >> 3) : dv + (k * 3 >> 3));
+                d = 24 - d;                          /* (1 px either side, half a pixel of edge) */
+                best = d > best ? d : best;
+            }
+            if (best <= 0 || (uint32_t)yy >= cv_h)
+                continue;
+            px = cv_px + (uint32_t)yy * cv_w + (uint32_t)(PANEL_X0 + x);
+            if (best >= 16)
+                *px = sc;
+            else if (*px == sv)
+                *px = rs[best];
+            else if (*px == sr)
+                *px = rr[best];
+            else
+                *px = swap16(ux_mix(swap16(*px), c, best * 100 / 16));
+        }
     }
 }
 

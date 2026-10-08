@@ -4965,7 +4965,9 @@ static int test_viz(void)
     }
 
     {   /* the spectrum: a 1 kHz tone peaks in the band holding bin 23 (43 Hz bins); -60 dB is nothing */
-        uint32_t best = 0;
+        uint32_t best = 0, b23 = 0;
+        while (VZ_EDGE[b23 + 1u] <= 23u)
+            b23++;
         vz.n = VZ_SPECTRUM; vz.fresh = 1;
         for (i = 0; i < SCOPE_N; i++)
             scope_buf[i] = (int16_t)(20000.0 * sin(2.0 * 3.14159265 * 1000.0 * (double)i / 22050.0));
@@ -4974,11 +4976,12 @@ static int test_viz(void)
         for (k = 1; k < VZ_NB; k++)
             if (vz.spec[k] > vz.spec[best])
                 best = k;
-        ok = best == 17u && VZ_EDGE[17] == 23u && VZ_EDGE[18] == 25u && vz.spec[best] > 200u && vz.spec[2] < 40u && vz.spec[35] < 40u;
+        /* (1 kHz: band 22; 130 Hz and 1.9 kHz nothing) */
+        ok = best == b23 && b23 == 22u && vz.spec[best] > 200u && vz.spec[2] < 40u && vz.spec[40] < 40u;
         for (i = 0; i < SCOPE_N; i++)
             scope_buf[i] = (int16_t)(20.0 * sin(2.0 * 3.14159265 * 1000.0 * (double)i / 22050.0));
         vz.fresh = 1; vz_snap();
-        ok &= vz.spec[17] < 16u;
+        ok &= vz.spec[b23] < 16u;
         for (i = 0; i < SCOPE_N; i++)
             scope_buf[i] = (int16_t)(20000.0 * sin(2.0 * 3.14159265 * 5000.0 * (double)i / 22050.0));
         vz.fresh = 1; vz_snap();
@@ -4989,7 +4992,7 @@ static int test_viz(void)
         bad += check("VIZ SPECTRUM: a 1 kHz tone peaks in bin 23's band, 5 kHz in bin 116's; -60 dB shows nothing", ok);
     }
 
-    {   /* the picture: SCOPE draws its trace in both bands; the stand-in signal spans them */
+    {   /* the picture: SCOPE draws its trace in both bands (its white-hot core); the stand-in signal spans them */
         ui.viz = 1; vz.n = VZ_SCOPE; vz.fresh = 1; ui.force = 1;
         for (i = 0; i < SCOPE_N; i++)
             scope_buf[i] = (int16_t)(20000.0 * sin(2.0 * 3.14159265 * 220.0 * (double)i / 22050.0));
@@ -4997,8 +5000,8 @@ static int test_viz(void)
         rows = host_blit_rows;
         frame();
         ok = host_blit_rows - rows == 240u;           /* (forced: the whole picture) */
-        n = px_count(T_THEME, 0, 120) + px_count(T_THEME, 120, 240);
-        ok &= px_count(T_THEME, 0, 120) > 100u && px_count(T_THEME, 120, 240) > 100u && n > 400u;
+        n = px_count(vz_c(vz.hot[16]), 0, 120) + px_count(vz_c(vz.hot[16]), 120, 240);
+        ok &= px_count(vz_c(vz.hot[16]), 0, 120) > 100u && px_count(vz_c(vz.hot[16]), 120, 240) > 100u && n > 400u;
         rows = host_blit_rows;
         frame(); frame();
         ok &= host_blit_rows - rows == 240u;          /* (a band a frame) */

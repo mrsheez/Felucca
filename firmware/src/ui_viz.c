@@ -7,42 +7,49 @@
  * HOME held opens the MENU (closed: the visualiser again). Everything else stays as on HOME: the keys play, KNOB 1..4
  * are HOME's four (the name and value come up at the foot), SELECT the tempo, PRESET the sound, ALGORITHM the track,
  * PLAY, REC, the layers (their map over it while held). The screen stays on while it shows (MENU > SCREEN OFF waits).
- *   SCOPE      the output, triggered, a glowing trace, the last picture as an afterimage
- *   SPECTRUM   40 bands, 43 Hz .. 10.5 kHz (a 512-point FFT of the scope's 23 ms, Hann), gradient bars with
- *              their peaks held and a reflection under the floor
- *   WATERFALL  the spectrum of the last 40 pictures, the newest at the top, on a four-colour ramp
- *   ORBIT      the output against itself a quarter period later: a phase portrait (a pure tone is a circle), the
- *              newest part of the curve the brightest
+ *   SCOPE      the output, triggered, on a phosphor screen: a white-hot curve in its glow, the area to the zero line
+ *              lit, the last picture an afterimage, a graticule
+ *   SPECTRUM   80 bands, 43 Hz .. 10.5 kHz (a 512-point FFT of the scope's 23 ms, Hann), bars in heat colours (the
+ *              loud reach the hot white), their peaks held, a reflection under the floor
+ *   WATERFALL  the spectrum of the last 60 pictures, the newest at the top, in heat colours blended between the bands
+ *              and down the rows
+ *   ORBIT      the output against itself a quarter period later: a phase portrait (a pure tone is a circle) on an
+ *              instrument's face, the newest part of the curve the brightest, its head a dot
  *   TUNNEL     a square a beat flies out of the centre, twisting as it comes; the one born on the bar's first beat lit
- *   PULSE      a ring a beat out of the centre over slowly turning spokes, the level of the music its core
+ *   PULSE      a ring a beat out of the centre over slowly turning spokes, the level of the music its core (a sun)
  *   STARS      a starfield: the tempo its speed, a rush after every beat, the near ones streak
  *   GRID       the four tracks' 16 steps round their playheads (a trail behind each); what sounds lit; the selected
  *              track underlined
  *   RAIN       the notes sounding, falling and fading: C2 .. B6 across (the octaves marked), the drum tracks' apart
  *   WHEEL      the Camelot wheel: the key (MENU > EDDA > KEY, else the selected track's ROOT / SCALE), the keys it
  *              mixes into, the roots of the notes sounding
- *   BULBS      EDDA's five bulbs (the act) on the beat; the run's phase and its beats, the bar
- *   CLOCK      the tempo in big figures, bar . beat, the beats of the bar
+ *   BULBS      EDDA's five bulbs (the act), their halos breathing with the beat; the run's phase and its beats, the bar
+ *   CLOCK      the tempo in a lamp's figures (pointed segments), bar . beat, the beats of the bar
  * Drawing: the screen in two bands of the canvas (gfx.c: 240 x 120 each). A frame draws one band (a forced one both),
  * the two of a picture from one snapshot of the music (vz_snap): never two moments in one picture. The SPI to the
- * panel (12 MHz) bounds it, about 12 pictures a second, the UI's work in between. Colours: the palette's tokens
- * only (GREY and MONO stay gray). Texts lie inside one band. The state lives in the pool, off the audio's RAM. */
+ * panel (12 MHz) bounds it, about 12 pictures a second, the UI's work in between. Every edge anti-aliased: lines
+ * Wu's way, rings and dots by their coverage, in sixteenths of a pixel where a shape moves. Colours: the palette's
+ * tokens and blends of them only (GREY and MONO stay gray). Texts lie inside one band. The state lives in the pool,
+ * off the audio's RAM. */
 #define VZ_COUNT 12u
 enum { VZ_SCOPE, VZ_SPECTRUM, VZ_WATERFALL, VZ_ORBIT, VZ_TUNNEL, VZ_PULSE, VZ_STARS, VZ_GRID, VZ_RAIN, VZ_WHEEL,
        VZ_BULBS, VZ_CLOCK };
 static const char *const VZ_NAME[VZ_COUNT] = {"SCOPE", "SPECTRUM", "WATERFALL", "ORBIT", "TUNNEL", "PULSE", "STARS",
                                              "GRID", "RAIN", "WHEEL", "BULBS", "CLOCK"};
 #define VZ_SPLIT 120                     /* the bands: screen rows 0..119 and 120..239 */
-#define VZ_NB 40u                        /* SPECTRUM / WATERFALL: bands */
-#define VZ_WF 40u                        /* WATERFALL: rows (6 px) */
+#define VZ_NB 80u                        /* SPECTRUM: bands (3 px each) */
+#define VZ_WB 40u                        /* WATERFALL: bands (two of SPECTRUM's each, 6 px) */
+#define VZ_WF 60u                        /* WATERFALL: rows (4 px) */
 #define VZ_NSTAR 64u
 #define VZ_RROWS 44u                     /* RAIN: rows (5 px, from y 16: the octave marks above) */
 #define VZ_RLO 36                        /* RAIN: C2 (36) .. B6 (95), 4 px a note */
 #define VZ_NAME_MS 1600u
-/* the bands' FFT bins (43.07 Hz each at the scope's 22.05 kHz): one bin each up to 430 Hz, then log-spaced */
-static const uint8_t VZ_EDGE[VZ_NB + 1u] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 17, 18, 20, 23, 25, 28,
-                                           31, 34, 38, 42, 47, 52, 57, 64, 71, 78, 87, 96, 107, 118, 131, 146, 161,
-                                           179, 198, 220, 244};
+#define VZ_AXIS (120 * 16)               /* SCOPE: the zero line (Q4) */
+/* the bands' FFT bins (43.07 Hz each at the scope's 22.05 kHz): one bin each up to 860 Hz, then log-spaced to 10.5 kHz */
+static const uint8_t VZ_EDGE[VZ_NB + 1u] = {
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+    32, 33, 34, 36, 37, 39, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 61, 63, 66, 69, 72, 75, 78, 81, 84, 88, 91, 95,
+    99, 103, 108, 112, 117, 122, 127, 132, 138, 143, 149, 156, 162, 169, 176, 183, 191, 199, 207, 216, 225, 234, 244};
 static struct {
     uint8_t n, last;                     /* the one shown; the one HOME opens */
     uint8_t band;                        /* the band the next frame draws */
@@ -57,16 +64,17 @@ static struct {
     uint32_t phase;                      /* the beat's phase, 0..255 */
     uint32_t bn;                         /* the beat of the bar (beat_n), 0 the first */
     uint8_t spec[VZ_NB], cap[VZ_NB];     /* SPECTRUM: 0..255, smoothed; the held peaks */
-    uint8_t wf[VZ_WF][VZ_NB / 2u];       /* WATERFALL: 4 bits a band; row wf_top the newest */
+    uint8_t wf[VZ_WF][VZ_WB / 2u];       /* WATERFALL: 4 bits a band; row wf_top the newest */
     uint8_t wf_top;
-    uint8_t after[240];                  /* SCOPE: the last picture's trace, y */
-    uint8_t trace[240];                  /* .. this one's */
+    uint8_t after[240];                  /* SCOPE: the last picture's curve, rows */
+    int16_t trace[240];                  /* .. this one's, Q4 */
     uint8_t after_ok;
     struct { int16_t x, y, z; } star[VZ_NSTAR];
     uint32_t rnd;
     uint8_t rain[VZ_RROWS][16];           /* RAIN: 2 bits a note from VZ_RLO (1 a synth track, 2 a drum track) */
     uint8_t rain_top;
-    uint16_t ramp[16];                   /* WATERFALL, SPECTRUM: BG .. SEL .. THEME .. ACCENT .. TEXT */
+    uint16_t ramp[16];                   /* heat in 16 steps (colours) */
+    uint16_t heat[64], lum[64], hot[17]; /* (vz_ramps: swapped, a pixel a store) */
     uint16_t glow[4];                    /* a trace's glow: TINT-ish .. the core */
     uint16_t trail[8];                   /* RAIN: THEME fading to the background by age */
     uint16_t dtrail[8];                  /* .. the drum tracks' ACCENT */
@@ -98,54 +106,233 @@ static void vz_text(int32_t x0, int32_t w, int32_t y, const aafont_t *f, const c
         cv_text_in(x0, y, w, f, s, fg, bg);
     }
 }
-/* a ring (r0 < r <= r1 from cx, cy; r0 0: a disc), row by row in the band: no gaps between radii */
-static void vz_ring(int32_t cx, int32_t cy, int32_t r0, int32_t r1, uint16_t c)
+/* ---- anti-aliased drawing (the panel is 240 px across: every edge counts). Where a shape moves, its coordinates
+ * are in sixteenths of a pixel (Q4), a pixel's centre at its whole value. A pixel of the band's canvas blended with c
+ * by cov (0..16): over the background through the ramp (gfx.c ramp: the text's own blending), over ink mixed */
+static uint16_t vz_n(uint16_t c) { return ux.bw ? ux_gray(c >> 11) : c; }   /* (MONO: blends of blends stay neutral) */
+static void vz_px(int32_t x, int32_t y, uint16_t c, const uint16_t *rv, uint32_t cov)
 {
-    int32_t y, ya = cy - r1, yb = cy + r1;
-    if (r1 <= 0)
+    uint16_t *p;
+    y += cv_oy;
+    if ((uint32_t)x >= cv_w || (uint32_t)y >= cv_h || !cov)
+        return;
+    p = cv_px + (uint32_t)y * cv_w + (uint32_t)x;
+    if (cov >= 16u)
+        *p = swap16(c);
+    else if (*p == rv[0])
+        *p = rv[cov];
+    else
+        *p = swap16(vz_n(ux_mix(swap16(*p), c, (int32_t)(cov * 100u / 16u))));
+}
+/* a line between Q4 points, Wu's way: along its long axis each whole pixel from the first end up to (not at) the
+ * other (a curve's segments meet without a pixel drawn twice), the two pixels either side of the ideal line sharing
+ * its coverage; wide: twice, half a pixel either side (2 px across) */
+static void vz_aalq(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c, int wide)
+{
+    const uint16_t *rv;
+    int32_t dx = x1 - x0, dy = y1 - y0, steep = (dy < 0 ? -dy : dy) > (dx < 0 ? -dx : dx), t, i, ie, f, step, w;
+    t = (y0 < y1 ? y0 : y1) >> 4;
+    c = vz_n(c);
+    if (t - 2 >= vz_y1 || ((y0 > y1 ? y0 : y1) >> 4) + 2 < vz_y0 || c == cv_bg)
+        return;                                          /* (not in the band, or nothing to see) */
+    rv = ramp(c, cv_bg);
+    if (steep) {
+        t = x0; x0 = y0; y0 = t;
+        t = x1; x1 = y1; y1 = t;
+    }
+    if (x0 > x1) {
+        t = x0; x0 = x1; x1 = t;
+        t = y0; y0 = y1; y1 = t;
+    }
+    dx = x1 - x0;
+    dy = y1 - y0;
+    for (w = wide ? -8 : 0; w <= (wide ? 8 : 0); w += 16) {
+        i = (x0 + 15) >> 4;                              /* the first whole pixel at or after x0 .. */
+        ie = (x1 + 15) >> 4;                             /* .. to the last before x1 */
+        step = dx ? dy * 256 / dx : 0;                   /* (Q8 a pixel) */
+        f = (y0 + w) * 16 + (dx ? (i * 16 - x0) * dy * 16 / dx : 0);
+        for (; i < ie; i++, f += step) {
+            int32_t yi = f >> 8;
+            uint32_t fr = (uint32_t)(f & 255) >> 4;
+            if (steep) {
+                vz_px(yi, i, c, rv, 16u - fr);
+                vz_px(yi + 1, i, c, rv, fr);
+            } else {
+                vz_px(i, yi, c, rv, 16u - fr);
+                vz_px(i, yi + 1, c, rv, fr);
+            }
+        }
+    }
+}
+/* the coverage (0..16) of a pixel d2 (its distance squared) from the centre by the disc of radius r near its edge: the
+ * edge locally straight, the signed distance (r^2 - d^2) / 2r (inv: 8 << 16 / r), half a pixel either side */
+static int32_t vz_dcov(int32_t d2, int32_t r, int32_t inv)
+{
+    int32_t v;
+    if (r <= 0)
+        return 0;
+    v = (((r * r - d2) * inv) >> 16) + 8;
+    return v < 0 ? 0 : v > 16 ? 16 : v;
+}
+static int32_t vz_ext(int32_t r, int32_t ady)        /* a circle's half-width on the row ady from its centre, -1 past it */
+{
+    return r < 0 || ady > r ? -1 : (int32_t)isqrt32((uint32_t)(r * r - ady * ady));
+}
+/* a ring (r0 < d <= r1 from cx, cy; r0 0: a disc), anti-aliased: on each row the pixels a pixel or more inside it
+ * filled whole, the ones within a pixel of an edge by their coverage. Rows in the band only */
+static void vz_aaring(int32_t cx, int32_t cy, int32_t r0, int32_t r1, uint16_t c)
+{
+    const uint16_t *rv;
+    int32_t y, ya = cy - r1 - 1, yb = cy + r1 + 1, i0, i1;
+    c = vz_n(c);
+    if (r1 <= 0 || c == cv_bg)
+        return;
+    r0 = r0 < 0 ? 0 : r0;
+    ya = ya < vz_y0 ? vz_y0 : ya;
+    yb = yb >= vz_y1 ? vz_y1 - 1 : yb;
+    if (ya > yb)
+        return;
+    rv = ramp(c, cv_bg);
+    i1 = (8 << 16) / r1;
+    i0 = r0 ? (8 << 16) / r0 : 0;
+    for (y = ya; y <= yb; y++) {
+        int32_t dy = y - cy, ady = dy < 0 ? -dy : dy, x, k, e[4];
+        int32_t oo = vz_ext(r1 + 1, ady), oi = vz_ext(r1 - 1, ady);           /* the outer edge: (oi, oo] */
+        int32_t io = r0 ? vz_ext(r0 + 1, ady) : -1, ii = r0 ? vz_ext(r0 - 1, ady) : -1;   /* the inner: (ii, io] */
+        if (oo < 0)
+            continue;
+        if (io >= oi) {                                  /* (a thin ring: the two edges one run) */
+            e[0] = ii; e[1] = oo; e[2] = e[3] = 0;
+        } else {
+            int32_t a = io + 1, b = oi;                  /* whole: a .. b either side */
+            if (a <= b) {
+                cv_rect(cx + a, y, b - a + 1, 1, c);
+                cv_rect(cx - b, y, a ? b - a + 1 : b, 1, c);
+            }
+            e[0] = ii; e[1] = io; e[2] = oi; e[3] = oo;
+        }
+        for (k = 0; k < 4; k += 2)
+            for (x = e[k] + 1; x <= e[k + 1]; x++) {
+                int32_t d2 = x * x + dy * dy, cov = vz_dcov(d2, r1, i1) - vz_dcov(d2, r0, i0);
+                if (cov <= 0)
+                    continue;
+                vz_px(cx + x, y, c, rv, (uint32_t)cov);
+                if (x)
+                    vz_px(cx - x, y, c, rv, (uint32_t)cov);
+            }
+    }
+}
+/* a small disc, its centre and radius in Q4 (stars, the orbit's head, dots): every pixel of its box by 4 x 4 samples */
+static void vz_dot(int32_t xq, int32_t yq, int32_t rq, uint16_t c)
+{
+    const uint16_t *rv;
+    int32_t x, y, xa = (xq - rq) >> 4, xb = (xq + rq + 15) >> 4, ya = (yq - rq) >> 4, yb = (yq + rq + 15) >> 4, r2 = rq * rq;
+    ya = ya < vz_y0 ? vz_y0 : ya;
+    yb = yb >= vz_y1 ? vz_y1 - 1 : yb;
+    c = vz_n(c);
+    if (rq <= 0 || ya > yb || c == cv_bg)
+        return;
+    rv = ramp(c, cv_bg);
+    for (y = ya; y <= yb; y++)
+        for (x = xa; x <= xb; x++) {
+            int32_t sx, sy, n = 0;
+            for (sy = 0; sy < 4; sy++) {
+                int32_t py = y * 16 - 6 + sy * 4 - yq;  /* (the samples at -6 -2 2 6 sixteenths) */
+                for (sx = 0; sx < 4; sx++) {
+                    int32_t px = x * 16 - 6 + sx * 4 - xq;
+                    n += px * px + py * py <= r2;
+                }
+            }
+            vz_px(x, y, c, rv, (uint32_t)n);
+        }
+}
+/* a lit sphere: a disc of radius r whose colour runs from rv[0] at its rim to rv[16] at its heart (rv: 17 swapped
+ * colours), the light falling off with the square of the distance; the rim anti-aliased against what lies under it */
+static void vz_orb(int32_t cx, int32_t cy, int32_t r, const uint16_t *rv)
+{
+    int32_t y, ya = cy - r - 1, yb = cy + r + 1, r2 = r * r, inv, i1;
+    uint16_t rim;
+    if (r <= 0)
         return;
     ya = ya < vz_y0 ? vz_y0 : ya;
     yb = yb >= vz_y1 ? vz_y1 - 1 : yb;
+    inv = (16 << 16) / r2;
+    i1 = (8 << 16) / r;
+    rim = swap16(rv[0]);
     for (y = ya; y <= yb; y++) {
-        int32_t dy = y - cy, xo = (int32_t)isqrt32((uint32_t)(r1 * r1 - dy * dy)), xi;
-        if (r0 > 0 && dy * dy < r0 * r0) {
-            xi = (int32_t)isqrt32((uint32_t)(r0 * r0 - dy * dy));
-            cv_rect(cx - xo, y, xo - xi, 1, c);
-            cv_rect(cx + xi + 1, y, xo - xi, 1, c);
-        } else
-            cv_rect(cx - xo, y, 2 * xo + 1, 1, c);
+        int32_t dy = y - cy, ext = vz_ext(r + 1, dy < 0 ? -dy : dy), x;
+        uint16_t *row = cv_px + (uint32_t)(y - vz_y0) * cv_w;
+        for (x = -ext; x <= ext; x++) {
+            int32_t px = cx + x, d2 = x * x + dy * dy, cov;
+            if ((uint32_t)px >= cv_w)
+                continue;
+            cov = vz_dcov(d2, r, i1);
+            if (cov >= 16) {
+                int32_t k = 16 - (d2 * inv >> 16);
+                row[px] = rv[k < 0 ? 0 : k];
+            } else if (cov > 0)
+                vz_px(px, y, rim, ramp(rim, cv_bg), (uint32_t)cov);
+        }
     }
 }
-/* a square frame centred on the screen, half-size h, t px thick, turned by ang (1024 a turn): t concentric outlines */
-static void vz_square(int32_t h, int32_t t, uint32_t ang, uint16_t c)
+/* a square frame centred on the screen, half-size hq (Q4), t px thick, turned by ang (1024 a turn): t outlines */
+static void vz_square(int32_t hq, int32_t t, uint32_t ang, uint16_t c)
 {
     int32_t cs = SINE[(ang + 256u) & 1023u], sn = SINE[ang & 1023u], k;
-    if (h < 1)
+    if (hq < 16)
         return;
-    t = t < 1 ? 1 : t > h ? h : t;
+    t = t < 1 ? 1 : t > hq / 16 ? hq / 16 : t;
     for (k = 0; k < t; k++) {
-        int32_t r = h - k, ax = (r * cs - r * sn) >> 15, ay = (r * sn + r * cs) >> 15;   /* the corner (r, r) turned */
+        int32_t r = hq - k * 16, ax = (r * cs - r * sn) >> 15, ay = (r * sn + r * cs) >> 15;   /* the corner (r, r) turned */
         int32_t bx = (-r * cs - r * sn) >> 15, by = (-r * sn + r * cs) >> 15;            /* .. (-r, r) */
-        cv_line(120 + ax, 120 + ay, 120 + bx, 120 + by, c);
-        cv_line(120 + bx, 120 + by, 120 - ax, 120 - ay, c);
-        cv_line(120 - ax, 120 - ay, 120 - bx, 120 - by, c);
-        cv_line(120 - bx, 120 - by, 120 + ax, 120 + ay, c);
+        vz_aalq(1920 + ax, 1920 + ay, 1920 + bx, 1920 + by, c, 0);
+        vz_aalq(1920 + bx, 1920 + by, 1920 - ax, 1920 - ay, c, 0);
+        vz_aalq(1920 - ax, 1920 - ay, 1920 - bx, 1920 - by, c, 0);
+        vz_aalq(1920 - bx, 1920 - by, 1920 + ax, 1920 + ay, c, 0);
     }
 }
-/* the ramps from the palette (ux_mix is not for inner loops): once a picture */
+static uint16_t vz_c(uint16_t v) { return swap16(v); }   /* a colour of the swapped tables (lum, heat, hot) */
+/* the ramps from the palette (ux_mix is not for inner loops): once a picture. heat: BG .. SEL .. THEME .. the hot
+ * white of THEME .. TEXT (SPECTRUM, WATERFALL, the ramps of the rest); lum: THEME's light over the background, in
+ * 64ths; hot: THEME to its hot white, in 16ths (the swapped panel values: a pixel is a store) */
 static void vz_ramps(void)
 {
     uint32_t i;
+    uint16_t hot = ux_mix(T_THEME, T_TEXT, 72);
+    for (i = 0; i < 64u; i++) {
+        vz.lum[i] = swap16(ux_mix(T_BG, T_THEME, (int32_t)(i * 100u / 63u)));
+        vz.heat[i] = swap16(i < 20u ? ux_mix(T_BG, T_SEL, (int32_t)(i * 5u)) :
+                            i < 44u ? ux_mix(T_SEL, T_THEME, (int32_t)((i - 20u) * 100u / 24u)) :
+                            i < 58u ? ux_mix(T_THEME, hot, (int32_t)((i - 44u) * 100u / 14u)) :
+                                      ux_mix(hot, T_TEXT, (int32_t)((i - 58u) * 20u)));
+    }
+    for (i = 0; i <= 16u; i++)
+        vz.hot[i] = swap16(ux_mix(T_THEME, hot, (int32_t)(i * 100u / 16u)));
     for (i = 0; i < 16u; i++)
-        vz.ramp[i] = i < 5u ? ux_mix(T_BG, T_SEL, (int32_t)(i * 25u)) : i < 10u ? ux_mix(T_SEL, T_THEME, (int32_t)((i - 5u) * 20u)) :
-                     i < 14u ? ux_mix(T_THEME, T_ACCENT, (int32_t)((i - 10u) * 25u)) : ux_mix(T_ACCENT, T_TEXT, (int32_t)((i - 14u) * 50u));
+        vz.ramp[i] = swap16(vz.heat[i * 63u / 15u]);
     vz.glow[0] = ux_mix(T_BG, T_THEME, 18);
     vz.glow[1] = ux_mix(T_BG, T_THEME, 42);
     vz.glow[2] = T_THEME;
-    vz.glow[3] = ux_mix(T_THEME, T_TEXT, 70);
+    vz.glow[3] = hot;
     for (i = 0; i < 8u; i++) {
         vz.trail[i] = ux_mix(T_THEME, T_BG, (int32_t)(i * 11u));
         vz.dtrail[i] = ux_mix(T_ACCENT, T_BG, (int32_t)(i * 11u));
+    }
+    if (ux.bw) {                                         /* (MONO: every one neutral, its blends too) */
+        for (i = 0; i < 64u; i++) {
+            vz.lum[i] = swap16(vz_n(swap16(vz.lum[i])));
+            vz.heat[i] = swap16(vz_n(swap16(vz.heat[i])));
+        }
+        for (i = 0; i <= 16u; i++)
+            vz.hot[i] = swap16(vz_n(swap16(vz.hot[i])));
+        for (i = 0; i < 16u; i++)
+            vz.ramp[i] = vz_n(vz.ramp[i]);
+        for (i = 0; i < 8u; i++) {
+            vz.trail[i] = vz_n(vz.trail[i]);
+            vz.dtrail[i] = vz_n(vz.dtrail[i]);
+        }
+        for (i = 0; i < 4u; i++)
+            vz.glow[i] = vz_n(vz.glow[i]);
     }
 }
 
@@ -243,6 +430,13 @@ static void vz_snap(void)
             vz.trig = i;
             break;
         }
+    if (vz.n == VZ_SCOPE) {                                           /* SCOPE: the curve (Q4 rows, +-104 px) */
+        int32_t pk = peak > 1500 ? peak : 1500;
+        for (i = 0; i < 240u; i++) {
+            int32_t y = VZ_AXIS - scope_snap[vz.trig + i] * 1664 / pk;
+            vz.trace[i] = (int16_t)(y < 96 ? 96 : y > 3728 ? 3728 : y);
+        }
+    }
     {   /* ORBIT: the period from the rising crossings; a quarter of it the lag */
         uint32_t first = 0, last = 0, n = 0;
         for (i = 1; i < SCOPE_N; i++)
@@ -264,8 +458,13 @@ static void vz_snap(void)
             vz.cap[i] = (uint8_t)(vz.spec[i] > vz.cap[i] ? vz.spec[i] : vz.cap[i] > d ? vz.cap[i] - d : 0u);
         }
         vz.wf_top = (uint8_t)((vz.wf_top + VZ_WF - 1u) % VZ_WF);
-        for (i = 0; i < VZ_NB; i += 2u)
-            vz.wf[vz.wf_top][i / 2u] = (uint8_t)((now_b[i] >> 4) | (now_b[i + 1u] >> 4) << 4);
+        for (i = 0; i < VZ_WB; i++) {                                 /* (a WATERFALL band: the louder of its two) */
+            uint32_t v = now_b[2u * i] > now_b[2u * i + 1u] ? now_b[2u * i] : now_b[2u * i + 1u];
+            if (i & 1u)
+                vz.wf[vz.wf_top][i / 2u] |= (uint8_t)((v >> 4) << 4);
+            else
+                vz.wf[vz.wf_top][i / 2u] = (uint8_t)(v >> 4);
+        }
     }
     if (vz.n == VZ_RAIN) {                                            /* RAIN: this picture's row */
         uint8_t *row;
@@ -296,71 +495,195 @@ static void vz_snap(void)
     vz_ramps();
 }
 
+/* SCOPE's curve through column s: the rows (Q4) from half-way to the column before to half-way to the one after */
+static void vz_span(int32_t s, int32_t *lo, int32_t *hi)
+{
+    const int16_t *q = vz.trace;
+    int32_t m = q[s], a = s > 0 ? (q[s - 1] + m) >> 1 : m, b = s < 239 ? (q[s + 1] + m) >> 1 : m;
+    *lo = m < a ? (m < b ? m : b) : (a < b ? a : b);
+    *hi = m > a ? (m > b ? m : b) : (a > b ? a : b);
+}
+#define VZ_GLOW2 6400                    /* SCOPE: the glow's reach, squared (Q4: 5 px) */
+/* SCOPE as a phosphor screen, a column at a time: the light of the graticule, of the fill between the curve and the
+ * zero line, of the last picture's curve and of the glow (64ths of THEME over the background: vz.lum), then the curve:
+ * a THEME body 2.2 px across round a white-hot core (vz.hot). A pixel's distance from the curve: the nearest of the
+ * columns' spans within reach (alpha max beta min: no square roots) */
 static void vz_scope(void)
 {
-    uint8_t *ty = vz.trace;
-    int32_t x, a = 104, pk = vz.peak > 1500 ? vz.peak : 1500, g;
-    static const int8_t GW[4] = {9, 5, 3, 1};                         /* the glow: wide and faint to the thin core */
-    cv_rect(0, 120, 240, 1, T_RAISE);
-    for (g = 1; g < 4; g++) {
-        cv_rect(0, 120 - a * g / 4, 240, 1, T_TINT);
-        cv_rect(0, 120 + a * g / 4, 240, 1, T_TINT);
+    static const uint8_t REACH[5] = {80, 78, 73, 64, 48};       /* the glow's reach (Q4 rows) 0..4 columns away */
+    static const uint8_t DIV[8] = {16, 42, 68, 94, 146, 172, 198, 224};   /* the divisions, 26 px apart */
+    int16_t lo[240], hi[240];
+    uint8_t gl[VZ_SPLIT], bd[VZ_SPLIT], hc[VZ_SPLIT], al[VZ_SPLIT];   /* this column by row: glow, body, core, light */
+    int32_t X, r, j;
+    for (X = 0; X < 240; X++) {
+        int32_t a, b;
+        vz_span(X, &a, &b);
+        lo[X] = (int16_t)a;
+        hi[X] = (int16_t)b;
     }
-    if (vz.after_ok)                                                  /* the last picture, faint */
-        for (x = 1; x < 240; x++)
-            cv_line(x - 1, vz.after[x - 1], x, vz.after[x], T_SEL);
-    for (x = 0; x < 240; x++) {
-        int32_t y = 120 - scope_snap[vz.trig + (uint32_t)x] * a / pk;
-        ty[x] = (uint8_t)(y < 6 ? 6 : y > 233 ? 233 : y);
-    }
-    for (g = 0; g < 4; g++) {
-        int32_t w = GW[g];
-        for (x = 1; x < 240; x++)
-            if (vz_in((ty[x] < ty[x - 1] ? ty[x] : ty[x - 1]) - w / 2, (ty[x] > ty[x - 1] ? ty[x] : ty[x - 1]) - (ty[x] < ty[x - 1] ? ty[x] : ty[x - 1]) + w))
-                cv_line_t(x - 1, ty[x - 1] - w / 2, x, ty[x] - w / 2, vz.glow[g], w);
+    for (X = 0; X < 240; X++) {
+        int32_t s, yq = vz.trace[X], fa = (lo[X] + 15) >> 4, fb = hi[X] >> 4;   /* (on its own span: all at full) */
+        uint16_t *col = cv_px + X;
+        memset(gl, 0, sizeof gl);
+        memset(bd, 0, sizeof bd);
+        memset(hc, 0, sizeof hc);
+        memset(al, 0, sizeof al);
+        for (r = fa < vz_y0 ? vz_y0 : fa; r <= fb && r < vz_y1; r++) {
+            gl[r - vz_y0] = 26;
+            bd[r - vz_y0] = hc[r - vz_y0] = 16;
+        }
+        for (s = X - 4; s <= X + 4; s++) {                       /* the glow, the body, the core */
+            int32_t m = X > s ? X - s : s - X, k2 = 256 * m * m, ra, rb, l, h;
+            if (s < 0 || s > 239)
+                continue;
+            l = lo[s];
+            h = hi[s];
+            ra = (l - REACH[m] + 15) >> 4;
+            rb = (h + REACH[m]) >> 4;
+            ra = ra < vz_y0 ? vz_y0 : ra;
+            rb = rb >= vz_y1 ? vz_y1 - 1 : rb;
+            for (r = ra; r <= rb; r++) {
+                int32_t rq = r * 16, dv = rq < l ? l - rq : rq > h ? rq - h : 0, d2 = k2 + dv * dv, t, g;
+                if (d2 >= VZ_GLOW2 || (r >= fa && r <= fb))
+                    continue;
+                j = r - vz_y0;
+                t = (VZ_GLOW2 - d2) >> 7;                        /* 0..50 */
+                g = t * t * 43 >> 12;                            /* (a smooth bump: 26 at the curve) */
+                if (g > gl[j])
+                    gl[j] = (uint8_t)g;
+                if (m <= 1 && d2 < 1600) {                       /* (within 2.5 px) */
+                    int32_t k = m * 16, mx = k > dv ? k : dv, mn = k > dv ? dv : k, d = mx + (mn * 3 >> 3);
+                    int32_t b = 26 - d, c = 16 - d;              /* (the body 1.1 px each side, the core 0.5, +- half a pixel) */
+                    if (b > bd[j])
+                        bd[j] = (uint8_t)(b > 16 ? 16 : b);
+                    if (c > hc[j])
+                        hc[j] = (uint8_t)(c > 16 ? 16 : c);
+                }
+            }
+        }
+        if (yq < VZ_AXIS - 16 || yq > VZ_AXIS + 16) {           /* the fill: 12/64 at the curve, nothing at the zero line */
+            int32_t fi = 12 * 16 * 256 / (yq - VZ_AXIS), ra = yq < VZ_AXIS ? (yq >> 4) + 1 : 121, rb = yq < VZ_AXIS ? 119 : (yq - 1) >> 4;
+            ra = ra < vz_y0 ? vz_y0 : ra;
+            rb = rb >= vz_y1 ? vz_y1 - 1 : rb;
+            for (r = ra; r <= rb; r++)
+                al[r - vz_y0] = (uint8_t)((r - 120) * fi >> 8);
+        }
+        if (120 >= vz_y0 && 120 < vz_y1)                         /* the graticule: the zero line, ticks on it */
+            al[120 - vz_y0] += 10;
+        if (!(X & 7))
+            for (r = 118; r <= 122; r++)
+                if (r != 120 && r >= vz_y0 && r < vz_y1)
+                    al[r - vz_y0] += 7;
+        if (!(X & 3))                                            /* (the divisions, dotted) */
+            for (j = 0; j < 8; j++)
+                if (DIV[j] >= vz_y0 && DIV[j] < vz_y1)
+                    al[DIV[j] - vz_y0] += 7;
+        if (X && !(X % 40))
+            for (r = vz_y0; r < vz_y1; r += 4)
+                al[r - vz_y0] += 7;
+        if (vz.after_ok) {                                       /* the last picture's curve: its rows in this column */
+            int32_t m = vz.after[X], p = X ? (vz.after[X - 1] + m) >> 1 : m, n = X < 239 ? (vz.after[X + 1] + m) >> 1 : m;
+            int32_t a0 = m < p ? (m < n ? m : n) : (p < n ? p : n), a1 = m > p ? (m > n ? m : n) : (p > n ? p : n);
+            for (r = a0 - 1; r <= a1 + 1; r++)
+                if (r >= vz_y0 && r < vz_y1)
+                    al[r - vz_y0] += r < a0 || r > a1 ? 3 : 9;
+        }
+        for (j = 0; j < VZ_SPLIT; j++) {
+            int32_t a = al[j] + gl[j], b = bd[j];
+            if (!a && !b)
+                continue;                                        /* (the background: cv_begin's) */
+            a = a > 63 ? 63 : a;
+            if (b)
+                a += (63 - a) * b >> 4;
+            col[(uint32_t)j * cv_w] = hc[j] ? vz.hot[hc[j]] : vz.lum[a];
+        }
     }
 }
 static void vz_scope_done(void)                                       /* (after the second band: its afterimage) */
 {
-    int32_t x, pk = vz.peak > 1500 ? vz.peak : 1500, y;
-    for (x = 0; x < 240; x++) {
-        y = 120 - scope_snap[vz.trig + (uint32_t)x] * 104 / pk;
-        vz.after[x] = (uint8_t)(y < 4 ? 4 : y > 235 ? 235 : y);
-    }
+    uint32_t x;
+    for (x = 0; x < 240u; x++)
+        vz.after[x] = (uint8_t)((vz.trace[x] + 8) >> 4);
     vz.after_ok = 1;
 }
 #define VZ_FLOOR 196                     /* SPECTRUM: the bars stand on it, their reflection under it */
+#define VZ_BARH 184                      /* .. 0 dB */
+/* SPECTRUM: 80 bars of 2 px, each row its height's colour (vz.heat, so the loud reach the hot white), the top row by
+ * its fraction; the held peaks; the reflection fading under the floor; -15 -30 -45 dB dotted in the gaps */
 static void vz_bars(void)
 {
     uint32_t b;
-    int32_t g;
-    for (g = 1; g < 4; g++)                                           /* -15 -30 -45 dB */
-        cv_rect(0, VZ_FLOOR - g * 46, 240, 1, T_TINT);
+    int32_t g, x, y;
+    for (g = 1; g < 4; g++)
+        if (vz_in(VZ_FLOOR - g * 46, 1))
+            for (x = 2; x < 240; x += 3)
+                cv_rect(x, VZ_FLOOR - g * 46, 1, 1, T_TINT);
+    cv_rect(0, VZ_FLOOR, 240, 1, T_RAISE);
     for (b = 0; b < VZ_NB; b++) {
-        int32_t x = (int32_t)b * 6, h = (int32_t)vz.spec[b] * 184 / 255, c = (int32_t)vz.cap[b] * 184 / 255, y;
-        for (y = 0; y < h; y += 12) {                                 /* the bar in 12 px steps of the ramp */
-            int32_t k = y + 12 > h ? h - y : 12;
-            cv_rect(x, VZ_FLOOR - y - k, 5, k, vz.ramp[3u + (uint32_t)y * 12u / 184u]);
+        int32_t hq = (int32_t)vz.spec[b] * (VZ_BARH * 16) / 255, h = hq >> 4, c = (int32_t)vz.cap[b] * VZ_BARH / 255;
+        int32_t ya = VZ_FLOOR - h, yb = VZ_FLOOR, L = h / 4;
+        uint16_t *p;
+        x = (int32_t)b * 3;
+        ya = ya < vz_y0 ? vz_y0 : ya;                    /* the bar: rows VZ_FLOOR - h .. VZ_FLOOR - 1 */
+        yb = yb > vz_y1 ? vz_y1 : yb;
+        for (y = ya; y < yb; y++) {
+            p = cv_px + (uint32_t)(y - vz_y0) * cv_w + (uint32_t)x;
+            p[0] = p[1] = vz.heat[12 + (VZ_FLOOR - 1 - y) * 51 / VZ_BARH];
         }
-        if (c > h + 2)
-            cv_rect(x, VZ_FLOOR - c - 2, 5, 2, T_TEXT);
-        if (h > 4)                                                    /* the reflection: a quarter, faint */
-            cv_rect(x, VZ_FLOOR + 3, 5, h / 4, vz.ramp[2]);
+        y = VZ_FLOOR - 1 - h;                            /* (its top: the fraction, darker down the ramp) */
+        if ((hq & 15) && y >= vz_y0 && y < vz_y1) {
+            p = cv_px + (uint32_t)(y - vz_y0) * cv_w + (uint32_t)x;
+            p[0] = p[1] = vz.heat[(12 + h * 51 / VZ_BARH) * (hq & 15) / 16];
+        }
+        if (c > h + 2) {                                 /* the peak held: a hot line, a softer one under it */
+            cv_rect(x, VZ_FLOOR - c - 2, 2, 1, T_TEXT);
+            cv_rect(x, VZ_FLOOR - c - 1, 2, 1, vz_c(vz.heat[52]));
+        }
+        for (y = 0; y < L; y++) {                        /* the reflection: a quarter, fading */
+            int32_t row = VZ_FLOOR + 2 + y;
+            if (row >= vz_y0 && row < vz_y1) {
+                p = cv_px + (uint32_t)(row - vz_y0) * cv_w + (uint32_t)x;
+                p[0] = p[1] = vz.heat[18 * (L - y) / L];
+            }
+        }
     }
-    cv_rect(0, VZ_FLOOR + 1, 240, 1, T_RAISE);
+}
+/* WATERFALL: a row of the history (r: 0 the newest) as heat, pixel by pixel across: between two bands' centres
+ * (6 px apart) the one blended into the other */
+static void vz_wfline(uint32_t r, uint8_t *out)
+{
+    const uint8_t *row = vz.wf[(vz.wf_top + r) % VZ_WF];
+    uint32_t b, f;
+    int32_t x;
+    for (b = 0; b < VZ_WB; b++) {
+        uint32_t v0 = (row[b / 2u] >> ((b & 1u) * 4u)) & 15u, n = b + 1u < VZ_WB ? b + 1u : b;
+        uint32_t v1 = (row[n / 2u] >> ((n & 1u) * 4u)) & 15u;
+        if (!b)
+            out[0] = out[1] = out[2] = (uint8_t)(v0 * 6u * 45u >> 6);
+        for (f = 0; f < 6u; f++) {
+            x = (int32_t)(b * 6u + 3u + f);
+            if (x < 240)
+                out[x] = (uint8_t)((v0 * (6u - f) + v1 * f) * 45u >> 6);   /* (0..63) */
+        }
+    }
 }
 static void vz_waterfall(void)
 {
-    uint32_t r, b;
+    uint8_t va[240], vb[240];                            /* a row's heat; the next (older) one's */
+    uint32_t r, k, x;
     for (r = 0; r < VZ_WF; r++) {
-        int32_t y = (int32_t)r * 6;
-        const uint8_t *row = vz.wf[(vz.wf_top + r) % VZ_WF];
-        if (!vz_in(y, 6))
+        int32_t y = (int32_t)r * 4;
+        if (!vz_in(y, 4))
             continue;
-        for (b = 0; b < VZ_NB; b++) {
-            uint32_t v = (row[b / 2u] >> ((b & 1u) * 4u)) & 15u;
-            if (v)
-                cv_rect((int32_t)b * 6, y, 6, 6, vz.ramp[v]);
+        vz_wfline(r, va);
+        vz_wfline(r + 1u < VZ_WF ? r + 1u : r, vb);
+        for (k = 0; k < 4u; k++) {                       /* (down the row: into the older one) */
+            uint16_t *p;
+            if (y + (int32_t)k < vz_y0 || y + (int32_t)k >= vz_y1)
+                continue;
+            p = cv_px + (uint32_t)(y + (int32_t)k - vz_y0) * cv_w;
+            for (x = 0; x < 240u; x++)
+                p[x] = vz.heat[(va[x] * (4u - k) + vb[x] * k) >> 2];
         }
     }
 }
@@ -368,76 +691,107 @@ static int32_t vz_avg(uint32_t i)                     /* ORBIT: 4 samples from i
 {
     return ((int32_t)scope_snap[i] + scope_snap[i + 1u] + scope_snap[i + 2u] + scope_snap[i + 3u]) / 4;
 }
+/* ORBIT: an instrument's face (a ring, 24 ticks, the cross dotted) and the curve over it, anti-aliased, the oldest
+ * first: its colour by age (faint THEME .. THEME .. hot white), the newest quarter 2 px, its head a dot in a halo */
 static void vz_orbit(void)
 {
     int32_t pk = vz.peak > 1500 ? vz.peak : 1500, i, n = (int32_t)(SCOPE_N - vz.tau - 4u), px = 0, py = 0;
-    vz_ring(120, 120, 103, 104, T_TINT);
-    cv_rect(0, 120, 240, 1, T_TINT);
-    cv_rect(120, 0, 1, 240, T_TINT);
+    uint32_t k;
+    vz_aaring(120, 120, 103, 104, T_TINT);
+    for (k = 0; k < 24u; k++) {
+        uint32_t ang = k * 1024u / 24u;
+        int32_t cs = SINE[(ang + 256u) & 1023u], sn = SINE[ang & 1023u], r0 = k % 6u ? 98 : 92;
+        vz_aalq(1920 + (r0 * cs >> 11), 1920 + (r0 * sn >> 11), 1920 + (103 * cs >> 11), 1920 + (103 * sn >> 11),
+                k % 6u ? T_TINT : T_DIM, 0);
+    }
+    for (i = 6; i < 236; i += 4) {
+        cv_rect(i, 120, 1, 1, T_TINT);
+        cv_rect(120, i, 1, 1, T_TINT);
+    }
     for (i = 0; i < n; i += 2) {
-        int32_t x = 120 + vz_avg((uint32_t)i) * 104 / pk, y = 120 - vz_avg((uint32_t)i + vz.tau) * 104 / pk;
+        int32_t x = 1920 + vz_avg((uint32_t)i) * 1664 / pk, y = 1920 - vz_avg((uint32_t)i + vz.tau) * 1664 / pk;
         if (i) {
-            uint32_t q = (uint32_t)(i * 4 / n);                       /* the oldest quarter faint, the newest bright */
-            uint16_t c = vz.glow[q];
-            cv_line(px, py, x, y, c);
-            if (q >= 2u)
-                cv_line(px + 1, py, x + 1, y, c);
-            if (q == 3u)
-                cv_line(px, py + 1, x, y + 1, c);
+            uint32_t q = (uint32_t)(i * 8 / n);          /* 0 .. 7, the newest last */
+            vz_aalq(px, py, x, y, q < 6u ? vz_c(vz.lum[18u + q * 9u]) : q == 6u ? T_THEME : vz.glow[3], q >= 6u);
         }
         px = x;
         py = y;
     }
+    vz_dot(px, py, 72, vz_c(vz.lum[20]));
+    vz_dot(px, py, 40, T_THEME);
+    vz_dot(px, py, 24, T_TEXT);
 }
+/* TUNNEL: a square a beat flies out of the centre, twisting as it comes, its size in sixteenths (no steps); the one
+ * born on the bar's first beat in ACCENT with a halo */
 static void vz_tunnel(void)
 {
     int32_t j;
     for (j = 7; j >= 0; j--) {                                        /* far (small) first */
-        int32_t a = j * 256 + 255 - (int32_t)vz.phase, h = a * a / 19660;   /* its age, beats * 256: the edge at 6 */
+        int32_t a = j * 256 + 255 - (int32_t)vz.phase, hq = a * a * 16 / 19660, h = hq >> 4;   /* its age, beats * 256 */
         uint32_t ang = (uint32_t)(a * 3 / 16 + (int32_t)(vz.beats % 64u) * 16) & 1023u;   /* (a twist of 135 degrees */
-        uint16_t c = (vz.bn + 8u - (uint32_t)j) % 4u ? vz.ramp[4u + (uint32_t)a * 9u / 2048u] : T_ACCENT;   /* on the way) */
-        if (h > 2 && h < 172)
-            vz_square(h, 1 + h / 40, ang, c);
+        int acc = !((vz.bn + 8u - (uint32_t)j) % 4u);                                      /* on the way) */
+        if (h <= 2 || h >= 172)
+            continue;
+        if (acc) {
+            vz_square(hq + 40, 1, ang, ux_mix(T_BG, T_ACCENT, 22));
+            vz_square(hq + 24, 1, ang, ux_mix(T_BG, T_ACCENT, 45));
+        }
+        vz_square(hq, 1 + h / 40, ang, acc ? T_ACCENT : vz.ramp[4u + (uint32_t)a * 9u / 2048u]);
     }
-    vz_ring(120, 120, 0, 3, T_TEXT);
+    vz_dot(1920, 1920, 40, T_TEXT);
 }
+/* PULSE: a ring a beat out of the centre over slowly turning spokes (fading outward), the level of the music its
+ * core: a sun in a halo, hot white at its heart */
 static void vz_pulse(void)
 {
-    int32_t j;
+    int32_t j, s;
     uint32_t a0 = (vz.beats * 24u + vz.phase * 24u / 256u) & 1023u;   /* the spokes: a turn in 43 beats */
     for (j = 0; j < 12; j++) {
         uint32_t ang = (a0 + (uint32_t)j * 1024u / 12u) & 1023u;
         int32_t cs = SINE[(ang + 256u) & 1023u], sn = SINE[ang];
-        cv_line(120 + (44 * cs >> 15), 120 + (44 * sn >> 15), 120 + (116 * cs >> 15), 120 + (116 * sn >> 15), T_TINT);
+        for (s = 0; s < 3; s++) {
+            int32_t ra = 44 + s * 24, rb = ra + 24;
+            vz_aalq(1920 + (ra * cs >> 11), 1920 + (ra * sn >> 11), 1920 + (rb * cs >> 11), 1920 + (rb * sn >> 11),
+                    vz_c(vz.lum[14 - s * 4]), 0);
+        }
     }
     for (j = 4; j >= 0; j--) {                                        /* the oldest (widest) first */
         int32_t a = j * 256 + 255 - (int32_t)vz.phase, r = a * 170 / 1280, t = 7 - j;
         uint16_t c = j ? vz.ramp[11u - (uint32_t)j * 2u] : T_ACCENT;
         if (r > t)
-            vz_ring(120, 120, r - t, r, c);
+            vz_aaring(120, 120, r - t, r, c);
     }
-    {   /* the core: the level, its glow */
+    {   /* the core: the level, a sun in a narrow halo */
         int32_t r = 6 + (int32_t)vz.level * 34 / 255;
-        vz_ring(120, 120, r, r + 6, vz.glow[0]);
-        vz_ring(120, 120, r - 2, r, vz.glow[1]);
-        vz_ring(120, 120, 0, r - 2, vz.ramp[6u + vz.level * 9u / 255u]);
+        vz_aaring(120, 120, r - 1, r + 5, vz_c(vz.lum[14]));
+        vz_aaring(120, 120, r - 1, r + 3, vz_c(vz.lum[28]));
+        vz_aaring(120, 120, r - 1, r + 1, vz_c(vz.lum[44]));
+        vz_orb(120, 120, r, vz.hot);
     }
 }
+/* STARS: in sixteenths of a pixel (they drift, never step), discs growing as they come; the near ones streak */
 static void vz_stars(void)
 {
     uint32_t i;
     for (i = 0; i < VZ_NSTAR; i++) {
-        int32_t z = vz.star[i].z, sx, sy, s;
+        int32_t z = vz.star[i].z, sx, sy, rq;
+        uint16_t c;
         if (z < 24)
             continue;
-        sx = 120 + vz.star[i].x * 120 / z;
-        sy = 120 + vz.star[i].y * 120 / z;
-        s = 1 + (1024 - z) / 220;
+        sx = 1920 + vz.star[i].x * 1920 / z;
+        sy = 1920 + vz.star[i].y * 1920 / z;
+        if (sx < -64 || sx > 3904 || sy < -64 || sy > 3904)            /* (gone past the edge) */
+            continue;
+        rq = 7 + (1024 - z) * 34 / 1024;                              /* (0.4 .. 2.6 px) */
+        c = z < 200 && vz.phase < 96u ? T_ACCENT : vz.ramp[6u + (uint32_t)(1024 - z) * 9u / 1024u];
         if (z < 512) {                                                /* near: a streak back to where it was */
-            int32_t z2 = z + 40 + (int32_t)(255u - vz.phase) / 4, tx = 120 + vz.star[i].x * 120 / z2, ty = 120 + vz.star[i].y * 120 / z2;
-            cv_line(tx, ty, sx, sy, vz.glow[z < 200 ? 1 : 0]);
+            int32_t z2 = z + 40 + (int32_t)(255u - vz.phase) / 4, tx = 1920 + vz.star[i].x * 1920 / z2, ty = 1920 + vz.star[i].y * 1920 / z2;
+            vz_aalq(tx, ty, (tx + sx) / 2, (ty + sy) / 2, vz.glow[0], 0);
+            vz_aalq((tx + sx) / 2, (ty + sy) / 2, sx, sy, vz.glow[z < 200 ? 2 : 1], 0);
         }
-        cv_rect(sx - s / 2, sy - s / 2, s, s, z < 200 && vz.phase < 96u ? T_ACCENT : vz.ramp[6u + (uint32_t)(1024 - z) * 9u / 1024u]);
+        if (z < 200)                                                  /* (the nearest: a halo) */
+            vz_dot(sx, sy, rq * 2, vz.glow[0]);
+        vz_dot(sx, sy, rq, c);
     }
 }
 static void vz_grid(void)
@@ -516,8 +870,8 @@ static void vz_wheel(void)
             for (v = 0; v < NVOICE; v++)
                 if (trk[k].v[v].active && trk[k].v[v].gate)
                     pcs |= 1u << (trk[k].v[v].note % 12u);
-    vz_ring(120, 140, 89, 90, T_TINT);
-    vz_ring(120, 140, 59, 60, T_TINT);
+    vz_aaring(120, 140, 89, 90, T_TINT);
+    vz_aaring(120, 140, 59, 60, T_TINT);
     for (v = 1; v <= 24u; v++) {
         uint32_t n = (v - 1u) / 2u + 1u, maj = (v - 1u) & 1u, r = maj ? 90u : 60u;
         int32_t cx = 120 + SN[n % 12u] * (int32_t)r / 1000, cy = 140 - SN[(n + 3u) % 12u] * (int32_t)r / 1000;
@@ -548,7 +902,7 @@ static void vz_wheel(void)
     for (i = 0; i < 12u; i++)                                         /* (the sounding roots, round the hub) */
         if ((pcs >> i) & 1u) {
             uint32_t n = edda_cam_num(edda_cam_of(i, ED_SC_MAJ));
-            vz_ring(120 + SN[n % 12u] * 44 / 1000, 140 - SN[(n + 3u) % 12u] * 44 / 1000, 0, 3, T_THEME);
+            vz_dot(1920 + SN[n % 12u] * 704 / 1000, 2240 - SN[(n + 3u) % 12u] * 704 / 1000, 52, T_THEME);
         }
 }
 static const char *vz_phase_name(void)
@@ -562,19 +916,31 @@ static const char *vz_phase_name(void)
         return "READY";
     return PH[edda.phase < 6u ? edda.phase : 0u];
 }
+/* BULBS: EDDA's five bulbs (the act): lit, a glass of ACCENT round a white-hot filament, a highlight on the glass and a
+ * halo breathing with the beat (the halos first: a neighbour's never covers a glass); out, a dim rim */
 static void vz_bulbs(void)
 {
     uint32_t i, act = edda.act ? edda.act : 1u, on = 255u - vz.phase;
-    char b[16];
+    int32_t g = 21 + (int32_t)(song.playing ? on * on / 6500u : 0u);
+    uint16_t glass[17], lite = ux.light ? T_BG : T_TEXT;              /* (the light: white on the dark palettes, the paper's */
+    char b[16];                                                       /* own on the light ones) */
+    for (i = 0; i <= 16u; i++)                                        /* (ACCENT at the rim, the light in the middle) */
+        glass[i] = swap16(vz_n(ux_mix(T_ACCENT, lite, (int32_t)(i * i * 85u / 256u))));
+    for (i = 0; i < act && i < ED_ACTS; i++) {
+        int32_t x = 24 + (int32_t)i * 48;
+        vz_aaring(x, 58, 19, g, ux_mix(T_BG, T_ACCENT, 12));
+        vz_aaring(x, 58, 19, 19 + (g - 19) * 2 / 3, ux_mix(T_BG, T_ACCENT, 24));
+        vz_aaring(x, 58, 19, 19 + (g - 19) / 3, ux_mix(T_BG, T_ACCENT, 40));
+    }
     for (i = 0; i < ED_ACTS; i++) {
         int32_t x = 24 + (int32_t)i * 48;
         if (i < act) {
-            int32_t g = 21 + (int32_t)(song.playing ? on * on / 6500u : 0u);
-            vz_ring(x, 58, 20, g, T_SEL);
-            vz_ring(x, 58, 0, 20, T_ACCENT);
-            vz_ring(x, 58, 0, 7, ux_mix(T_ACCENT, T_TEXT, 60));
-        } else
-            vz_ring(x, 58, 18, 20, T_DIM);
+            vz_orb(x, 58, 20, glass);
+            vz_dot((x - 8) * 16, 50 * 16, 40, ux_mix(T_ACCENT, lite, 70));     /* (the light on the glass) */
+        } else {
+            vz_aaring(x, 58, 0, 18, ux_mix(T_BG, T_DIM, 12));
+            vz_aaring(x, 58, 18, 20, T_DIM);
+        }
     }
     str_cpy(b, "ACT ", sizeof b);
     fmt_int(b + 4, (int32_t)act);
@@ -584,42 +950,68 @@ static void vz_bulbs(void)
         uint32_t n = edda_phase_beats(edda.phase), done = n > edda.left ? n - edda.left : 0u;
         int32_t w = (232 - 4 * ((int32_t)n - 1)) / (int32_t)n;
         for (i = 0; i < n; i++)
-            cv_rect(4 + (int32_t)i * (w + 4), 166, w, 12, i < done ? T_THEME : T_RAISE);
+            cv_rrect(4 + (int32_t)i * (w + 4), 166, w, 12, 4, i < done ? T_THEME : T_RAISE, T_BG);
     }
     str_cpy(b, "BAR ", sizeof b);
     fmt_int(b + 4, (int32_t)edda.bar + (song.playing ? 1 : 0));
     vz_text(0, 240, 182, &AF_M, b, T_MID, T_BG);
 }
-/* a figure of seven segments: w x h at x, y, t px thick; d 0..9, else blank */
+/* CLOCK's figures as a lamp's segments: hexagons, their ends pointed at 45 degrees (the slanted edges' pixels half
+ * covered), apart by a gap; from (x0, y0) to (x1, y1) along a row or a column, t px thick (odd) */
+static void vz_seg(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t t, uint16_t c)
+{
+    const uint16_t *rv;
+    int32_t h = t / 2, k;
+    c = vz_n(c);
+    if (c == cv_bg)
+        return;
+    rv = ramp(c, cv_bg);
+    for (k = -h; k <= h; k++) {
+        int32_t ak = k < 0 ? -k : k;
+        if (y0 == y1) {                                  /* across */
+            int32_t a = x0 + ak, b = x1 - ak, y = y0 + k;
+            if (b < a || !vz_in(y, 1))
+                continue;
+            vz_px(a, y, c, rv, 8u);
+            vz_px(b, y, c, rv, 8u);
+            if (b - a > 1)
+                cv_rect(a + 1, y, b - a - 1, 1, c);
+        } else {                                         /* up and down */
+            int32_t a = y0 + ak, b = y1 - ak, x = x0 + k;
+            if (b < a)
+                continue;
+            vz_px(x, a, c, rv, 8u);
+            vz_px(x, b, c, rv, 8u);
+            if (b - a > 1)
+                cv_rect(x, a + 1, 1, b - a - 1, c);
+        }
+    }
+}
+/* a figure of seven segments: w x h at x, y, t px thick (odd); d 0..9, else blank (the segments unlit: off) */
 static void vz_digit(int32_t x, int32_t y, int32_t w, int32_t h, int32_t t, uint32_t d, uint16_t c, uint16_t off)
 {
     static const uint8_t SEG[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};   /* a b c d e f g */
-    uint32_t m = d < 10u ? SEG[d] : 0u, s;
-    int32_t hh = (h - t) / 2;
-    for (s = 0; s < 7u; s++) {
-        uint16_t k = (m >> s) & 1u ? c : off;
-        switch (s) {
-        case 0: cv_rect(x + t, y, w - 2 * t, t, k); break;                    /* a */
-        case 1: cv_rect(x + w - t, y + t, t, hh - t, k); break;               /* b */
-        case 2: cv_rect(x + w - t, y + hh + t, t, h - hh - 2 * t, k); break;  /* c */
-        case 3: cv_rect(x + t, y + h - t, w - 2 * t, t, k); break;            /* d */
-        case 4: cv_rect(x, y + hh + t, t, h - hh - 2 * t, k); break;          /* e */
-        case 5: cv_rect(x, y + t, t, hh - t, k); break;                       /* f */
-        case 6: cv_rect(x + t, y + hh, w - 2 * t, t, k); break;               /* g */
-        }
-    }
+    uint32_t m = d < 10u ? SEG[d] : 0u;
+    int32_t L = x + t / 2, R = x + w - 1 - t / 2, T = y + t / 2, B = y + h - 1 - t / 2, M = (T + B) / 2, g = 2;
+    vz_seg(L + g, T, R - g, T, t, m & 0x01u ? c : off);  /* a */
+    vz_seg(R, T + g, R, M - g, t, m & 0x02u ? c : off);  /* b */
+    vz_seg(R, M + g, R, B - g, t, m & 0x04u ? c : off);  /* c */
+    vz_seg(L + g, B, R - g, B, t, m & 0x08u ? c : off);  /* d */
+    vz_seg(L, M + g, L, B - g, t, m & 0x10u ? c : off);  /* e */
+    vz_seg(L, T + g, L, M - g, t, m & 0x20u ? c : off);  /* f */
+    vz_seg(L + g, M, R - g, M, t, m & 0x40u ? c : off);  /* g */
 }
 static void vz_clock(void)
 {
     uint32_t bpm = (uint32_t)song.g[G_BPM], i, bar = edda.bar + (song.playing ? 1u : 0u), beat = beat_n & 3u;
-    uint16_t lit = song.playing ? T_THEME : T_TEXT;
+    uint16_t lit = song.playing ? T_THEME : T_TEXT, ghost = ux.bw ? T_BG : ux_mix(T_BG, T_RAISE, 50);   /* (the unlit: a lamp's ghost) */
     char b[16];
     if (song.g[G_CLOCK] && midi_beat_samples)                         /* (CLK EXT: the tempo it follows) */
         bpm = (uint32_t)FS * 60u / midi_beat_samples;
     bpm = bpm > 999u ? 999u : bpm;
-    vz_digit(32, 14, 48, 84, 9, bpm >= 100u ? bpm / 100u : 10u, lit, T_TINT);
-    vz_digit(96, 14, 48, 84, 9, bpm >= 10u ? bpm / 10u % 10u : 10u, lit, T_TINT);
-    vz_digit(160, 14, 48, 84, 9, bpm % 10u, lit, T_TINT);
+    vz_digit(32, 14, 48, 84, 9, bpm >= 100u ? bpm / 100u : 10u, lit, ghost);
+    vz_digit(96, 14, 48, 84, 9, bpm >= 10u ? bpm / 10u % 10u : 10u, lit, ghost);
+    vz_digit(160, 14, 48, 84, 9, bpm % 10u, lit, ghost);
     vz_text(0, 240, 102, &AF_S, song.g[G_CLOCK] ? "BPM  CLK EXT" : "BPM", T_MID, T_BG);
     fmt_int(b, (int32_t)bar);
     str_cpy(b + str_len(b), ".", 4);
