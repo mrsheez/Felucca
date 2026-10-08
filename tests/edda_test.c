@@ -154,6 +154,58 @@ static void kit_track(track_t *t, int32_t kit)      /* a DRUM track on user kit 
         t->p[P_DIST + i] = 0;
 }
 static const uint8_t KIT_PAD_NOTES[16] = {36, 38, 39, 42, 46, 45, 37, 56, 41, 43, 47, 48, 49, 50, 51, 53};
+/* ---- micro timing: the blocks at which track t's voices start (by their age), over nblocks of the sequencer */
+#define MT_MAX 96u
+static uint32_t mt_blk[MT_MAX], mt_note[MT_MAX], mt_n;
+static void mt_run(const track_t *t, uint32_t nblocks)
+{
+    uint32_t b, i, top = 0;
+    mt_n = 0;
+    for (i = 0; i < NVOICE; i++)
+        top = t->v[i].age > top ? t->v[i].age : top;
+    for (b = 0; b < nblocks; b++) {
+        uint32_t nt = top;
+        events_block(CTL);
+        for (i = 0; i < NVOICE; i++)
+            if (t->v[i].age > top) {
+                if (mt_n < MT_MAX) {
+                    mt_blk[mt_n] = b;
+                    mt_note[mt_n] = t->v[i].note;
+                    mt_n++;
+                }
+                nt = t->v[i].age > nt ? t->v[i].age : nt;
+            }
+        top = nt;
+    }
+}
+static int32_t mt_at(uint32_t note, uint32_t nth)     /* the block of note's nth start, -1: none */
+{
+    uint32_t i, k = 0;
+    for (i = 0; i < mt_n; i++)
+        if (mt_note[i] == note && k++ == nth)
+            return (int32_t)mt_blk[i];
+    return -1;
+}
+static void mt_track(track_t *t, uint32_t base, const int8_t *nudge)   /* 4 steps at 1/16: base +0 +2 +4 +5 */
+{
+    static const uint8_t IV[4] = {0, 2, 4, 5};
+    uint32_t i;
+    track_defaults_steps(t);
+    t->p[P_SLEN] = 4; t->p[P_SDIV] = 2; t->p[P_SSWING] = 0; t->p[P_AMODE] = 0; t->p[P_SGATE] = 64;
+    for (i = 0; i < 4u; i++) {
+        t->step[i] = (step_t){{(uint8_t)(base + IV[i]), 0, 0, 0}, 1, ST_NOTE, 0, 96, 0, 0};
+        step_set_nudge(&t->step[i], nudge ? nudge[i] : 0);
+    }
+}
+static void mt_quiet(void)                            /* the other tracks: empty, LEN 4 */
+{
+    uint32_t i;
+    for (i = 1; i < NTRK; i++) {
+        track_defaults_steps(&trk[i]);
+        trk[i].p[P_SLEN] = 4;
+    }
+    song.g[G_SWING] = 0;
+}
 static int has_note(const track_t *t, uint32_t note)
 {
     uint32_t i;
@@ -670,6 +722,143 @@ int main(int argc, char **argv)
             t->p[P_ED_FX] = 0;
         }
         ck("FILT (the track's one-knob filter): 0 bit for bit, -64 a 100 Hz low-pass, +63 a 7.8 kHz high-pass, the FILTER page after SLICER", ok);
+    }
+    /* ------------------------------------------------------ micro timing */
+    {
+        static const int8_t N0[4] = {0, 0, 0, 0}, NL[4] = {0, 2, 0, 0}, NE[4] = {0, 0, -3, 0}, S3[4] = {3, 0, 0, 0},
+                            SE[4] = {-2, 0, 0, 0};
+        static int32_t base[4][4];
+        track_t *t = &trk[0];
+        int ok = 1;
+        uint32_t lp, s;
+        int32_t d;
+        reset(); mt_quiet();
+        ok &= step_nudge(&t->step[0]) == 0 && SF_EARLY == 4u && !(SF_EDDA & (SF_ACCENT | SF_SLIDE | SF_RATCH));
+        {   /* the nudge's bits round trip, clamped to -3..3, the step's other flags kept */
+            step_t st = {{60, 0, 0, 0}, 1, ST_NOTE, SF_ACCENT | SF_SLIDE | SF_FILL, 96, 0, 0};
+            step_set_ratchet(&st, 3);
+            for (d = -5; d <= 5; d++) {
+                step_set_nudge(&st, d);
+                ok &= step_nudge(&st) == (d < -3 ? -3 : d > 3 ? 3 : d) && step_ratchet(&st) == 3u &&
+                      (st.flags & (SF_ACCENT | SF_SLIDE | SF_FILL)) == (SF_ACCENT | SF_SLIDE | SF_FILL);
+            }
+            step_set_nudge(&st, 0);
+            ok &= !(st.flags & (SF_EARLY | SF_NUDGE));
+        }
+        mt_track(t, 60, N0); seq_start(); mt_run(t, 2800); seq_stop();
+        for (lp = 0; lp < 4u; lp++)
+            for (s = 0; s < 4u; s++)
+                base[lp][s] = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp);
+        ok &= base[0][0] == 0 && base[1][0] > 0 && base[3][3] > 0;
+        ck("micro timing: a step's nudge is -3..+3 sixteenths of the step (SF_EARLY, SF_NUDGE), its other flags kept", ok);
+
+        reset(); mt_quiet(); mt_track(t, 60, NL); seq_start(); mt_run(t, 2800); seq_stop();
+        ok = 1;
+        for (lp = 0; lp < 4u; lp++)
+            for (s = 0; s < 4u; s++) {
+                d = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp) - base[lp][s];
+                ok &= s == 1u ? d >= 21 && d <= 22 : d == 0;  /* +2/16 of 5512 samples: 688, 21.5 blocks */
+            }
+        reset(); mt_quiet(); mt_track(t, 60, NE); seq_start(); mt_run(t, 2800); seq_stop();
+        for (lp = 0; lp < 4u; lp++)
+            for (s = 0; s < 4u; s++) {
+                d = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp) - base[lp][s];
+                ok &= s == 2u ? d >= -33 && d <= -32 : d == 0;   /* -3/16: 1032 samples early */
+            }
+        ck("NUDGE +2 starts the step 688 samples late, -3 1032 early; every other step on the grid, four bars on", ok);
+
+        reset(); mt_quiet(); mt_track(t, 60, S3); seq_start(); mt_run(t, 2800); seq_stop();
+        ok = 1;
+        for (lp = 0; lp < 4u; lp++)
+            for (s = 0; s < 4u; s++) {
+                d = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp) - base[lp][s];
+                ok &= s == 0u ? d >= 32 && d <= 33 : d == 0;
+            }
+        reset(); mt_quiet(); mt_track(t, 60, SE); seq_start(); mt_run(t, 2800); seq_stop();
+        for (lp = 0; lp < 4u; lp++)
+            for (s = 0; s < 4u; s++) {
+                d = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp) - base[lp][s];
+                ok &= s == 0u ? (lp == 0u ? d == 0 : d >= -22 && d <= -21) : d == 0;   /* (never before PLAY) */
+            }
+        ck("step 1 nudged at PLAY: late waits for its nudge, early starts at once; the grid never drifts", ok);
+
+        {   /* the song chain: slot A's step 1 early (-2): slot B starts on the grid, not 688 samples early */
+            int32_t b70[2];
+            uint32_t pass;
+            for (pass = 0; pass < 2u; pass++) {
+                reset(); mt_quiet();
+                mt_track(t, 60, pass ? SE : N0);
+                project_save(0);
+                mt_track(t, 70, N0);
+                project_save(1);
+                chain_config.count = 2;
+                chain_config.row[0] = (chain_row_t){0, 1};
+                chain_config.row[1] = (chain_row_t){1, 1};
+                ok = chain_prepare() == 0u;
+                mt_run(t, 1400);
+                b70[pass] = mt_at(70, 0);
+                ok &= mt_at(72, 0) - b70[pass] >= 172 && mt_at(72, 0) - b70[pass] <= 173;
+                seq_stop();
+                chain_config.count = 0;
+            }
+            ok &= b70[0] > 600 && b70[1] - b70[0] >= -1 && b70[1] - b70[0] <= 1;
+            ck("a song chain: slot A's step 1 nudged early, slot B still starts on the grid (the carry from the plain boundary)", ok);
+        }
+
+        {   /* the CHANCE page: KNOB 4 NUDGE of the cursor's step */
+            reset(); mt_quiet(); mt_track(t, 60, N0);
+            song.sel = 0;
+            go_page(GR_CHANCE); frame();
+            ui.cursor = 1;
+            turn(EN_K4, 2); frame();
+            ok = step_nudge(&t->step[1]) == 2;
+            turn(EN_K4, -7); frame();
+            ok &= step_nudge(&t->step[1]) == -3 && (t->step[1].flags & SF_EARLY);
+            turn(EN_K4, 3); frame();
+            ok &= step_nudge(&t->step[1]) == 0 && !(t->step[1].flags & (SF_EARLY | SF_NUDGE)) && step_nudge(&t->step[0]) == 0;
+            ck("SEQ > CHANCE: KNOB 4 NUDGE moves the cursor's step -3..+3 (clamped), 0 clears it", ok);
+        }
+
+        {   /* projects keep the nudges and the fills; a project without them is written as Felucca writes it */
+            static project_t pa, pb;
+            static project_store_t ps;
+            uint32_t pos = 68u + NTRK * (P_COUNT + 2u + NSTEP * 9u) + (uint32_t)sizeof(chain_config_t) +
+                           (uint32_t)sizeof(motion_store_t), zero = 1, top = 0, i;
+            reset(); mt_quiet(); mt_track(t, 60, NE);
+            step_set_nudge(&t->step[3], 1);
+            t->step[1].flags |= SF_FILL;
+            trk[2].step[40].flags |= SF_FILL;
+            project_capture(&pa);
+            ok = proj_pack(&ps, &pa) && proj_import(&pb, &ps, sizeof ps);
+            ok &= step_nudge(&pb.t[0].step[2]) == -3 && step_nudge(&pb.t[0].step[3]) == 1 && step_nudge(&pb.t[0].step[0]) == 0 &&
+                  (pb.t[0].step[1].flags & SF_FILL) && (pb.t[2].step[40].flags & SF_FILL) && !(pb.t[0].step[2].flags & SF_FILL) &&
+                  pb.t[0].step[2].note[0] == 64 && pb.t[0].step[3].note[0] == 65 && !memcmp(ps.raw + pos, "EDD1", 4);
+            for (i = 0; i < NSTEP; i++)
+                t->step[i].flags &= (uint8_t)~SF_EDDA;
+            trk[2].step[40].flags &= (uint8_t)~SF_FILL;
+            project_capture(&pa);
+            ok &= proj_pack(&ps, &pa) != 0;
+            for (i = pos; i < PROJ_FM6_OFF; i++)
+                zero &= ps.raw[i] == 0u;
+            for (i = 0; i < NSTEP; i++)
+                top |= ps.raw[68u + P_COUNT + 2u + i * 9u + 1u] | ps.raw[68u + P_COUNT + 2u + i * 9u + 2u] |
+                       ps.raw[68u + P_COUNT + 2u + i * 9u + 3u];
+            ok &= zero && !(top & 128u);
+            ps.raw[68u + P_COUNT + 2u] |= 128u;          /* a note's top bit proj_pack never sets: refused */
+            {
+                uint32_t sum = proj_hash(ps.raw, PROJ_STORE_SIZE - 4u);
+                memcpy(ps.raw + PROJ_STORE_SIZE - 4u, &sum, 4);
+            }
+            ok &= !proj_import(&pb, &ps, sizeof ps);
+            ck("projects: the nudges in the notes' top bits, the fills in the tail (EDD1); none: the tail and those bits zero; junk refused", ok);
+        }
+        {   /* a user preset never reads SF_EARLY as its tie (editor_test: STEP_SET keeps the nudge) */
+            static up_rec_t r;
+            reset(); mt_quiet(); mt_track(t, 60, SE);
+            up_pat_from(&r, t->step);
+            ok = r.note[0] == 60 && !(r.flags[0] & 4u) && r.note[1] == 62;
+            ck("a user preset keeps an early-nudged step a note (SF_EARLY is not its tie)", ok);
+        }
     }
     /* ------------------------------------------------------ dotted echoes */
     {

@@ -546,6 +546,34 @@ static uint32_t proj_name_get(char *d, const uint8_t *s)   /* its length */
 
 /* A stable serialized schema: first header retains FUN6's fields; at byte66
  * np, format flags, then four byte-param tracks and nine-byte steps; FUN8: the patches at PROJ_FM6_OFF. */
+/* EDDA OS: the steps' fill flags (SF_FILL) in the store's reserved tail (after the motion, before the FM6 patches: 48
+ * bytes in a FUN9): "EDD1", then a 64-bit mask per track (bit i: step i is a fill-only step). Older firmware leaves
+ * the tail alone (its hash covers it): such a project loads there with every step playing. Only written when a
+ * step has the flag, so a project without fills stays byte for byte what Felucca writes. The nudges (SF_NUDGE,
+ * SF_EARLY) ride in bit 7 of the step's notes 2..4 (proj_pack): a project with nudged steps needs EDDA OS. */
+#define PROJ_EDDA_LEN (4u + NTRK * 8u)
+static void proj_edda_pack(uint8_t *b, uint32_t room, const project_t *q)
+{
+    uint32_t t, i, any = 0;
+    if (room < PROJ_EDDA_LEN) return;
+    for (t = 0; t < NTRK; t++)
+        for (i = 0; i < NSTEP; i++)
+            any |= q->t[t].step[i].flags & SF_FILL;
+    if (!any) return;
+    memcpy(b, "EDD1", 4);
+    for (t = 0; t < NTRK; t++)
+        for (i = 0; i < NSTEP; i++)
+            b[4u + t * 8u + i / 8u] |= (uint8_t)((q->t[t].step[i].flags & SF_FILL ? 1u : 0u) << (i % 8u));
+}
+static void proj_edda_unpack(project_t *q, const uint8_t *b, uint32_t room)
+{
+    uint32_t t, i;
+    if (room < PROJ_EDDA_LEN || memcmp(b, "EDD1", 4)) return;
+    for (t = 0; t < NTRK; t++)
+        for (i = 0; i < NSTEP; i++)
+            if ((b[4u + t * 8u + i / 8u] >> (i % 8u)) & 1u)
+                q->t[t].step[i].flags |= SF_FILL;
+}
 static int proj_pack(project_store_t *out, const project_t *q)
 {
     uint8_t *b = out->raw; uint32_t pos = 68u, t, i; uint32_t magic = PROJ_MAGIC, size = PROJ_STORE_SIZE, sum;
@@ -564,9 +592,13 @@ static int proj_pack(project_store_t *out, const project_t *q)
         for (i = 0; i < NSTEP; i++) {
             const step_t *s = &q->t[t].step[i];
             uint32_t r = step_ratchet(s) - 1u;          /* RATCH: bit 7 of the velocity and chance bytes (see the top) */
-            if (s->n > 4u || s->time > ST_REST || (s->flags & ~(3u | SF_RATCH)) || s->probability > 101u) return 0;
+            uint32_t nd = (s->flags & SF_NUDGE) >> SF_NUDGE_SH;   /* EDDA OS, the nudge: bit 7 of notes 2..4 (its
+                                                         * sign, its size); the fill flags: the tail (proj_edda_pack) */
+            if (s->n > 4u || s->time > ST_REST || (s->flags & ~(3u | SF_RATCH | SF_EDDA)) || s->probability > 101u) return 0;
             for (uint32_t j = 0; j < 4u; j++)           /* what proj_unpack checks, so a saved project always loads: */
-                b[pos++] = s->note[j] > 127u ? 127u : s->note[j];   /* notes and velocity 0..127, accents */
+                b[pos++] = (uint8_t)((s->note[j] > 127u ? 127u : s->note[j]) |   /* notes and velocity 0..127, accents */
+                                     (nd && j == 1u && (s->flags & SF_EARLY) ? 128u : 0u) |
+                                     (j == 2u ? (nd & 1u) << 7 : j == 3u ? (nd >> 1) << 7 : 0u));
             b[pos++] = (uint8_t)(s->n | s->time << 3 | (s->flags & 3u) << 5);   /* only on hits */
             b[pos++] = (uint8_t)((s->vel > 127u ? 127u : s->vel) | (r & 1u) << 7); b[pos++] = s->hit;
             b[pos++] = s->acc & s->hit;
@@ -575,7 +607,8 @@ static int proj_pack(project_store_t *out, const project_t *q)
     }
     if (pos + sizeof q->chain + sizeof q->motion > PROJ_FM6_OFF) return 0;
     memcpy(b + pos, &q->chain, sizeof q->chain); pos += sizeof q->chain;
-    memcpy(b + pos, &q->motion, sizeof q->motion);
+    memcpy(b + pos, &q->motion, sizeof q->motion); pos += sizeof q->motion;
+    proj_edda_pack(b + pos, PROJ_FM6_OFF - pos, q);     /* EDDA OS: the fill flags, in the reserved tail */
     memcpy(b + PROJ_FM6_OFF, q->fm6, sizeof q->fm6);
     {   /* the name (0-padded; stops at the first 0) */
         char n[PROJ_NAME_LEN + 1u];
@@ -622,9 +655,13 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
         for (i = 0; i < P_COUNT; i++) def[i] = param_desc_of(q->t[t].engine, i)->def;
         params_by_count(q->t[t].p, values, np, def);
         for (i = 0; i < NSTEP; i++) {
-            step_t *s = &q->t[t].step[i]; uint32_t meta;
+            step_t *s = &q->t[t].step[i]; uint32_t meta, nd;
             memcpy(s->note, b + pos, 4); pos += 4; meta = b[pos++];
-            s->n = meta & 7u; s->time = (meta >> 3) & 3u; s->flags = (meta >> 5) & 3u;
+            nd = (s->note[2] >> 7) | (s->note[3] >> 7) << 1;   /* EDDA OS: the nudge in the notes' top bits */
+            if ((s->note[0] & 128u) || (!nd && (s->note[1] & 128u))) return 0;   /* (never written: proj_pack) */
+            s->flags = (uint8_t)(nd << SF_NUDGE_SH | (nd && (s->note[1] & 128u) ? SF_EARLY : 0u));
+            for (uint32_t j = 0; j < 4u; j++) s->note[j] &= 127u;
+            s->n = meta & 7u; s->time = (meta >> 3) & 3u; s->flags |= (meta >> 5) & 3u;
             s->vel = b[pos] & 127u; meta |= (b[pos++] & 128u) << 1;      /* (RATCH bit 0 at bit 8 of meta) */
             s->hit = b[pos++]; s->acc = b[pos++];
             s->probability = b[pos] & 127u; meta |= (b[pos++] & 128u) << 2;   /* (bit 1 at bit 9) */
@@ -635,8 +672,9 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
         }
     }
     memcpy(&q->chain, b + pos, sizeof q->chain); pos += sizeof q->chain;
-    memcpy(&q->motion, b + pos, sizeof q->motion);
+    memcpy(&q->motion, b + pos, sizeof q->motion); pos += sizeof q->motion;
     if (!proj_motion_ids(&q->motion, np) || !chain_valid(&q->chain) || !motion_valid(&q->motion)) return 0;
+    proj_edda_unpack(q, b + pos, end > pos ? end - pos : 0u);   /* EDDA OS: the fill flags from the tail */
     for (t = 0; t < NTRK; t++) {
         if (v7)
             memcpy(q->fm6[t], FM6_INIT, FM6_PACKED);
@@ -709,7 +747,7 @@ static void proj_bound(project_t *q)
         proj_steps(q->t[t].step);
         for (i = 0; i < NSTEP; i++) {
             step_t *s = &q->t[t].step[i];
-            s->flags &= 3u | SF_RATCH;
+            s->flags &= 3u | SF_RATCH | SF_EDDA;     /* (EDDA OS: the fills and nudges stay) */
             s->vel &= 127u;
             if (s->probability > 101u) s->probability = 0;
         }

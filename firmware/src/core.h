@@ -219,6 +219,10 @@ enum { ST_NOTE, ST_TIE, ST_REST };
 #define SF_RATCH_SH 3u                   /* RATCH: the hits of a NOTE step - 1 (0..3: x1..x4, seq.c seq_ratchet); */
 #define SF_RATCH (3u << SF_RATCH_SH)     /* bits 3..4, so a user preset's pattern (flag 4 = tie) carries it too */
 #define SF_FILL 32u                      /* EDDA OS: a fill-only step: it plays while FILL is on (GLO + A4), else rests */
+#define SF_EARLY 4u                      /* EDDA OS, micro timing: the nudge goes before the beat (else after) */
+#define SF_NUDGE_SH 6u                   /* .. by 0..3 sixteenths of the step (bits 6..7); seq.c step_samples */
+#define SF_NUDGE (3u << SF_NUDGE_SH)
+#define SF_EDDA (SF_FILL | SF_EARLY | SF_NUDGE)   /* (projects: in the tail and the notes' top bits, project.c) */
 #define NLANE 8                  /* drum lanes of a step (the DRUM engine's: eng_drum.c DRUM_LANE_NOTE) */
 typedef struct {                 /* acid-style step: up to 4 notes (POLY), time, accent, slide; drum hits */
     uint8_t note[4];
@@ -238,6 +242,19 @@ typedef struct {                 /* a step as formats 1..4 (projects to FUN4) st
 /* Probability keeps zero-initialized and legacy patterns at 100%. */
 static uint32_t step_chance(const step_t *s) { return !s->probability ? 100u : s->probability <= 100u ? s->probability : 0u; }
 static void step_set_chance(step_t *s, uint32_t chance) { s->probability = (uint8_t)(chance >= 100u ? 0u : chance ? chance : 101u); }
+/* EDDA OS, micro timing: a step's nudge, -3..3 sixteenths of a step (its start moved before / after the beat;
+ * every older pattern holds 0: on the beat) */
+static int32_t step_nudge(const step_t *s)
+{
+    int32_t n = (int32_t)((s->flags & SF_NUDGE) >> SF_NUDGE_SH);
+    return s->flags & SF_EARLY ? -n : n;
+}
+static void step_set_nudge(step_t *s, int32_t v)
+{
+    uint32_t a = (uint32_t)(v < 0 ? -v : v);
+    a = a > 3u ? 3u : a;
+    s->flags = (uint8_t)((s->flags & ~(SF_NUDGE | SF_EARLY)) | a << SF_NUDGE_SH | (v < 0 && a ? SF_EARLY : 0u));
+}
 /* RATCH: a NOTE step plays its notes and hits this many times (1..4), in equal parts of the step; every older
  * pattern holds 0 there, x1 */
 static uint32_t step_ratchet(const step_t *s) { return ((s->flags & SF_RATCH) >> SF_RATCH_SH) + 1u; }

@@ -351,7 +351,12 @@ static void arp_tick(track_t *t, uint32_t n) { arp_step(t, n, n); }
  * and the odd ones shorter, so every odd step starts late */
 static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
 {
-    return swing_step_len(t, period, idx);   /* core.h: own + global, at most 100 */
+    uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, next = (idx + 1u) % len;
+    const step_t *st = seq_steps(t);
+    int32_t d = (step_nudge(&st[next]) - step_nudge(&st[idx % NSTEP])) * (int32_t)(period / 16u);   /* EDDA OS: micro
+                                                                       * timing: the next step's start moved by its
+                                                                       * nudge, this one's by its own */
+    return (uint32_t)((int32_t)swing_step_len(t, period, idx) + d);   /* core.h: own + global, at most 100 */
 }
 
 /* live recording: the note goes into the nearest step, as swung (the one playing, or
@@ -840,7 +845,18 @@ static void seq_tick(track_t *t, uint32_t n)
         uint32_t cur_len = step_samples(t, period, t->seq_idx);
         if (t->seq_pos < cur_len && t->seq_pos != 0x7FFFFFFFu + n)
             break;
-        t->seq_pos = t->seq_pos >= 0x7FFFFFFFu ? (chain.running ? chain.carry : 0u) : t->seq_pos - cur_len;
+        if (t->seq_pos >= 0x7FFFFFFFu) {                /* a pattern starts (PLAY, the chain's next slot) */
+            /* EDDA OS, micro timing: its step 1 at its nudge from the grid's start, never before PLAY: g the grid's
+             * position at this block's end (the blocks waited, the chain's carry from the plain boundary), d the
+             * nudge. Late: the start waits (the sentinel counts on); early or on the beat: it starts now, as far into
+             * the step as it began before the grid. No nudge: as before (seq_pos = the carry) */
+            int32_t g = (int32_t)(t->seq_pos - 0x7FFFFFFFu - n) + (chain.running ? (int32_t)chain.carry + chain.carry_n : 0);
+            int32_t d = step_nudge(&seq_steps(t)[0]) * (int32_t)(period / 16u);
+            if (g < d)
+                break;
+            t->seq_pos = (uint32_t)(g - d);
+        } else
+            t->seq_pos -= cur_len;
         t->seq_idx = (uint16_t)((t->seq_idx + 1u) % (len ? len : 1u));
         rec_hold(t, t->seq_idx, len ? len : 1u);
         {

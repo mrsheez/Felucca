@@ -808,7 +808,14 @@ static void draw_columns(void)
         val[1] = (char)('0' + step_ratchet(&TSEL->step[ui.cursor]));
         val[2] = 0;
         draw_column(2, "RATCH", val, "", rplays ? VAL(2u) : T_DIM, -1, ICON_X_REPEAT);
-        draw_column(3, "", "", "", T_THEME, -1, ICON_NONE);
+        {   /* NUDGE (EDDA OS, micro timing): -3 .. +3 sixteenths of the step, 0 on the beat */
+            int32_t nd = step_nudge(cs);
+            val[0] = nd < 0 ? '-' : nd > 0 ? '+' : 0;
+            val[1] = (char)('0' + (nd < 0 ? -nd : nd));
+            val[2] = 0;
+            if (!nd) str_cpy(val, "0", 8);
+            draw_column(3, "NUDGE", val, nd ? "/16" : "", nd && rplays ? VAL(3u) : T_DIM, -1, ICON_TIME);
+        }
         return;
     }
     if (cur_page()->graph == GR_EVENTS) {              /* AUTO LIST (ui_events.c): ROW STEP PARAM VALUE */

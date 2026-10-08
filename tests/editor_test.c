@@ -311,6 +311,17 @@ static int steps(void)
         ok &= !request(ED_STEP_SET, a, 14) && !memcmp(&before, &TSEL->step[0], sizeof before);
     }
     bad += check("STEP_SET refuses a ratchet outside 1..4 and leaves the step", ok);
+    {   /* EDDA OS: a step's nudge and fill flags are the device's: STEP_SET (any length) keeps them */
+        step_set_nudge(&TSEL->step[0], -2);
+        TSEL->step[0].flags |= SF_FILL;
+        memcpy(a, (const uint8_t[]){0, 1, 62, 0, 0, 0, ST_NOTE, SF_ACCENT, 100, 0, 0, 0, 80, 2}, 14);
+        n = request(ED_STEP_SET, a, 14);
+        ok = n == 20u && step_nudge(&TSEL->step[0]) == -2 && (TSEL->step[0].flags & SF_FILL) && step_ratchet(&TSEL->step[0]) == 2u &&
+             (TSEL->step[0].flags & SF_ACCENT) && host_wire[12] == SF_ACCENT;   /* (the reply's flags: accent | slide only) */
+        n = request(ED_STEP_SET, a, 9);
+        ok &= n == 20u && step_nudge(&TSEL->step[0]) == -2 && (TSEL->step[0].flags & SF_FILL);
+        bad += check("STEP_SET keeps the step's nudge and fill (EDDA OS); the reply's flags stay accent | slide", ok);
+    }
     memcpy(a, (const uint8_t[]){1, 2, 1, 64, 0, 0, 0, ST_NOTE, 0, 99, 0, 0, 0, 100, 4}, 15);
     n = request(ED_TRACK_STEP, a, 15);
     ok = n == 21u && step_ratchet(&trk[1].step[2]) == 4u && host_wire[n - 2] == 4;

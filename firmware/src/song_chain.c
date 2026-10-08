@@ -16,6 +16,8 @@ static struct {
     volatile uint8_t armed, running, row, remaining;
     uint8_t slot, rec;
     uint32_t carry;
+    int32_t carry_n;             /* EDDA OS, micro timing: track 1's step-1 nudge where the slot ended (samples): carry
+                                  * counts from that nudged boundary, the new slot's grid from the plain one */
 } chain;
 
 static void seq_release(track_t *t);
@@ -71,6 +73,7 @@ static void chain_start(void)
     chain.row = 0;
     chain.remaining = chain.config.row[0].repeat;
     chain.carry = 0;
+    chain.carry_n = 0;
     chain.running = 1;
     chain.armed = 0;
     chain_apply();
@@ -104,6 +107,8 @@ static void chain_tick(uint32_t n)
         return;
     }
     chain.carry = t->seq_pos + n - length;
+    chain.carry_n = step_nudge(&seq_steps(t)[0]) * (int32_t)(div_samples((uint32_t)t->p[P_SDIV]) / 16u);   /* (the
+                                                       * old slot's steps: chain.slot moves in chain_apply) */
     chain.row++;
     chain.remaining = chain.config.row[chain.row].repeat;
     chain_apply();
