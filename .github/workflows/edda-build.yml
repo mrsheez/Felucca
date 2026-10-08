@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# EDDA OS: build the FM-1 package on GitHub's Linux runners (no Mac, no Linux machine, no toolchain at home),
+# run the host test suites against the real package, and publish the web installer + editor + package as a
+# GitHub Pages site. Install from any computer with Chrome or Edge (WebMIDI), the FM-1 on USB:
+#   https://<user>.github.io/<repo>/            (Settings > Pages > Source: GitHub Actions, once)
+# The package is also kept as a workflow artifact (Actions > the run > Artifacts > edda-os-fwsc) for the
+# offline installer (python3 tools/fm1_install.py felucca-*.fwsc) or the installer page's own file picker.
+name: EDDA OS
+
+on:
+  push:
+    branches: [edda, main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  EDDA_VERSION: 1.1.5-EDDA          # --release: one digit each (X.Y.Z-suffix); the splash shows v1.1.5-edda
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python packages (the UI font and icons are rasterised at build time)
+        run: pip install Pillow fonttools numpy
+
+      - name: JieLi pi32v2 toolchain (cached between runs)
+        id: tc
+        uses: actions/cache@v4
+        with:
+          path: ~/.jieli
+          key: jieli-linux-toolchain-${{ hashFiles('tools/get_toolchain.sh') }}
+
+      - name: Fetch the toolchain
+        if: steps.tc.outputs.cache-hit != 'true'
+        run: sh tools/get_toolchain.sh "$HOME/.jieli"
+
+      - name: Build the package (tools/build.py; the AC79 SDK files are vendored)
+        run: |
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain"
+          export AC79_SDK="$PWD/third_party/ac79-sdk-tools"
+          ./build.sh --release "$EDDA_VERSION"
+          cp "build/felucca-$EDDA_VERSION.fwsc" build/felucca.fwsc
+          ls -la build/*.fwsc
+
+      - name: Package artifact (download it from the run's page)
+        uses: actions/upload-artifact@v4
+        with:
+          name: edda-os-fwsc
+          path: |
+            build/felucca-*.fwsc
+            build/release-*/
+          if-no-files-found: error
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Emscripten (the browser emulator, web/emu)
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.64
+          actions-cache-folder: emsdk-cache
+
+      - name: Host test suites (tests/run_tests.sh against the real package; builds and checks the emulator)
+        run: SANITIZE=1 sh tests/run_tests.sh
+
+      - name: Site (installer, editor, the package, the emulator)
+        run: |
+          python3 web/make_site.py "build/felucca-$EDDA_VERSION.fwsc" "$EDDA_VERSION" site
+          if [ -f build/emu/felucca.wasm ]; then mkdir -p site/webapp/emu && cp -r build/emu/. site/webapp/emu/; fi
+          cp EDDA-OS.md site/EDDA-OS.md
+          ls -R site | head -40
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
