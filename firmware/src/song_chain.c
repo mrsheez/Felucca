@@ -63,7 +63,7 @@ static __attribute__((noinline)) uint32_t chain_cue_row(uint32_t s)
     }
     return CHAIN_ROWS;
 }
-static void chain_apply(void)
+static __attribute__((noinline)) void chain_apply(void)   /* (EDDA OS: noinline, once a section) */
 {
     uint32_t i;
     chain.slot = chain.config.row[chain.row].slot;
@@ -109,21 +109,34 @@ static void chain_stop(void)
     chain.running = 0;
     chain.cue = 0;
 }
-/* EDDA OS: the cued section's row from here, carry samples past the pass's end; 0: no row plays it (the song goes on
- * as arranged). noinline: once a pass at most, its code out of the audio block's loops */
-static __attribute__((noinline)) int chain_cue_jump(uint32_t carry)
+/* the end of track 1's pass, carry samples past it: the next pass, the next row, a cued section's row (EDDA OS: a cue
+ * on the last pass of the song plays on instead of ending), or the song's end. EDDA OS: noinline (with chain_apply),
+ * as it runs once a pass: its code stays out of the audio block's loops (tests/target_budget.py) */
+static __attribute__((noinline)) void chain_pass_end(uint32_t carry)
 {
     const track_t *t = &trk[0];
-    uint32_t r = chain_cue_row(chain.cue - 1u);
-    chain.cue = 0;
-    if (r >= CHAIN_ROWS)
-        return 0;
+    uint32_t r = CHAIN_ROWS;
+    if (chain.cue) {
+        r = chain_cue_row(chain.cue - 1u);
+        chain.cue = 0;
+    }
+    if (r >= CHAIN_ROWS) {
+        if (chain.remaining > 1u) {
+            chain.remaining--;
+            return;
+        }
+        if (chain.row + 1u >= chain.config.count) {
+            seq_stop();
+            return;
+        }
+        r = chain.row + 1u;
+    }
     chain.carry = carry;
-    chain.carry_n = step_nudge(&seq_steps(t)[0]) * (int32_t)(div_samples((uint32_t)t->p[P_SDIV]) / 16u);
+    chain.carry_n = step_nudge(&seq_steps(t)[0]) * (int32_t)(div_samples((uint32_t)t->p[P_SDIV]) / 16u);   /* (the
+                                                       * old slot's steps: chain.slot moves in chain_apply) */
     chain.row = (uint8_t)r;
     chain.remaining = chain.config.row[r].repeat;
     chain_apply();
-    return 1;
 }
 static void chain_tick(uint32_t n)
 {
@@ -134,21 +147,5 @@ static void chain_tick(uint32_t n)
     length = seq_len(t, div_samples((uint32_t)t->p[P_SDIV]));   /* (EDDA OS: the step as the sequencer counts it) */
     if (t->seq_pos + n < length)
         return;
-    if (chain.cue && chain_cue_jump(t->seq_pos + n - length))
-        return;                                         /* EDDA OS: a section cued: this pass was the last (a cue on
-                                                         * the last pass of the song plays on instead of ending) */
-    if (chain.remaining > 1u) {
-        chain.remaining--;
-        return;
-    }
-    if (chain.row + 1u >= chain.config.count) {
-        seq_stop();
-        return;
-    }
-    chain.carry = t->seq_pos + n - length;
-    chain.carry_n = step_nudge(&seq_steps(t)[0]) * (int32_t)(div_samples((uint32_t)t->p[P_SDIV]) / 16u);   /* (the
-                                                       * old slot's steps: chain.slot moves in chain_apply) */
-    chain.row++;
-    chain.remaining = chain.config.row[chain.row].repeat;
-    chain_apply();
+    chain_pass_end(t->seq_pos + n - length);
 }

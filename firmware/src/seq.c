@@ -636,7 +636,7 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
-    uint32_t lay, fx;
+    uint32_t lay, fx, quiet;
     ch = cur ^ kb_prev;                           /* keys also sound while entering steps */
     if (!ch)
         return;
@@ -647,6 +647,8 @@ static void keyboard_block(void)
         kb_prev = cur;
         return;
     }
+    quiet = song.grid == 2u ? ~0u : song.grid == 3u ? KB_SECTION_KEYS : 0u;   /* the keys that never sound: NAME's,
+                                                  * EDDA OS: F3..B3 cueing a song's sections (SONG page, playing) */
     lay = (fm1_in.buttons & kb_mask) || kb_lock;  /* (#83: kb_lock, a layer locked open with no button held) */
     fx = (fm1_in.buttons & perf_mask) || (kb_lock & 2u);
     for (k = 0; k < 27u; k++) {
@@ -665,10 +667,9 @@ static void keyboard_block(void)
                     perf_press(perf_key(k), 1);
                 continue;
             }
-            if (song.grid == 2u)                  /* NAME (ui_name.c): every key types, none sounds */
+            if ((quiet >> k) & 1u)                /* NAME (ui_name.c): every key types, none sounds (EDDA OS: and
+                                                   * the section keys while a song plays on the SONG page) */
                 kb_note[k] = KB_SILENT;
-            else if (song.grid == 3u && ((KB_SECTION_KEYS >> k) & 1u))
-                kb_note[k] = KB_SILENT;           /* EDDA OS: a song playing on the SONG page: F3..B3 cue sections */
             else if (song.grid == 1u)             /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
                 kb_note[k] = key_black(k) && key_place(k) < NLANE ? DRUM_LANE_NOTE[key_place(k)] : KB_SILENT;
             else if (chp_key(k, 1)) {             /* EDDA OS CHORD+: a black key holds a modifier (chord.c) */
