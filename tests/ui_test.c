@@ -6311,11 +6311,15 @@ static int test_div_order(void)
             if (!page_visible(id) || !(d = page_desc(cur_page(), c, &vp)) || !vp || !enum_order(d))
                 continue;
             found++;
-            *vp = d->names == N_DIV ? 2 : 1;        /* 1/16 */
+            *vp = d->names == N_SLDIV ? 1 : 2;      /* 1/16 (the delay's TIME: N_DLYDIV, EDDA OS: 1/16D between 1/8 and 8T) */
             turn(EN_K1 + c, 1);
-            ok &= *vp == (d->names == N_DIV ? 5 : 4);  /* 16T */
+            ok &= *vp == (d->names == N_SLDIV ? 4 : 5);  /* 16T */
             turn(EN_K1 + c, -2);
-            ok &= *vp == (d->names == N_DIV ? 4 : 3);  /* 8T */
+            ok &= *vp == (d->names == N_SLDIV ? 3 : 4);  /* 8T */
+            if (d->names == N_DLYDIV) {
+                turn(EN_K1 + c, -1);
+                ok &= *vp == 12;                    /* 1/16D, left of 8T */
+            }
         }
     bad += check("#48 the pages' knobs step the divisions by length (SEQ, ARP, DLY, SLICER)", ok && found >= 4u);
     return bad;

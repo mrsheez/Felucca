@@ -167,7 +167,7 @@ static inline void master_out(int32_t *l, int32_t *r)
     *r = softclip(*r);
 }
 
-/* length of one division (N_DIV order) in samples at the song tempo */
+/* length of one division (N_DIV order; 10..12: the delay's dotted 1/4 1/8 1/16, N_DLYDIV) in samples at the song tempo */
 static const uint8_t DIV_DEN[6] = {1, 2, 4, 8, 3, 6};    /* original IDs stay fixed; slow rates append */
 static uint32_t midi_beat_samples;                    /* zero until an external clock has a measured tempo */
 static uint32_t beat_samples(void)
@@ -177,7 +177,8 @@ static uint32_t beat_samples(void)
 static uint32_t div_samples(uint32_t div)
 {
     uint32_t quarter = beat_samples();
-    return div < 6u ? quarter / DIV_DEN[div] : div < 10u ? quarter << (div - 5u) : quarter / DIV_DEN[div % 6u];
+    return div < 6u ? quarter / DIV_DEN[div] : div < 10u ? quarter << (div - 5u) :
+           div < 13u ? (quarter * 3u) >> (div - 9u) : quarter / DIV_DEN[div % 6u];   /* (dotted: 3/2 of 1/4 1/8 1/16) */
 }
 
 #include "perform.c"                                 /* the FX hold layer's effects (the master) */

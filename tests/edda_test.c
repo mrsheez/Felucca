@@ -516,6 +516,26 @@ int main(int argc, char **argv)
         ok = trk[1].p[P_E7] == 8 && str_eq(UI_PALETTES[UI_BW_INDEX + 1u].name, "EDDA") && NPALETTES == UI_BW_INDEX + 2u;
         ck("the OGENE preset loads with SLOT E1; the EDDA palette is the last one", ok);
     }
+    /* ------------------------------------------------------ dotted echoes */
+    {
+        uint32_t q;
+        int ok;
+        reset();
+        song.g[G_BPM] = 120;
+        q = beat_samples();
+        ok = GP[G_DTIME].names == N_DLYDIV && GP[G_DTIME].max == 12 && str_eq(N_DLYDIV[10], "1/4D") &&
+             str_eq(N_DLYDIV[11], "1/8D") && str_eq(N_DLYDIV[12], "1/16D") && str_eq(N_DLYDIV[9], "4BAR") &&
+             NELEM(N_DIV) == 10u;                        /* (SEQ DIV and ARP RATE as before) */
+        ok &= div_samples(10) == q * 3u / 2u && div_samples(11) == q * 3u / 4u && div_samples(12) == q * 3u / 8u &&
+              div_samples(0) == q && div_samples(1) == q / 2u;
+        song.g[G_DTIME] = 11;
+        ok &= delay_samples() == q * 3u / 4u;
+        song.g[G_DTIME] = 1;
+        ok &= delay_samples() == q / 2u;
+        ok &= param_turn(&GP[G_DTIME], 1, 1) == 12 && param_turn(&GP[G_DTIME], 12, 1) == 4 &&   /* 1/8 -> 1/16D -> 8T */
+              param_turn(&GP[G_DTIME], 0, -1) == 10 && param_turn(&GP[G_DTIME], 10, -1) == 6;   /* 1/4 -> 1/4D -> 1/2 */
+        ck("dotted echoes: DLY TIME 1/4D 1/8D 1/16D (3/2 of the plain ones, values 10..12), between their neighbours on the knob", ok);
+    }
     /* ------------------------------------------------------ the user kits */
     {
         int ok = ENG_DRUM.edit[0].max == DK_COUNT - 1 && DK_COUNT == 13u && str_eq(N_DRUM_KIT[DK_USR1], "USR1") &&
