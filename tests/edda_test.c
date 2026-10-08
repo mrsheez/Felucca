@@ -1634,6 +1634,8 @@ int main(int argc, char **argv)
         frame();
         ok = chain.running && chain.row == 0u && chain.remaining == 2u && song.grid == 3u &&
              str_eq(arv_sec_name(2), "DROP") && chain_config.row[3].slot == 2u;
+        for (nb = 0; nb < 27u; nb++)                    /* (seq.c KB_SECTION_KEYS: the first four white keys) */
+            ok &= ((KB_SECTION_KEYS >> nb) & 1u) == (uint32_t)(!key_black(nb) && key_place(nb) < 4u);
         key_down(white(2)); blocks(1); frame();        /* A3: C, the DROP */
         ok &= kb_note[white(2)] == KB_SILENT;
         key_up(white(2)); blocks(1); frame();

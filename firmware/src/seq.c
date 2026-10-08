@@ -54,6 +54,8 @@ static int drum_track(const track_t *t) { return ENGINES[eng_idx(t->eng_req)] ==
 /* the 27 keys from F: black or white, and the key's place among the keys of its colour (white 0..15, black
  * 0..10). The DRUM grid: white keys are steps, black keys 1..8 lanes, 9 ACC, 10 / 11 the page */
 static int key_black(uint32_t k) { return (int)((0x54Au >> ((k + 5u) % 12u)) & 1u); }
+#define KB_SECTION_KEYS 0x55u    /* EDDA OS: F3 G3 A3 B3, the first four white keys (key_place 0..3): the SONG page's
+                                  * sections (a constant: the audio block's key loop has no divide or inner loop) */
 static uint32_t key_place(uint32_t k)
 {
     uint32_t i, n = 0;
@@ -665,7 +667,7 @@ static void keyboard_block(void)
             }
             if (song.grid == 2u)                  /* NAME (ui_name.c): every key types, none sounds */
                 kb_note[k] = KB_SILENT;
-            else if (song.grid == 3u && !key_black(k) && key_place(k) < 4u)
+            else if (song.grid == 3u && ((KB_SECTION_KEYS >> k) & 1u))
                 kb_note[k] = KB_SILENT;           /* EDDA OS: a song playing on the SONG page: F3..B3 cue sections */
             else if (song.grid == 1u)             /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
                 kb_note[k] = key_black(k) && key_place(k) < NLANE ? DRUM_LANE_NOTE[key_place(k)] : KB_SILENT;

@@ -109,6 +109,22 @@ static void chain_stop(void)
     chain.running = 0;
     chain.cue = 0;
 }
+/* EDDA OS: the cued section's row from here, carry samples past the pass's end; 0: no row plays it (the song goes on
+ * as arranged). noinline: once a pass at most, its code out of the audio block's loops */
+static __attribute__((noinline)) int chain_cue_jump(uint32_t carry)
+{
+    const track_t *t = &trk[0];
+    uint32_t r = chain_cue_row(chain.cue - 1u);
+    chain.cue = 0;
+    if (r >= CHAIN_ROWS)
+        return 0;
+    chain.carry = carry;
+    chain.carry_n = step_nudge(&seq_steps(t)[0]) * (int32_t)(div_samples((uint32_t)t->p[P_SDIV]) / 16u);
+    chain.row = (uint8_t)r;
+    chain.remaining = chain.config.row[r].repeat;
+    chain_apply();
+    return 1;
+}
 static void chain_tick(uint32_t n)
 {
     const track_t *t = &trk[0];
@@ -118,19 +134,9 @@ static void chain_tick(uint32_t n)
     length = seq_len(t, div_samples((uint32_t)t->p[P_SDIV]));   /* (EDDA OS: the step as the sequencer counts it) */
     if (t->seq_pos + n < length)
         return;
-    if (chain.cue) {                                    /* EDDA OS: a section cued: this pass was the last (a cue
-                                                         * on the last pass of the song plays on instead of ending) */
-        uint32_t r = chain_cue_row(chain.cue - 1u);
-        chain.cue = 0;
-        if (r < CHAIN_ROWS) {
-            chain.carry = t->seq_pos + n - length;
-            chain.carry_n = step_nudge(&seq_steps(t)[0]) * (int32_t)(div_samples((uint32_t)t->p[P_SDIV]) / 16u);
-            chain.row = (uint8_t)r;
-            chain.remaining = chain.config.row[r].repeat;
-            chain_apply();
-            return;
-        }
-    }
+    if (chain.cue && chain_cue_jump(t->seq_pos + n - length))
+        return;                                         /* EDDA OS: a section cued: this pass was the last (a cue on
+                                                         * the last pass of the song plays on instead of ending) */
     if (chain.remaining > 1u) {
         chain.remaining--;
         return;
