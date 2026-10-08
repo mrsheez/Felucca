@@ -1,0 +1,28 @@
+size: 823 main-loop functions built for size (7 not in this build; 145 reached from an interrupt kept -Os)
+loader: image 8216 B at 0x1c0a800, bss end 0x1c0f510
+loader: ota.bin 6930 B
+face S: InterTight[wght].ttf@400 12px h15 base12  105 glyphs x 4  data 10410 B + table 3360 B + kern 2757 B (919 pairs) = 16537 B   digit adv 7.00px
+face M: InterTight[wght].ttf@500 15px h19 base15  105 glyphs x 4  data 13083 B + table 3360 B + kern 2976 B (992 pairs) = 19429 B   digit adv 9.00px
+face L: InterTight[wght].ttf@600 28px h35 base28  41 glyphs x 2  data 5761 B + table 656 B + kern 369 B (123 pairs) = 6826 B   digit adv 18.00px
+fonts total 42792 B  -> /home/runner/work/Felucca/Felucca/build/gen/ui_fonts.h
+2 extra bytes in post.stringData array
+2 extra bytes in post.stringData array
+icons: x_oct_up: symbol_pitch_up not in the font yet, using control_arrow_up
+icons: x_oct_dn: symbol_pitch_down not in the font yet, using control_arrow_down
+icons 12px: 105 cells, 4248 B
+icons 16px: 38 cells, 2504 B
+icons 24px: 14 cells, 1368 B
+icons code: 57 B
+icons total 8177 B -> /home/runner/work/Felucca/Felucca/build/gen/ui_icons.h   (87 legacy names + 36 new)
+keycaps: 27 pills, data 4642 B + table 216 B; knob arcs 584 B = 5442 B -> /home/runner/work/Felucca/Felucca/build/gen/ui_keycaps.h
+fm6 patches: 14 -> /home/runner/work/Felucca/Felucca/build/gen/felucca_fm6.h
+generated waves into /home/runner/work/Felucca/Felucca/build/genwav
+samples: 5 sets, 29 zones, 171880 B ADPCM, SLICE BREAK 44100 samples, EDDA 2 sets 45633 B, SLICE PIANO (shared) 16537 samples
+arrival: 13 songs, 208 bars (600 references, 248 transposed), 12335 B of data
+  ok    .ram_text: 925 insns, no calls
+  ok    image 538700 B; RAM .data+.bss 93688 B of 98304; pool 334788 B of 344064
+  ok    register access: hal/ only (src/, loader/ clean)
+app      /home/runner/work/Felucca/Felucca/build/felucca.bin  538700 B
+loader   /home/runner/work/Felucca/Felucca/build/loader/ota.bin  6930 B
+package  /home/runner/work/Felucca/Felucca/build/felucca-1.1.5-EDDA.fwsc  610086 B, identity FM-1_911
+release  /home/runner/work/Felucca/Felucca/build/release-1.1.5-EDDA/
