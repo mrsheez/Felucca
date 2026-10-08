@@ -824,16 +824,27 @@ static void roll_scene(int s)
     ui.bank = (uint8_t)(ui.cursor / 16u);
 }
 
-/* EDDA OS's visualisers (ui_viz.c): a stand-in mix in the scope (a bass, a stab, a lead, a hiss; t moves them), the
- * notes held, the beat a third in, the pictures before (WATERFALL, RAIN, STARS: their histories) */
+/* EDDA OS's visualisers (ui_viz.c): a stand-in mix in the scope, broadband as music is (a saw bass with its
+ * harmonics, a chord, a lead, a hiss rolled off at the top; t moves them), the notes held, the beat a third in, the
+ * pictures before (WATERFALL, RAIN, STARS: their histories) */
 static void viz_scope_fill(uint32_t t)
 {
-    uint32_t i;
+    static const double CH[3] = {261.63, 311.13, 392.0};   /* (C minor) */
+    uint32_t i, h, r = 0x9E3779B9u * (t + 1u);
+    double lp = 0.0, lp2 = 0.0, f0 = 55.0 + 5.0 * (t % 7u), v;
     for (i = 0; i < SCOPE_N; i++) {
-        double x = (double)i / 22050.0, v;
-        v = 8000.0 * sin(2.0 * M_PI * (55.0 + 5.0 * (t % 7u)) * x) + 4000.0 * sin(2.0 * M_PI * 220.0 * x + t) +
-            2500.0 * sin(2.0 * M_PI * (880.0 + 110.0 * (t % 5u)) * x) + 700.0 * sin(2.0 * M_PI * 5200.0 * x + 0.3 * t);
-        scope_buf[i] = (int16_t)v;
+        double x = (double)i / 22050.0, n;
+        r = r * 1664525u + 1013904223u;
+        n = (double)(r >> 8) / 16777216.0 - 0.5;
+        lp += 0.35 * (n - lp);
+        lp2 += 0.08 * (n - lp2);
+        for (v = 0.0, h = 1; h <= 14u; h++)
+            v += 5200.0 / h * sin(2.0 * M_PI * f0 * h * x + 0.4 * h);
+        for (h = 0; h < 3u; h++)
+            v += 1300.0 * sin(2.0 * M_PI * CH[h] * (1.0 + (t % 3u) * 0.0595) * x + t + h);
+        v += 1800.0 * sin(2.0 * M_PI * (880.0 + 110.0 * (t % 5u)) * x) + 600.0 * sin(2.0 * M_PI * 2640.0 * x + 0.7 * t);
+        v += 2600.0 * lp + 5200.0 * lp2;
+        scope_buf[i] = (int16_t)(v > 32767.0 ? 32767.0 : v < -32768.0 ? -32768.0 : v);
     }
     scope_w = 0;
 }
