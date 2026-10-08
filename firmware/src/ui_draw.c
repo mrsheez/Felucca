@@ -1284,7 +1284,15 @@ static void ui_draw(void)
     ui_draw_page(counting);
     scr_shown();
 }
+#ifndef EDDA_VIZ
+#define EDDA_VIZ 1                 /* EDDA OS: the visualisers (0: HOME taps go HOME as in Felucca; ~9 KB less code) */
+#endif
+#if EDDA_VIZ
 #include "ui_viz.c"              /* EDDA OS: the twelve full-screen visualisers over HOME (vz_page, vz_home_tap) */
+#else
+static int vz_page(void) { ui.viz = 0; return 0; }
+static void vz_home_tap(void) { go_home(); }
+#endif
 static void ui_draw_page(uint32_t counting)
 {
     if (ui.uboot) {

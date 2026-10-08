@@ -49,10 +49,24 @@ jobs:
         run: sh tools/get_toolchain.sh "$HOME/.jieli"
 
       - name: Build the package (tools/build.py; the AC79 SDK files are vendored)
+        id: build
+        shell: bash
         run: |
           export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain"
           export AC79_SDK="$PWD/third_party/ac79-sdk-tools"
-          ./build.sh --release "$EDDA_VERSION"
+          # the whole of EDDA OS first; if the image does not fit the FM-1's app slot or the pool's headroom
+          # (tools/build.py says so), the same build without the visualisers (EDDA_VIZ=0: ~9 KB less code, 2.8 KB
+          # less pool): the run's summary says which shipped
+          if ./build.sh --release "$EDDA_VERSION" 2>&1 | tee build-full.log; then
+            echo "variant=full" >> "$GITHUB_OUTPUT"
+          elif grep -qE "exceeds the app slot|pool headroom" build-full.log; then
+            EDDA_VIZ=0 ./build.sh --release "$EDDA_VERSION" 2>&1 | tee build-noviz.log
+            test "${PIPESTATUS[0]}" -eq 0
+            echo "variant=without the visualisers (the full build did not fit the app slot or the pool)" >> "$GITHUB_OUTPUT"
+          else
+            exit 1
+          fi
+          grep -h "image .* B; RAM" build-*.log | tail -1 | sed 's/^/size: /' | tee build-size.txt
           cp "build/felucca-$EDDA_VERSION.fwsc" build/felucca.fwsc
           ls -la build/*.fwsc
 
@@ -96,9 +110,21 @@ jobs:
             echo "## EDDA OS $EDDA_VERSION"
             echo
             echo "- package: **felucca-$EDDA_VERSION.fwsc** (this run's artifact *edda-os-fwsc*, and firmware/ on the site)"
+            echo "- variant: **${{ steps.build.outputs.variant }}**"
+            echo "- $(cat build-size.txt 2>/dev/null || echo 'size: see the build step') (app slot 581564 B)"
             echo "- host tests: **${{ steps.tests.outcome }}** (tests.log on the site; the device build above is what ships)"
             echo "- install: open the site's webapp/installer/ in Chrome or Edge with the FM-1 on USB (Settings > Pages > Source: GitHub Actions, once)"
             sha256sum "build/felucca-$EDDA_VERSION.fwsc" | sed 's/^/- sha256: /'
+            if [ "${{ steps.tests.outcome }}" != "success" ] && [ -f build/tests.log ]; then
+              echo
+              echo "### checks that did not pass"
+              echo '```'
+              grep -E "FAIL|OVER BUDGET" build/tests.log | head -20
+              echo '```'
+              echo "(tests/target_budget.py's OVER BUDGET on drum_render or fm1_alnk0_irq is EDDA OS's added audio work: the user kits,"
+              echo "SEQ OUT, the run, the exact grid; the host CPU check in tests/regress.c is the one that bounds it. After a good"
+              echo "test on the FM-1: BUDGET_UPDATE=1 python3 tests/target_budget.py build/felucca.dis tests/target_budget.txt)"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-pages-artifact@v3

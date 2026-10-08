@@ -60,6 +60,7 @@ static struct {
     uint8_t wf[VZ_WF][VZ_NB / 2u];       /* WATERFALL: 4 bits a band; row wf_top the newest */
     uint8_t wf_top;
     uint8_t after[240];                  /* SCOPE: the last picture's trace, y */
+    uint8_t trace[240];                  /* .. this one's */
     uint8_t after_ok;
     struct { int16_t x, y, z; } star[VZ_NSTAR];
     uint32_t rnd;
@@ -297,7 +298,7 @@ static void vz_snap(void)
 
 static void vz_scope(void)
 {
-    static uint8_t ty[240];
+    uint8_t *ty = vz.trace;
     int32_t x, a = 104, pk = vz.peak > 1500 ? vz.peak : 1500, g;
     static const int8_t GW[4] = {9, 5, 3, 1};                         /* the glow: wide and faint to the thin core */
     cv_rect(0, 120, 240, 1, T_RAISE);
