@@ -12,9 +12,24 @@
  * MONO / LEGATO / UNISON parts play the chord's root only; a kit (the DRUM engine, slices: an
  * engine that maps the keys itself) ignores CHRD. Every source keeps the notes it started (kb_chord for a
  * key, mchord for a MIDI note) and its release ends exactly those, so CHRD / VOIC changed while it is held
- * leave nothing hanging. A note several sources hold sounds once and ends with the last of them. */
+ * leave nothing hanging. A note several sources hold sounds once and ends with the last of them.
+ *
+ * EDDA OS, CHORD+: with CHRD on and QNT WHITE (the white keys walk the scale, the black keys are silent) the
+ * black keys of the selected track change the chord while they are held, by their place (key_place):
+ *   1 F#3 MIN (the third flattened)   2 G#3 7TH (the minor seventh)   3 A#3 MAJ7   4 C#4 SUS4 (no third, the fourth)
+ *   5 D#4 9TH (the ninth; a seventh keeps 1-3-7-9)   6 F#4 INV (the next inversion up)   7 G#4 +BASS (the root an
+ *   octave down)   8 A#4 STRUM (the notes 18 ms apart, low to high)   9 C#5 OPEN (the second tone an octave up)
+ * (seq.c keyboard_block: chp_key; the modifiers chp_held, chp_strum). They combine (MIN + 7TH: m7; SUS4 + 7TH:
+ * 7sus4), the chord's name on the CHORD page follows. VOIC LEAD (VC_LEAD): smooth voice leading: of the chord's
+ * inversions and octaves, the one whose notes move the least from the last chord played on the track
+ * (chord_last), as a keyboard player's hand would. A strummed chord's later notes wait in a queue the audio
+ * block serves (strum_tick); a key let go before they sound cancels them. */
 enum { CH_OFF, CH_DIA3, CH_DIA7, CH_MAJ, CH_MIN, CH_DOM7, CH_MAJ7, CH_MIN7, CH_SUS4, CH_POW };
-enum { VC_CLOSE, VC_OPEN, VC_INV1, VC_INV2, VC_BASS };
+enum { VC_CLOSE, VC_OPEN, VC_INV1, VC_INV2, VC_BASS, VC_LEAD };
+enum { CHP_MIN, CHP_7TH, CHP_MAJ7, CHP_SUS4, CHP_9TH, CHP_INV, CHP_BASS, CHP_STRUM, CHP_OPEN, CHP_COUNT };
+static uint16_t chp_held;                /* bit CHP_*: the black key is held (seq.c) */
+#define CHP_STRUM_GAP 794u               /* 18 ms between a strummed chord's notes */
+static const char *const CHP_NAME[CHP_COUNT] = {"MIN", "7TH", "MAJ7", "SUS4", "9TH", "INV", "BASS", "STRUM", "OPEN"};
 #define CHORD_MAX 4u
 #define MCHORD_N 24u                     /* MIDI notes held as chords at once (more: their root alone) */
 
@@ -70,10 +85,90 @@ static uint32_t chord_tones(const track_t *t, uint32_t mode, int32_t *root, int3
 /* the chord on note `root` as track t plays it now -> out (ascending), the number of notes (1..CHORD_MAX);
  * *rp its root, *maskp its tones above the root (bit i: i semitones; 0 = no chord). The root alone when CHRD
  * is OFF, on a kit, or for MONO / LEGATO / UNISON (their chord's root) */
+/* CHORD+ is live on track t: CHRD on, QNT WHITE (the black keys are free), not a kit */
+static int chord_plus_on(const track_t *t)
+{
+    return t->p[P_CHRD] && t->p[P_CHRD] <= CH_POW && t->p[P_QUANT] == QN_WHITE && !chord_kit(t);
+}
+/* the held modifiers on the tones (semitones above the root, ascending, iv[0] = 0): n tones -> n */
+static uint32_t chord_plus(uint32_t held, int32_t *iv, uint32_t n)
+{
+    uint32_t i, j, third = 0, seventh = 0;
+    for (i = 1; i < n; i++) {
+        if (iv[i] == 3 || iv[i] == 4) third = i;
+        if (iv[i] == 10 || iv[i] == 11) seventh = i;
+    }
+    if ((held >> CHP_SUS4) & 1u) {                      /* the third becomes the fourth (none: added) */
+        if (third) iv[third] = 5;
+        else if (n < CHORD_MAX) iv[n++] = 5;
+    } else if ((held >> CHP_MIN) & 1u) {
+        if (third) iv[third] = 3;
+        else if (n < CHORD_MAX) iv[n++] = 3;            /* (POW: 1 5 8 + b3) */
+    }
+    if (((held >> CHP_7TH) | (held >> CHP_MAJ7)) & 1u) {   /* 7TH wins over MAJ7 when both are held */
+        int32_t sev = (held >> CHP_7TH) & 1u ? 10 : 11;
+        if (seventh) iv[seventh] = sev;
+        else if (n < CHORD_MAX) iv[n++] = sev;
+        else iv[n - 1u] = sev;                          /* (a 9th chord: its top becomes the seventh) */
+    }
+    if ((held >> CHP_9TH) & 1u) {
+        if (n < CHORD_MAX) iv[n++] = 14;
+        else {                                          /* full: the fifth makes room (1-3-7-9) */
+            for (i = 1; i < n; i++)
+                if (iv[i] == 7) { iv[i] = 14; break; }
+            if (i == n) iv[n - 1u] = 14;
+        }
+    }
+    for (i = 1; i < n; i++)                             /* ascending, each once */
+        for (j = i; j > 0 && iv[j - 1u] > iv[j]; j--) {
+            int32_t x = iv[j];
+            iv[j] = iv[j - 1u];
+            iv[j - 1u] = x;
+        }
+    for (i = 1, j = 1; i < n; i++)
+        if (iv[i] != iv[j - 1u])
+            iv[j++] = iv[i];
+    return j > n ? n : j;
+}
+/* VOIC LEAD: the notes (n, root r + iv) in the inversion and octave nearest the track's last chord: the sum of
+ * each note's distance to the nearest note of the last chord, over the 3 octaves and n inversions */
+static void chord_lead(uint32_t k, int32_t r, int32_t *iv, uint32_t n)
+{
+    int32_t best = 0x7FFFFFFF, cand[CHORD_MAX + 1u], pick[CHORD_MAX + 1u], x;
+    uint32_t inv, oct, i, j;
+    if (n < 2u || !chord_last[k].n)
+        return;
+    for (i = 0; i < n; i++)
+        pick[i] = iv[i];
+    for (inv = 0; inv < n; inv++) {
+        for (oct = 0; oct < 3u; oct++) {
+            int32_t cost = 0;
+            for (i = 0; i < n; i++)                     /* inversion inv: the lowest inv tones an octave up */
+                cand[i] = iv[i] + (i < inv ? 12 : 0) + 12 * ((int32_t)oct - 1);
+            for (i = 0; i < n; i++) {
+                int32_t d = 1000, note = r + cand[i];
+                for (j = 0; j < chord_last[k].n; j++) {
+                    x = note - (int32_t)chord_last[k].note[j];
+                    x = x < 0 ? -x : x;
+                    d = x < d ? x : d;
+                }
+                cost += d;
+            }
+            if (cost < best) {
+                best = cost;
+                for (i = 0; i < n; i++)
+                    pick[i] = cand[i];
+            }
+        }
+    }
+    for (i = 0; i < n; i++)
+        iv[i] = pick[i];
+}
 static uint32_t chord_make(const track_t *t, uint32_t root, uint8_t *out, int32_t *rp, uint16_t *maskp)
 {
     int32_t iv[CHORD_MAX + 1u], r = (int32_t)root, x;
-    uint32_t mode = (uint32_t)t->p[P_CHRD], n, i, j, m = 0;
+    uint32_t mode = (uint32_t)t->p[P_CHRD], n, i, j, m = 0, voic = (uint32_t)t->p[P_VOIC];
+    uint32_t held = chord_plus_on(t) && t == &trk[song.sel] ? chp_held : 0u;
     uint16_t mask = 0;
     *rp = r;
     *maskp = 0;
@@ -82,6 +177,8 @@ static uint32_t chord_make(const track_t *t, uint32_t root, uint8_t *out, int32_
         return 1;
     }
     n = chord_tones(t, mode, &r, iv);
+    if (held & ~(1u << CHP_INV | 1u << CHP_BASS | 1u << CHP_STRUM | 1u << CHP_OPEN))
+        n = chord_plus(held, iv, n);                    /* CHORD+: the tones changed */
     for (i = 0; i < n; i++)
         mask |= (uint16_t)(1u << (iv[i] % 12));
     *rp = r;
@@ -90,7 +187,9 @@ static uint32_t chord_make(const track_t *t, uint32_t root, uint8_t *out, int32_
         out[0] = (uint8_t)clamp(r, 0, 127);
         return 1;
     }
-    switch (t->p[P_VOIC]) {
+    if ((held >> CHP_OPEN) & 1u)
+        voic = VC_OPEN;
+    switch (voic) {
     case VC_OPEN:                                       /* 1-5-3(-7): the second tone an octave up */
         if (n >= 3u)
             iv[1] += 12;
@@ -114,8 +213,28 @@ static uint32_t chord_make(const track_t *t, uint32_t root, uint8_t *out, int32_
         iv[0] = -12;
         n++;
         break;
+    case VC_LEAD:                                       /* EDDA OS: the nearest inversion to the last chord */
+        chord_lead(trk_index(t), r, iv, n);
+        break;
     default:
         break;
+    }
+    if ((held >> CHP_INV) & 1u && n >= 2u) {            /* CHORD+ INV: the lowest tone an octave up */
+        x = iv[0] + 12;
+        for (i = 1; i < n; i++)
+            iv[i - 1u] = iv[i];
+        iv[n - 1u] = x;
+    }
+    if ((held >> CHP_BASS) & 1u && voic != VC_BASS) {   /* CHORD+ BASS: the root an octave down (a seventh drops
+                                                         * its fifth, as +OCT) */
+        if (n == CHORD_MAX) {
+            iv[2] = iv[3];
+            n--;
+        }
+        for (i = n; i > 0; i--)
+            iv[i] = iv[i - 1u];
+        iv[0] = -12;
+        n++;
     }
     for (i = 1; i < n; i++)                             /* ascending */
         for (j = i; j > 0 && iv[j - 1u] > iv[j]; j--) {
@@ -209,4 +328,61 @@ static void mchord_forget(uint32_t track)               /* panic: the track's MI
     for (i = 0; i < MCHORD_N; i++)
         if (mchord[i].id == track + 1u)
             mchord[i].id = 0;
+}
+
+/* ---- EDDA OS: the strum queue (CHORD+ STRUM): a chord's later notes, each a gap after the one before, started by
+ * the audio block (strum_tick, from events_block); a key let go first cancels its notes (strum_cancel) */
+#define STRUM_N 16u
+static void input_on(track_t *t, uint32_t note, uint32_t vel);   /* seq.c (after this file) */
+static struct { uint8_t trk, note, vel, key; uint32_t left; } strum_q[STRUM_N];
+static uint32_t strum_n;
+static void strum_push(track_t *t, uint32_t note, uint32_t vel, uint32_t key, uint32_t delay)
+{
+    if (strum_n >= STRUM_N)
+        return;
+    strum_q[strum_n].trk = (uint8_t)trk_index(t);
+    strum_q[strum_n].note = (uint8_t)note;
+    strum_q[strum_n].vel = (uint8_t)vel;
+    strum_q[strum_n].key = (uint8_t)key;
+    strum_q[strum_n].left = delay;
+    strum_n++;
+}
+static int strum_cancel(uint32_t key, uint32_t note)     /* 1 = the note was still waiting (never sounded) */
+{
+    uint32_t i;
+    for (i = 0; i < strum_n; i++)
+        if (strum_q[i].key == key && strum_q[i].note == note) {
+            strum_q[i] = strum_q[--strum_n];
+            return 1;
+        }
+    return 0;
+}
+static void strum_tick(uint32_t n)                      /* n samples pass */
+{
+    uint32_t i = 0;
+    while (i < strum_n) {
+        if (strum_q[i].left > n) {
+            strum_q[i].left -= n;
+            i++;
+        } else {
+            track_t *t = &trk[strum_q[i].trk % NTRK];
+            uint32_t note = strum_q[i].note, vel = strum_q[i].vel, mc = trk_midi_ch(trk_index(t));
+            strum_q[i] = strum_q[--strum_n];           /* (vetted at key_on: its key holds it, no other) */
+            input_on(t, note, vel);
+            midi_out_event(0x09u | (0x90u | mc) << 8 | note << 16 | vel << 24);
+        }
+    }
+}
+/* a black key of the selected track (seq.c keyboard_block) while CHORD+ is live: its modifier held (down) or let
+ * go (up); 1 = taken (the key is silent) */
+static int chp_key(uint32_t k, int down)
+{
+    uint32_t place = key_place(k);
+    if (!key_black(k) || !chord_plus_on(&trk[song.sel]) || place >= CHP_COUNT)
+        return 0;
+    if (down)
+        chp_held |= (uint16_t)(1u << place);
+    else
+        chp_held &= (uint16_t)~(1u << place);
+    return 1;
 }

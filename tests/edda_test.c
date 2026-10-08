@@ -516,6 +516,94 @@ int main(int argc, char **argv)
         ok = trk[1].p[P_E7] == 8 && str_eq(UI_PALETTES[UI_BW_INDEX + 1u].name, "EDDA") && NPALETTES == UI_BW_INDEX + 2u;
         ck("the OGENE preset loads with SLOT E1; the EDDA palette is the last one", ok);
     }
+    /* ------------------------------------------------------ CHORD+ */
+    {
+        track_t *t = &trk[0];
+        uint32_t kc = 7u;                                /* C4 (keys from F3) */
+        int ok;
+        reset();
+        song.sel = 0;
+        song.master_q12 = 4096;
+        set_engine_of(t, 0); apply_preset_to(t, 0);
+        t->p[P_CHRD] = CH_MAJ; t->p[P_QUANT] = QN_WHITE; t->p[P_ROOT] = 0; t->p[P_SCALE] = 1; t->p[P_VOICE] = V_POLY;
+        t->p[P_VOIC] = VC_CLOSE;
+        blocks(2);                                       /* (the preset's panic request served) */
+        ok = chord_plus_on(t) && !chp_held;
+        key_down(kc); frame();
+        ok &= kb_chn[kc] == 3u && kb_chord[kc][0] == 60 && kb_chord[kc][1] == 64 && kb_chord[kc][2] == 67;
+        key_up(kc); frame();
+        {   /* each black key: its modifier on C major */
+            static const uint8_t WANT[CHP_COUNT][4] = {
+                {60, 63, 67, 0}, {60, 64, 67, 70}, {60, 64, 67, 71}, {60, 65, 67, 0}, {60, 64, 67, 74},
+                {64, 67, 72, 0}, {48, 60, 64, 67}, {60, 64, 67, 0}, {60, 67, 76, 0}};
+            for (i = 0; i < CHP_COUNT && ok; i++) {
+                uint32_t kb = black(i), n = WANT[i][3] ? 4u : 3u;
+                key_down(kb); frame();
+                ok &= chp_held == (1u << i) && kb_note[kb] == KB_SILENT && !gates() && ((kb_layer >> kb) & 1u);
+                key_down(kc); frame();
+                ok &= kb_chn[kc] == n;
+                for (j = 0; j < n; j++)
+                    ok &= kb_chord[kc][j] == WANT[i][j];
+                if (!ok)
+                    printf("  black %u (%s): %u notes %u %u %u %u\n", i, CHP_NAME[i], kb_chn[kc], kb_chord[kc][0],
+                           kb_chord[kc][1], kb_chord[kc][2], kb_chord[kc][3]);
+                key_up(kc); key_up(kb); frame();
+                ok &= !chp_held && !gates();
+            }
+        }
+        ck("CHORD+ (CHRD on, QNT WHITE): each black key held changes the chord: MIN 7TH MAJ7 SUS4 9TH INV BASS STRUM OPEN; silent, let go: off", ok);
+        /* combinations: MIN + 7TH = m7, SUS4 + 7TH = 7sus4, 7TH + 9TH = 1-3-7-9; the name follows */
+        key_down(black(CHP_MIN)); key_down(black(CHP_7TH)); key_down(kc); frame();
+        ok = kb_chn[kc] == 4u && kb_chord[kc][1] == 63 && kb_chord[kc][3] == 70 && chord_last[0].mask == 0x489u;
+        key_up(kc); key_up(black(CHP_MIN)); key_up(black(CHP_7TH)); frame();
+        key_down(black(CHP_SUS4)); key_down(black(CHP_7TH)); key_down(kc); frame();
+        ok &= kb_chn[kc] == 4u && kb_chord[kc][1] == 65 && kb_chord[kc][3] == 70;
+        key_up(kc); key_up(black(CHP_SUS4)); key_up(black(CHP_7TH)); frame();
+        key_down(black(CHP_7TH)); key_down(black(CHP_9TH)); key_down(kc); frame();
+        ok &= kb_chn[kc] == 4u && kb_chord[kc][1] == 64 && kb_chord[kc][2] == 70 && kb_chord[kc][3] == 74;
+        {
+            char nm2[12];
+            chord_name(nm2, 0, chord_last[0].mask);
+            ok &= str_eq(nm2, "C7");                     /* (the ninth is not named: the seventh's chord) */
+        }
+        key_up(kc); key_up(black(CHP_7TH)); key_up(black(CHP_9TH)); frame();
+        ck("CHORD+ combinations: MIN + 7TH is m7, SUS4 + 7TH is 7sus4, 7TH + 9TH drops the fifth (1-3-7-9)", ok);
+        /* STRUM: the second and third notes 18 and 36 ms later; a key let go before cancels what is left */
+        key_down(black(CHP_STRUM)); key_down(kc); frame();
+        ok = kb_chn[kc] == 3u && gates() == 1u && strum_n == 2u;
+        blocks((CHP_STRUM_GAP + CTL - 1u) / CTL);
+        ok &= gates() == 2u && strum_n == 1u;
+        blocks((CHP_STRUM_GAP + CTL - 1u) / CTL);
+        ok &= gates() == 3u && strum_n == 0u;
+        key_up(kc); frame();
+        ok &= !gates();
+        mo_r = mo_w;                                     /* (the ring drained: the counts below) */
+        m0 = mo_w;
+        key_down(kc); frame();
+        key_up(kc); frame();                             /* at once: the strummed notes never sound, no note-off */
+        ok &= !gates() && strum_n == 0u && mo_w - m0 == 2u;   /* (the root's note-on and note-off only) */
+        key_up(black(CHP_STRUM)); frame();
+        ck("CHORD+ STRUM: the notes 18 ms apart, low to high; let go first: the waiting ones never sound", ok);
+        /* VOIC LEAD: the nearest inversion to the last chord; CHORD+ needs QNT WHITE; a kit has none */
+        t->p[P_VOIC] = VC_LEAD;
+        key_down(kc); frame();                           /* C E G */
+        ok = kb_chn[kc] == 3u && kb_chord[kc][0] == 60;
+        key_up(kc); frame();
+        key_down(12u); frame();                          /* F4 (key 12): F major -> C F A (its second inversion) */
+        ok &= kb_chn[12] == 3u && kb_chord[12][0] == 60 && kb_chord[12][1] == 65 && kb_chord[12][2] == 69;
+        key_up(12u); frame();
+        key_down(14u); frame();                          /* G4: G major -> B D G (near C F A) */
+        ok &= kb_chn[14] == 3u && kb_chord[14][0] == 59 && kb_chord[14][1] == 62 && kb_chord[14][2] == 67;
+        key_up(14u); frame();
+        t->p[P_VOIC] = VC_CLOSE;
+        t->p[P_QUANT] = QN_SNAP;
+        ok &= !chord_plus_on(t);
+        key_down(black(CHP_MIN)); frame();
+        ok &= !chp_held && kb_note[black(CHP_MIN)] != KB_SILENT;   /* (SNAP: a black key is a note) */
+        key_up(black(CHP_MIN)); frame();
+        ok &= str_eq(N_VOIC[VC_LEAD], "LEAD") && TP[P_VOIC].max == VC_LEAD;
+        ck("VOIC LEAD: F after C is C F A, G after it B D G (the smallest move); CHORD+ only with QNT WHITE", ok);
+    }
     /* ------------------------------------------------------ dotted echoes */
     {
         uint32_t q;

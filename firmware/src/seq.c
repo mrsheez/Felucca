@@ -544,11 +544,16 @@ static uint32_t perf_key(uint32_t k)
 static void key_on(uint32_t k, track_t *t)
 {
     uint32_t n = chord_build(t, kb_note[k], kb_chord[k]), i, mc = trk_midi_ch(trk_index(t));
+    uint32_t strum = n > 1u && t == &trk[song.sel] && ((chp_held >> CHP_STRUM) & 1u) && chord_plus_on(t);
     kb_chn[k] = 0;
     for (i = 0; i < n; i++) {
         uint32_t x = kb_chord[k][i];
         if (midi_local_held(t, x))
             continue;
+        if (strum && i) {                           /* CHORD+ STRUM: the later notes a gap apart (chord.c) */
+            strum_push(t, x, 100, k, i * CHP_STRUM_GAP);
+            continue;
+        }
         input_on(t, x, 100);
         midi_out_event(0x09u | (0x90u | mc) << 8 | x << 16 | 100u << 24);
     }
@@ -563,6 +568,8 @@ static void key_off(uint32_t k, track_t *t)
     kb_chn[k] = 0;
     for (i = 0; i < n; i++) {
         uint32_t x = kb_chord[k][i];
+        if (strum_cancel(k, x))                     /* (a strummed note that never sounded) */
+            continue;
         if (midi_local_held(t, x))
             continue;
         input_off(t, x);
@@ -624,7 +631,11 @@ static void keyboard_block(void)
                 kb_note[k] = KB_SILENT;
             else if (song.grid)                   /* the DRUM grid: a lane key plays its lane, the rest are the UI's */
                 kb_note[k] = key_black(k) && key_place(k) < NLANE ? DRUM_LANE_NOTE[key_place(k)] : KB_SILENT;
-            else
+            else if (chp_key(k, 1)) {             /* EDDA OS CHORD+: a black key holds a modifier (chord.c) */
+                kb_note[k] = KB_SILENT;
+                kb_layer |= 1u << k;              /* (its release is the modifier's, never a note-off) */
+                continue;
+            } else
                 kb_note[k] = (uint8_t)kb_map(&trk[kb_trk[k]], k);
             if (kb_note[k] == KB_SILENT)
                 continue;
@@ -635,7 +646,8 @@ static void keyboard_block(void)
         } else {
             if ((kb_layer >> k) & 1u) {
                 kb_layer &= ~(1u << k);
-                perf_press(perf_key(k), 0);
+                if (!chp_key(k, 0))               /* (a CHORD+ modifier let go; else a layer's key) */
+                    perf_press(perf_key(k), 0);
                 continue;
             }
             if (kb_note[k] == KB_SILENT)
@@ -1043,6 +1055,7 @@ static void events_block(uint32_t n)
     }
     edda_block(clock_mode ? seq_n : n);               /* EDDA OS: bars, the run, the stop, the cues; before the steps,
                                                        * so a phase that starts on this one holds for its first step */
+    strum_tick(n);                                    /* EDDA OS: CHORD+ STRUM's waiting notes (chord.c) */
     chain_tick(seq_n);
     for (i = 0; i < NTRK; i++)
         seq_tick(&trk[i], seq_n);

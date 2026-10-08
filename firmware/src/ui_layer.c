@@ -802,7 +802,7 @@ static void layer_glo(void)
     n[0] = 'D';                                         /* EDDA: the run, lit while it runs */
     lcell(LC_X(1), 50, LC_H, n, ICON_SUB, 0, "RUN", edda.phase != ED_IDLE || edda.armed ? LS_HELD : LS_OFF, 0);
     n[0] = 'E';                                         /* the hard stop, lit while stopped */
-    lcell(LC_X(2), 50, LC_H, n, ICON_X_STOP, 0, "STOP", edda.stopped ? LS_HELD : LS_OFF, 0);
+    lcell(LC_X(2), 50, LC_H, n, ICON_HOLD, 0, "STOP", edda.stopped ? LS_HELD : LS_OFF, 0);
     n[0] = 'F';
     lcell(LC_X(3), 50, LC_H, n, ICON_TEMPO, 0, "TAP", song.g[G_CLOCK] ? LS_DIM : LS_OFF, 0);
     for (e = 0; e < NTRK; e++) {                        /* the black keys 1..4: MUTE, latched */

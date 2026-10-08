@@ -364,6 +364,24 @@ static void graph_chord(const track_t *t, uint16_t c)
     }
     if (trk_vmode(t) != V_POLY)
         cap = "ROOT ONLY";                              /* MONO / LEGATO / UNISON */
+    else if (chp_held && t == &trk[song.sel] && chord_plus_on(t)) {   /* EDDA OS CHORD+: the black keys held */
+        static char cb[12];
+        uint32_t i, m = 0;
+        cb[0] = '+';
+        cb[1] = 0;
+        for (i = 0; i < CHP_COUNT; i++)
+            if ((chp_held >> i) & 1u) {
+                if (m++ < 2u) {
+                    if (m > 1u)
+                        str_cpy(cb + str_len(cb), " ", 12 - str_len(cb));
+                    str_cpy(cb + str_len(cb), CHP_NAME[i], 12 - str_len(cb));
+                }
+            }
+        if (m > 2u)
+            str_cpy(cb + str_len(cb), "+", 12 - str_len(cb));
+        cap = cb;
+    } else if (chord_plus_on(t) && !chord_last[k].n)
+        cap = "CHORD+";                                 /* (the black keys change the chord: chord.c) */
     chord_name(b, (uint32_t)r, mask);
     cv_text_on(14, 8, &AF_M, b, T_TEXT, T_SURF);
     GFX_HOOK_ALIGN(0, 0, 0, 8 + AF_M.asc, AL_B, "chord caption on the name's baseline");
