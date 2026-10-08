@@ -347,7 +347,7 @@ static void graph_roll(const track_t *t, uint16_t c)
         if ((st->flags & SF_SLIDE) && step_ratchet(st) == 1u &&   /* (a ratcheted step never slides out) */
             ns->time == ST_NOTE && ns->n && y >= PR_Y0 && y < ybot) {
             int32_t ny = clamp(pr_row_y(ns->note[0]), PR_Y0, ybot - PR_RH);
-            cv_line(x + 10, y + 2, x + 14, ny + 2, T_TEXT);   /* the slide into the next note */
+            cv_aaline(x + 10, y + 2, x + 14, ny + 2, T_TEXT);   /* the slide into the next note */
         }
     }
 }

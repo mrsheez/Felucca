@@ -364,6 +364,72 @@ static const uint16_t *ramp(uint16_t fg, uint16_t bg)
     return v;
 }
 
+/* EDDA OS: anti-aliased drawing (the curves, the visualisers: ui_viz.c). A pixel of the canvas blended with c by cov
+ * (0..16): over cv_bg through the ramp rv (ramp(c, cv_bg)), over anything else mixed; MONO's blends of blends kept
+ * neutral (cv_neutral) */
+static uint16_t cv_neutral(uint16_t c) { return ux.bw ? ux_gray(c >> 11) : c; }
+static void cv_aapx(int32_t x, int32_t y, uint16_t c, const uint16_t *rv, uint32_t cov)
+{
+    uint16_t *p;
+    y += cv_oy;
+    if ((uint32_t)x >= cv_w || (uint32_t)y >= cv_h || !cov)
+        return;
+    p = cv_px + (uint32_t)y * cv_w + (uint32_t)x;
+    if (cov >= 16u)
+        *p = swap16(c);
+    else if (*p == rv[0])
+        *p = rv[cov];
+    else
+        *p = swap16(cv_neutral(ux_mix(swap16(*p), c, (int32_t)(cov * 100u / 16u))));
+}
+/* a line between points in sixteenths of a pixel (a pixel's centre at its whole value), Wu's way: along its long
+ * axis each whole pixel from the first end up to (not at) the other (a curve's segments meet without a pixel drawn
+ * twice), the two pixels either side of the ideal line sharing its coverage; wide: twice, half a pixel either side
+ * (2 px across) */
+static void cv_aaline_q4(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c, int wide)
+{
+    const uint16_t *rv;
+    int32_t dx = x1 - x0, dy = y1 - y0, steep = (dy < 0 ? -dy : dy) > (dx < 0 ? -dx : dx), t, i, ie, f, step, w;
+    t = ((y0 < y1 ? y0 : y1) >> 4) + cv_oy;
+    c = cv_neutral(c);
+    if (t - 2 >= (int32_t)cv_h || ((y0 > y1 ? y0 : y1) >> 4) + cv_oy + 2 < 0 || c == cv_bg)
+        return;                                      /* (off the canvas, or nothing to see) */
+    rv = ramp(c, cv_bg);
+    if (steep) {
+        t = x0; x0 = y0; y0 = t;
+        t = x1; x1 = y1; y1 = t;
+    }
+    if (x0 > x1) {
+        t = x0; x0 = x1; x1 = t;
+        t = y0; y0 = y1; y1 = t;
+    }
+    dx = x1 - x0;
+    dy = y1 - y0;
+    for (w = wide ? -8 : 0; w <= (wide ? 8 : 0); w += 16) {
+        i = (x0 + 15) >> 4;                          /* the first whole pixel at or after x0 .. */
+        ie = (x1 + 15) >> 4;                         /* .. to the last before x1 */
+        step = dx ? dy * 256 / dx : 0;               /* (Q8 a pixel) */
+        f = (y0 + w) * 16 + (dx ? (i * 16 - x0) * dy * 16 / dx : 0);
+        for (; i < ie; i++, f += step) {
+            int32_t yi = f >> 8;
+            uint32_t fr = (uint32_t)(f & 255) >> 4;
+            if (steep) {
+                cv_aapx(yi, i, c, rv, 16u - fr);
+                cv_aapx(yi + 1, i, c, rv, fr);
+            } else {
+                cv_aapx(i, yi, c, rv, 16u - fr);
+                cv_aapx(i, yi + 1, c, rv, fr);
+            }
+        }
+    }
+}
+/* .. between two pixels, both drawn */
+static void cv_aaline(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c)
+{
+    cv_aaline_q4(x0 * 16, y0 * 16, x1 * 16, y1 * 16, c, 0);
+    cv_aapx(x1, y1, cv_neutral(c), 0, 16u);
+}
+
 /* w x h nibbles, rows back to back, at canvas (x, y) */
 static void cv_alpha(int32_t x, int32_t y, uint32_t w, uint32_t h, const uint8_t *d, const uint16_t *rv)
 {

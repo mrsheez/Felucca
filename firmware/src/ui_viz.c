@@ -107,63 +107,8 @@ static void vz_text(int32_t x0, int32_t w, int32_t y, const aafont_t *f, const c
     }
 }
 /* ---- anti-aliased drawing (the panel is 240 px across: every edge counts). Where a shape moves, its coordinates
- * are in sixteenths of a pixel (Q4), a pixel's centre at its whole value. A pixel of the band's canvas blended with c
- * by cov (0..16): over the background through the ramp (gfx.c ramp: the text's own blending), over ink mixed */
-static uint16_t vz_n(uint16_t c) { return ux.bw ? ux_gray(c >> 11) : c; }   /* (MONO: blends of blends stay neutral) */
-static void vz_px(int32_t x, int32_t y, uint16_t c, const uint16_t *rv, uint32_t cov)
-{
-    uint16_t *p;
-    y += cv_oy;
-    if ((uint32_t)x >= cv_w || (uint32_t)y >= cv_h || !cov)
-        return;
-    p = cv_px + (uint32_t)y * cv_w + (uint32_t)x;
-    if (cov >= 16u)
-        *p = swap16(c);
-    else if (*p == rv[0])
-        *p = rv[cov];
-    else
-        *p = swap16(vz_n(ux_mix(swap16(*p), c, (int32_t)(cov * 100u / 16u))));
-}
-/* a line between Q4 points, Wu's way: along its long axis each whole pixel from the first end up to (not at) the
- * other (a curve's segments meet without a pixel drawn twice), the two pixels either side of the ideal line sharing
- * its coverage; wide: twice, half a pixel either side (2 px across) */
-static void vz_aalq(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c, int wide)
-{
-    const uint16_t *rv;
-    int32_t dx = x1 - x0, dy = y1 - y0, steep = (dy < 0 ? -dy : dy) > (dx < 0 ? -dx : dx), t, i, ie, f, step, w;
-    t = (y0 < y1 ? y0 : y1) >> 4;
-    c = vz_n(c);
-    if (t - 2 >= vz_y1 || ((y0 > y1 ? y0 : y1) >> 4) + 2 < vz_y0 || c == cv_bg)
-        return;                                          /* (not in the band, or nothing to see) */
-    rv = ramp(c, cv_bg);
-    if (steep) {
-        t = x0; x0 = y0; y0 = t;
-        t = x1; x1 = y1; y1 = t;
-    }
-    if (x0 > x1) {
-        t = x0; x0 = x1; x1 = t;
-        t = y0; y0 = y1; y1 = t;
-    }
-    dx = x1 - x0;
-    dy = y1 - y0;
-    for (w = wide ? -8 : 0; w <= (wide ? 8 : 0); w += 16) {
-        i = (x0 + 15) >> 4;                              /* the first whole pixel at or after x0 .. */
-        ie = (x1 + 15) >> 4;                             /* .. to the last before x1 */
-        step = dx ? dy * 256 / dx : 0;                   /* (Q8 a pixel) */
-        f = (y0 + w) * 16 + (dx ? (i * 16 - x0) * dy * 16 / dx : 0);
-        for (; i < ie; i++, f += step) {
-            int32_t yi = f >> 8;
-            uint32_t fr = (uint32_t)(f & 255) >> 4;
-            if (steep) {
-                vz_px(yi, i, c, rv, 16u - fr);
-                vz_px(yi + 1, i, c, rv, fr);
-            } else {
-                vz_px(i, yi, c, rv, 16u - fr);
-                vz_px(i, yi + 1, c, rv, fr);
-            }
-        }
-    }
-}
+ * are in sixteenths of a pixel (Q4), a pixel's centre at its whole value. The pixel and the line: gfx.c (cv_aapx,
+ * cv_aaline_q4); the rings, discs, lit spheres and lamp segments here */
 /* the coverage (0..16) of a pixel d2 (its distance squared) from the centre by the disc of radius r near its edge: the
  * edge locally straight, the signed distance (r^2 - d^2) / 2r (inv: 8 << 16 / r), half a pixel either side */
 static int32_t vz_dcov(int32_t d2, int32_t r, int32_t inv)
@@ -184,7 +129,7 @@ static void vz_aaring(int32_t cx, int32_t cy, int32_t r0, int32_t r1, uint16_t c
 {
     const uint16_t *rv;
     int32_t y, ya = cy - r1 - 1, yb = cy + r1 + 1, i0, i1;
-    c = vz_n(c);
+    c = cv_neutral(c);
     if (r1 <= 0 || c == cv_bg)
         return;
     r0 = r0 < 0 ? 0 : r0;
@@ -216,9 +161,9 @@ static void vz_aaring(int32_t cx, int32_t cy, int32_t r0, int32_t r1, uint16_t c
                 int32_t d2 = x * x + dy * dy, cov = vz_dcov(d2, r1, i1) - vz_dcov(d2, r0, i0);
                 if (cov <= 0)
                     continue;
-                vz_px(cx + x, y, c, rv, (uint32_t)cov);
+                cv_aapx(cx + x, y, c, rv, (uint32_t)cov);
                 if (x)
-                    vz_px(cx - x, y, c, rv, (uint32_t)cov);
+                    cv_aapx(cx - x, y, c, rv, (uint32_t)cov);
             }
     }
 }
@@ -229,7 +174,7 @@ static void vz_dot(int32_t xq, int32_t yq, int32_t rq, uint16_t c)
     int32_t x, y, xa = (xq - rq) >> 4, xb = (xq + rq + 15) >> 4, ya = (yq - rq) >> 4, yb = (yq + rq + 15) >> 4, r2 = rq * rq;
     ya = ya < vz_y0 ? vz_y0 : ya;
     yb = yb >= vz_y1 ? vz_y1 - 1 : yb;
-    c = vz_n(c);
+    c = cv_neutral(c);
     if (rq <= 0 || ya > yb || c == cv_bg)
         return;
     rv = ramp(c, cv_bg);
@@ -243,7 +188,7 @@ static void vz_dot(int32_t xq, int32_t yq, int32_t rq, uint16_t c)
                     n += px * px + py * py <= r2;
                 }
             }
-            vz_px(x, y, c, rv, (uint32_t)n);
+            cv_aapx(x, y, c, rv, (uint32_t)n);
         }
 }
 /* a lit sphere: a disc of radius r whose colour runs from rv[0] at its rim to rv[16] at its heart (rv: 17 swapped
@@ -271,7 +216,7 @@ static void vz_orb(int32_t cx, int32_t cy, int32_t r, const uint16_t *rv)
                 int32_t k = 16 - (d2 * inv >> 16);
                 row[px] = rv[k < 0 ? 0 : k];
             } else if (cov > 0)
-                vz_px(px, y, rim, ramp(rim, cv_bg), (uint32_t)cov);
+                cv_aapx(px, y, rim, ramp(rim, cv_bg), (uint32_t)cov);
         }
     }
 }
@@ -285,10 +230,10 @@ static void vz_square(int32_t hq, int32_t t, uint32_t ang, uint16_t c)
     for (k = 0; k < t; k++) {
         int32_t r = hq - k * 16, ax = (r * cs - r * sn) >> 15, ay = (r * sn + r * cs) >> 15;   /* the corner (r, r) turned */
         int32_t bx = (-r * cs - r * sn) >> 15, by = (-r * sn + r * cs) >> 15;            /* .. (-r, r) */
-        vz_aalq(1920 + ax, 1920 + ay, 1920 + bx, 1920 + by, c, 0);
-        vz_aalq(1920 + bx, 1920 + by, 1920 - ax, 1920 - ay, c, 0);
-        vz_aalq(1920 - ax, 1920 - ay, 1920 - bx, 1920 - by, c, 0);
-        vz_aalq(1920 - bx, 1920 - by, 1920 + ax, 1920 + ay, c, 0);
+        cv_aaline_q4(1920 + ax, 1920 + ay, 1920 + bx, 1920 + by, c, 0);
+        cv_aaline_q4(1920 + bx, 1920 + by, 1920 - ax, 1920 - ay, c, 0);
+        cv_aaline_q4(1920 - ax, 1920 - ay, 1920 - bx, 1920 - by, c, 0);
+        cv_aaline_q4(1920 - bx, 1920 - by, 1920 + ax, 1920 + ay, c, 0);
     }
 }
 static uint16_t vz_c(uint16_t v) { return swap16(v); }   /* a colour of the swapped tables (lum, heat, hot) */
@@ -320,19 +265,19 @@ static void vz_ramps(void)
     }
     if (ux.bw) {                                         /* (MONO: every one neutral, its blends too) */
         for (i = 0; i < 64u; i++) {
-            vz.lum[i] = swap16(vz_n(swap16(vz.lum[i])));
-            vz.heat[i] = swap16(vz_n(swap16(vz.heat[i])));
+            vz.lum[i] = swap16(cv_neutral(swap16(vz.lum[i])));
+            vz.heat[i] = swap16(cv_neutral(swap16(vz.heat[i])));
         }
         for (i = 0; i <= 16u; i++)
-            vz.hot[i] = swap16(vz_n(swap16(vz.hot[i])));
+            vz.hot[i] = swap16(cv_neutral(swap16(vz.hot[i])));
         for (i = 0; i < 16u; i++)
-            vz.ramp[i] = vz_n(vz.ramp[i]);
+            vz.ramp[i] = cv_neutral(vz.ramp[i]);
         for (i = 0; i < 8u; i++) {
-            vz.trail[i] = vz_n(vz.trail[i]);
-            vz.dtrail[i] = vz_n(vz.dtrail[i]);
+            vz.trail[i] = cv_neutral(vz.trail[i]);
+            vz.dtrail[i] = cv_neutral(vz.dtrail[i]);
         }
         for (i = 0; i < 4u; i++)
-            vz.glow[i] = vz_n(vz.glow[i]);
+            vz.glow[i] = cv_neutral(vz.glow[i]);
     }
 }
 
@@ -718,7 +663,7 @@ static void vz_orbit(void)
     for (k = 0; k < 24u; k++) {
         uint32_t ang = k * 1024u / 24u;
         int32_t cs = SINE[(ang + 256u) & 1023u], sn = SINE[ang & 1023u], r0 = k % 6u ? 98 : 92;
-        vz_aalq(1920 + (r0 * cs >> 11), 1920 + (r0 * sn >> 11), 1920 + (103 * cs >> 11), 1920 + (103 * sn >> 11),
+        cv_aaline_q4(1920 + (r0 * cs >> 11), 1920 + (r0 * sn >> 11), 1920 + (103 * cs >> 11), 1920 + (103 * sn >> 11),
                 k % 6u ? T_TINT : T_DIM, 0);
     }
     for (i = 6; i < 236; i += 4) {
@@ -729,7 +674,7 @@ static void vz_orbit(void)
         int32_t x = 1920 + vz_avg((uint32_t)i) * 1664 / pk, y = 1920 - vz_avg((uint32_t)i + vz.tau) * 1664 / pk;
         if (i) {
             uint32_t q = (uint32_t)(i * 8 / n);          /* 0 .. 7, the newest last */
-            vz_aalq(px, py, x, y, q < 6u ? vz_c(vz.lum[18u + q * 9u]) : q == 6u ? T_THEME : vz.glow[3], q >= 6u);
+            cv_aaline_q4(px, py, x, y, q < 6u ? vz_c(vz.lum[18u + q * 9u]) : q == 6u ? T_THEME : vz.glow[3], q >= 6u);
         }
         px = x;
         py = y;
@@ -768,7 +713,7 @@ static void vz_pulse(void)
         int32_t cs = SINE[(ang + 256u) & 1023u], sn = SINE[ang];
         for (s = 0; s < 3; s++) {
             int32_t ra = 44 + s * 24, rb = ra + 24;
-            vz_aalq(1920 + (ra * cs >> 11), 1920 + (ra * sn >> 11), 1920 + (rb * cs >> 11), 1920 + (rb * sn >> 11),
+            cv_aaline_q4(1920 + (ra * cs >> 11), 1920 + (ra * sn >> 11), 1920 + (rb * cs >> 11), 1920 + (rb * sn >> 11),
                     vz_c(vz.lum[14 - s * 4]), 0);
         }
     }
@@ -803,8 +748,8 @@ static void vz_stars(void)
         c = z < 200 && vz.phase < 96u ? T_ACCENT : vz.ramp[6u + (uint32_t)(1024 - z) * 9u / 1024u];
         if (z < 512) {                                                /* near: a streak back to where it was */
             int32_t z2 = z + 40 + (int32_t)(255u - vz.phase) / 4, tx = 1920 + vz.star[i].x * 1920 / z2, ty = 1920 + vz.star[i].y * 1920 / z2;
-            vz_aalq(tx, ty, (tx + sx) / 2, (ty + sy) / 2, vz.glow[0], 0);
-            vz_aalq((tx + sx) / 2, (ty + sy) / 2, sx, sy, vz.glow[z < 200 ? 2 : 1], 0);
+            cv_aaline_q4(tx, ty, (tx + sx) / 2, (ty + sy) / 2, vz.glow[0], 0);
+            cv_aaline_q4((tx + sx) / 2, (ty + sy) / 2, sx, sy, vz.glow[z < 200 ? 2 : 1], 0);
         }
         if (z < 200)                                                  /* (the nearest: a halo) */
             vz_dot(sx, sy, rq * 2, vz.glow[0]);
@@ -942,7 +887,7 @@ static void vz_bulbs(void)
     uint16_t glass[17], lite = ux.light ? T_BG : T_TEXT;              /* (the light: white on the dark palettes, the paper's */
     char b[16];                                                       /* own on the light ones) */
     for (i = 0; i <= 16u; i++)                                        /* (ACCENT at the rim, the light in the middle) */
-        glass[i] = swap16(vz_n(ux_mix(T_ACCENT, lite, (int32_t)(i * i * 85u / 256u))));
+        glass[i] = swap16(cv_neutral(ux_mix(T_ACCENT, lite, (int32_t)(i * i * 85u / 256u))));
     for (i = 0; i < act && i < ED_ACTS; i++) {
         int32_t x = 24 + (int32_t)i * 48;
         vz_aaring(x, 58, 19, g, ux_mix(T_BG, T_ACCENT, 12));
@@ -979,7 +924,7 @@ static void vz_seg(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t t, ui
 {
     const uint16_t *rv;
     int32_t h = t / 2, k;
-    c = vz_n(c);
+    c = cv_neutral(c);
     if (c == cv_bg)
         return;
     rv = ramp(c, cv_bg);
@@ -989,16 +934,16 @@ static void vz_seg(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t t, ui
             int32_t a = x0 + ak, b = x1 - ak, y = y0 + k;
             if (b < a || !vz_in(y, 1))
                 continue;
-            vz_px(a, y, c, rv, 8u);
-            vz_px(b, y, c, rv, 8u);
+            cv_aapx(a, y, c, rv, 8u);
+            cv_aapx(b, y, c, rv, 8u);
             if (b - a > 1)
                 cv_rect(a + 1, y, b - a - 1, 1, c);
         } else {                                         /* up and down */
             int32_t a = y0 + ak, b = y1 - ak, x = x0 + k;
             if (b < a)
                 continue;
-            vz_px(x, a, c, rv, 8u);
-            vz_px(x, b, c, rv, 8u);
+            cv_aapx(x, a, c, rv, 8u);
+            cv_aapx(x, b, c, rv, 8u);
             if (b - a > 1)
                 cv_rect(x, a + 1, 1, b - a - 1, c);
         }
