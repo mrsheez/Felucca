@@ -1,0 +1,13 @@
+run 41043465585 73003234f08f346dfec2d5f20246c1be3efb5fb3 2026-10-30T11:24:17Z
+build: success
+tests: failure
+sdk: JieLi's AC79NN_SDK_V1.2.1 files (the reference: the package is built as Felucca's are)
+total 1436
+drwxr-xr-x  2 runner runner   4096 Oct 30 11:24 .
+drwxr-xr-x 16 runner runner   4096 Oct 30 11:24 ..
+-rw-r--r--  1 runner runner    200 Oct 30 11:24 RUN.txt
+-rw-r--r--  1 runner runner   2281 Oct 30 11:24 build-full.log
+-rw-r--r--  1 runner runner     87 Oct 30 11:24 build-size.txt
+-rw-r--r--  1 runner runner  14161 Oct 30 11:24 build-syms.txt
+-rw-r--r--  1 runner runner 610286 Oct 30 11:24 felucca-1.7.0-EDDA.fwsc
+-rw-r--r--  1 runner runner 819504 Oct 30 11:24 tests.log
