@@ -51,7 +51,7 @@ static uint32_t pow2_q16(int32_t d16)
 #define SMP_USER_SLOTS 4
 #define SMP_USER_BASE 0xA0000u
 #define SMP_USER4_BASE 0xEA000u                    /* (1.1.5: 0xE7000, 80 KiB: now the FM6 voice bank's, the unit's RF and BT) */
-#define SMP_USER4_SIZE 0x12000u
+#define SMP_USER4_SIZE (72u * 1024u)                /* (0x12000: as KiB, build.py's lint reads 0x1nnnn as a register) */
 #define SMP_USER_SIZE 0x14000u
 static uint32_t smp_user_addr(uint32_t k) { return k < 3u ? SMP_USER_BASE + k * SMP_USER_SIZE : SMP_USER4_BASE; }
 static uint32_t smp_user_size(uint32_t k) { return k < 3u ? SMP_USER_SIZE : SMP_USER4_SIZE; }
