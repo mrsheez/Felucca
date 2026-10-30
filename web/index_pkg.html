@@ -144,15 +144,21 @@ let writing = false, stock = null, stockFileEpoch = 0;
 const lockInstaller = (on) => { writing = on; $("go").disabled = on || !image; $("stock-go").disabled = on || !stock; $("stock-file").disabled = on; $("stock-recovery").disabled = on; };
 window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault(); e.returnValue = t("leave"); } });
 
+if (meta.name) { document.title = meta.name; document.querySelector("h1").textContent = meta.name; }
 (async () => {
   if (!navigator.requestMIDIAccess) { sayK("nomidi"); return; }
   try {
-    const r = await fetch(meta.pkg);
-    if (!r.ok) throw new Error(`${meta.pkg}: HTTP ${r.status}`);
-    const pkg = new Uint8Array(await r.arrayBuffer());
+    let pkg;
+    if (meta.b64) {                                 /* EDDA OS: the one-file installer carries its package */
+      pkg = Uint8Array.from(atob(meta.b64), (c) => c.charCodeAt(0));
+    } else {
+      const r = await fetch(meta.pkg);
+      if (!r.ok) throw new Error(`${meta.pkg}: HTTP ${r.status}`);
+      pkg = new Uint8Array(await r.arrayBuffer());
+    }
     if (productOf(pkg) !== meta.product) { sayK("badpkg"); return; }
     image = logicalImage(pkg);
-    say(`Felucca ${meta.version}`);
+    say(`${meta.name || "Felucca"} ${meta.version}`);
     $("go").disabled = false;
   } catch (e) { sayK("loadfail", e.message); }
 })();

@@ -11,6 +11,9 @@
   src/                        not touched
 
   web/make_site.py build/felucca-X.Y.fwsc X.Y OUT_DIR
+  web/make_site.py --onefile build/felucca-X.Y.fwsc X.Y OUT.html [NAME]
+                              EDDA OS: the installer as one file with the package inside it (base64): opened
+                              from the disk in Chrome or Edge it installs with no site and no server
 
 The package must be one made by tools/fm1pkg_make.py (Felucca's own loader, no vendor files).
 Its identity (FM-1_9xx) is read from the package; the device must report it after
@@ -36,9 +39,8 @@ def product_of(raw):
     return "".join(chr((m - i - 1) & 0xFF) for i in range(BLOCKS) if (m := raw[i * BLK + KEEP]) != 0x7D)
 
 
-def main(pkg, version, out):
-    pkg, out = Path(pkg), Path(out)
-    raw = pkg.read_bytes()
+def installer_html(raw, pkg, version, meta_extra):
+    """index_pkg.html with its libraries and metadata inlined (meta_extra: the package's path, or the package)"""
     product = product_of(raw)
     if not re.fullmatch(r"FM-1_9\d\d", product):
         raise SystemExit(f"{pkg}: identity {product!r} is not a Felucca package (FM-1_9xx)")
@@ -49,12 +51,28 @@ def main(pkg, version, out):
     lib = strip_module((HERE / "fm1pkg.js").read_text(encoding="utf-8")) + "\n" + \
         strip_module((HERE / "fm1ota.js").read_text(encoding="utf-8")) + "\n" + \
         strip_module((HERE / "fm1backup.js").read_text(encoding="utf-8"))
-    name = f"felucca-{re.sub(r'[^A-Za-z0-9.-]', '-', version)}.fwsc"
-    meta = json.dumps({"version": version, "product": product, "pkg": "../../firmware/" + name})
+    meta = json.dumps({"version": version, "product": product, **meta_extra})
     for mark in ("/*LIB*/", "/*META*/"):
         if html.count(mark) != 1:
             raise SystemExit(f"index_pkg.html must contain {mark} once; update make_site.py")
-    html = html.replace("/*LIB*/", lib).replace("/*META*/", meta)
+    return product, html.replace("/*LIB*/", lib).replace("/*META*/", meta)
+
+
+def onefile(pkg, version, out, title="EDDA OS"):
+    """EDDA OS: the installer page as one file, the package inside it: no site, no server, no fetch (a page
+    opened from the disk may not fetch); Chrome and Edge allow Web MIDI to a file opened from the disk"""
+    import base64
+    raw = Path(pkg).read_bytes()
+    product, html = installer_html(raw, pkg, version, {"name": title, "b64": base64.b64encode(raw).decode()})
+    Path(out).write_text(html, encoding="utf-8")
+    print(f"one-file installer: {out} ({len(html)} B): {title} {version}, {product}, package {len(raw)} B")
+
+
+def main(pkg, version, out):
+    pkg, out = Path(pkg), Path(out)
+    raw = pkg.read_bytes()
+    name = f"felucca-{re.sub(r'[^A-Za-z0-9.-]', '-', version)}.fwsc"
+    product, html = installer_html(raw, pkg, version, {"pkg": "../../firmware/" + name})
     inst, ed, fw = out / "webapp" / "installer", out / "webapp" / "editor", out / "firmware"
     for d in (inst, ed, fw):
         d.mkdir(parents=True, exist_ok=True)
@@ -86,6 +104,9 @@ def main(pkg, version, out):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
+    if len(sys.argv) >= 5 and sys.argv[1] == "--onefile":
+        onefile(*sys.argv[2:6])
+    elif len(sys.argv) != 4:
         sys.exit(__doc__)
-    main(*sys.argv[1:4])
+    else:
+        main(*sys.argv[1:4])
