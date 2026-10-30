@@ -7,6 +7,9 @@
 /* registers: bsp/boards/fm1/fm1_audio.h */
 #define HALF_WORDS (HALF_FRAMES * 2u)
 #define DAC_TICKS 544u            /* TIMER4 ticks per I2S frame (24 MHz / 44,117.6 Hz) */
+/* (EDDA OS 1.7: fx.c's true tempo counts that rate: TEMPO_N / TEMPO_D frames a minute) */
+_Static_assert(!EDDA_TRUE_TEMPO || 24000000ull * 60u * TEMPO_D == (unsigned long long)TEMPO_N * DAC_TICKS,
+               "the true tempo: the I2S frame rate");
 #define CPU_AVG (4096u / HALF_FRAMES)   /* halves the load meter averages: ~93 ms whatever the half */
 #define OUT_SHIFT 7               /* Q15 -> 24-bit, -6 dBFS ceiling (M0f ran clean at -18 dBFS) */
 

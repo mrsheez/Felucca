@@ -279,34 +279,61 @@ static inline void master_out(int32_t *l, int32_t *r)
     *r = softclip(*r);
 }
 
+/* EDDA OS 1.7, the true tempo. The FM-1 plays 24 MHz / 544 (audio.c DAC_TICKS) = 750,000 / 17 = 44,117.647 frames a
+ * second, not FS's 44,100, so the internal clock counts a beat as TEMPO_N / (TEMPO_D BPM) = 45,000,000 / (17 BPM)
+ * frames: the tempo shown is the tempo played. (Felucca's FS * 60 / BPM ran 0.04 % fast: 112 played 112.045, a
+ * sixteenth off a record at 112 in under six minutes.) FS stays the DSP's rate (the pitch 0.7 cent sharp, inaudible).
+ * EDDA_TRUE_TEMPO=0: FS's beat (the host suites built so: their timings are Felucca's) */
+#ifndef EDDA_TRUE_TEMPO
+#define EDDA_TRUE_TEMPO 1
+#endif
+#if EDDA_TRUE_TEMPO
+#define TEMPO_N 45000000u                             /* (divisible by every grid's den: 1 2 3 4 6 8 12 24) */
+#define TEMPO_D 17u
+#else
+#define TEMPO_N ((uint32_t)FS * 60u)
+#define TEMPO_D 1u
+#endif
+/* EDDA OS 1.7, TEMPO BEND (a deck's pitch bend, the DJ's nudge: GLO + G#4 / A#4 held, ui_layer.c): the grid's tempo
+ * BPM -+ BPM / 25 (at least 1: about 4 %) while held, so every clock on it (the tracks, the ARP, the click, EDDA's bars,
+ * the SONG, +CLOCK, the SLICER, the FX layer) moves alike, from each one's next step; let go, the tempo as set and the
+ * set's phase moved (a beat at 120 BPM catches up 20 ms a second). The nominal lengths (gates, swing, the delay, the
+ * LFOs) keep the tempo as set. The internal clock only */
+static volatile int8_t tempo_bend;                     /* -1 slower, 0, +1 faster (the UI's; the audio side reads it) */
+static uint32_t grid_bpm(void)
+{
+    int32_t b = song.g[G_BPM] >= 40 ? song.g[G_BPM] : 120;   /* (BPM 0 for a moment, #282: no divide by 0) */
+    return (uint32_t)(b + tempo_bend * (b + 12) / 25);
+}
+
 /* length of one division (N_DIV order) in samples at the song tempo */
 static const uint8_t DIV_DEN[6] = {1, 2, 4, 8, 3, 6};    /* original IDs stay fixed; slow rates append */
 static uint32_t midi_beat_samples;                    /* zero until an external clock has a measured tempo */
 static uint32_t beat_samples(void)
 {
     uint32_t bpm = song.g[G_BPM] >= 40 ? (uint32_t)song.g[G_BPM] : 120u;   /* (BPM 0 for a moment, #282: no divide by 0) */
-    return song.g[G_CLOCK] && midi_beat_samples ? midi_beat_samples : (uint32_t)FS * 60u / bpm;
+    return song.g[G_CLOCK] && midi_beat_samples ? midi_beat_samples : TEMPO_N / (TEMPO_D * bpm);
 }
-/* EDDA OS, the exact grid. A beat is N / D samples: the internal clock FS * 60 / BPM kept as that fraction, an external
- * clock its measured beat (D 1). A step of m / den beats takes the floor or the ceiling of m N / (D den), the remainder
- * carried in *frac (Bresenham), so its steps add up to their beats exactly: every clock that counts steps (the tracks,
- * the click, the beat clock EDDA runs on, the SLICER, the FX layer's 1/16, the ARP) reaches beat k on the same sample,
- * floor(k N / D) from its start, at any tempo, for as long as it plays. (Before, each truncated its own length: at 120
- * BPM a 1/16 track ran 22048 samples a beat and an 8T track 22050, 54 ms apart after ten minutes.) div_samples stays
- * the nominal length: gates, swing amounts, the delay, units */
+/* EDDA OS, the exact grid. A beat is N / D samples: the internal clock TEMPO_N / (TEMPO_D BPM) kept as that fraction,
+ * an external clock its measured beat (D 1). A step of m / den beats takes the floor or the ceiling of m N / (D den), the
+ * remainder carried in *frac (Bresenham), so its steps add up to their beats exactly: every clock that counts steps (the
+ * tracks, the click, the beat clock EDDA runs on, the SLICER, the FX layer's 1/16, the ARP, +CLOCK) reaches beat k on
+ * the same sample, floor(k N / D) from its start, at any tempo, for as long as it plays. (Before, each truncated its own
+ * length: at 120 BPM a 1/16 track ran 22048 samples a beat and an 8T track 22050, 54 ms apart after ten minutes.) The
+ * internal clock's den divides TEMPO_N, so it goes into the numerator (the remainder then < TEMPO_D BPM: a uint16 at
+ * any tempo; the same lengths as m N / (D den)). div_samples stays the nominal length: gates, swing amounts, the delay */
 static const uint8_t GRID_M[10] = {1, 1, 1, 1, 1, 1, 2, 4, 8, 16}, GRID_DEN[10] = {1, 2, 4, 8, 3, 6, 1, 1, 1, 1};
 static uint32_t grid_step(uint32_t m, uint32_t den, uint16_t *frac)
 {
-    uint32_t n, d, y, num, len, f;
+    uint32_t y, num, len, f;
+    den = den ? den : 1u;
     if (song.g[G_CLOCK] && midi_beat_samples) {
-        n = midi_beat_samples;
-        d = 1u;
+        y = den;
+        num = midi_beat_samples * m;
     } else {
-        n = (uint32_t)FS * 60u;
-        d = (uint32_t)clamp(song.g[G_BPM], 1, 1000);
+        y = TEMPO_D * (uint32_t)clamp((int32_t)grid_bpm(), 1, 1000);
+        num = TEMPO_N / den * m;
     }
-    y = d * (den ? den : 1u);
-    num = n * m;
     len = num / y;
     f = *frac % y + num % y;                            /* (*frac < y once the tempo holds; a change: kept inside) */
     if (f >= y) {

@@ -19,12 +19,21 @@ def main():
             continue
         sec, size, name = m.group(2), int(m.group(3), 16), m.group(4)
         if size and not sec.startswith("*"):
-            syms.append((size, sec, name))
+            parts = sec.split(".")                   # (-ffunction-sections: .text.name -> .text)
+            syms.append((size, "." + parts[1] if len(parts) > 2 and not sec.startswith(".ram") else sec, name))
     tot = {}
     for size, sec, _ in syms:
         tot[sec] = tot.get(sec, 0) + size
     for sec, size in sorted(tot.items(), key=lambda kv: -kv[1]):
         print(f"{size:9d}  {sec}  (all symbols)")
+    print()
+    groups = {}
+    for size, sec, name in syms:                     # EDDA OS's parts by name (a rough split; the rest is Felucca's)
+        g = next((p for p in ("edda", "vz_", "arv", "ARV", "EDDA", "ED_", "ed_", "kit", "KIT", "smp", "SMP", "font", "AF_",
+                              "icon", "ICON", "fm6", "FM6", "uac", "usb", "con_", "ui_", "gfx", "lcd") if name.startswith(p)), "other")
+        groups[g] = groups.get(g, 0) + size
+    for g, size in sorted(groups.items(), key=lambda kv: -kv[1]):
+        print(f"{size:9d}  [{g}]")
     print()
     for size, sec, name in sorted(syms, reverse=True)[:n]:
         print(f"{size:9d}  {sec:10s}  {name}")

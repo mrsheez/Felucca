@@ -3969,7 +3969,8 @@ static int test_quick_layers(void)
     ok &= ((a ^ b2) >> white(0)) & 1u && ((a ^ b2) >> white(7)) & 1u && ((a ^ b2) >> white(5)) & 1u &&
           ((a ^ b2) >> white(14)) & 1u && ((a ^ b2) >> white(15)) & 1u &&   /* (EDDA OS: D4..G5 breathe: RUN STOP TAP ACT
                                                                            * FILL MUTATE KEY, F5 LEARN, G5 VIZ) */
-          !(((a | b2) >> black(4)) & 1u);                                  /* (the black keys past T4: none) */
+          !(((a | b2) >> black(4)) & 1u) &&                                /* (D#4: none) */
+          ((a ^ b2) >> black(6)) & 1u && ((a ^ b2) >> black(7)) & 1u;       /* (EDDA OS 1.7: G#4 A#4 TEMPO BEND) */
     key_up(black(1)); btn_up(B_GLO); frame();
     bad += check("GLO + black key 2: T2 MUTE latched (SET), silent, no MIDI; LEDs: sounding lit, muted dark", ok &&
                  trk[1].p[P_MUTE] == 1 && !ui.layer);

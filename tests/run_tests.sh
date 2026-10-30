@@ -210,7 +210,10 @@ OUT=build/host
 mkdir -p "$OUT"
 # the hardware layer: firmware/hal, then felucca-bsp (firmware/bsp: chip/, boards/fm1/), as tools/build.py
 HALI="-Ifirmware/hal -Ifirmware/bsp/chip -Ifirmware/bsp/boards/fm1 -Ifirmware/src"   # (src: uac_fir.h, which bsp/chip/usb.c includes)
-CC="${CC:-cc} -O1 -Wall -Wno-unused-function $HALI"
+# EDDA OS 1.7: the host suites keep FS's beat (fx.c EDDA_TRUE_TEMPO=0): their timings are Felucca's, bit for bit;
+# tests/edda_test.c builds the device's true tempo and checks it
+HOSTD="-DEDDA_TRUE_TEMPO=0"
+CC="${CC:-cc} -O1 -Wall -Wno-unused-function $HALI $HOSTD"
 fail=0
 run() { echo "== $1"; shift; "$@" || fail=1; }
 
@@ -432,7 +435,7 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "second core: 4 parts of every preset, mixes: bit for bit on one core and on two, every split" \
         "$OUT/dualcore_test"
     if [ -n "$TSAN" ]; then                     # TSAN=1: the same under ThreadSanitizer (~6 min): shared state
-        TSAN_CC="cc -O1 -g -w -Ibuild/gen -Ifirmware/src -fsanitize=thread -pthread"
+        TSAN_CC="cc -O1 -g -w $HOSTD -Ibuild/gen -Ifirmware/src -fsanitize=thread -pthread"
         $TSAN_CC -o "$OUT/dualcore_tsan" tests/dualcore_test.c -lm
         run "second core under ThreadSanitizer: 4 parts of every preset, mixes" \
             env TSAN_OPTIONS=halt_on_error=1 "$OUT/dualcore_tsan"
@@ -527,10 +530,10 @@ elif ! san_ok; then
 else
     mkdir -p "$OUT/asan"
     A="$OUT/asan"
-    SCC="${CC%% *} $SAN $HALI -Ibuild/gen -Ifirmware/src"
+    SCC="${CC%% *} $SAN $HALI $HOSTD -Ibuild/gen -Ifirmware/src"
     export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
     # This regression uses strict ASan/UBSan, without the broad DSP exclusions.
-    STRICT_CC="${CC%% *} -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -w $HALI -Ibuild/gen -Ifirmware/src"
+    STRICT_CC="${CC%% *} -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -w $HALI $HOSTD -Ibuild/gen -Ifirmware/src"
     $STRICT_CC -o "$A/signed_audio_scaling_test_strict" tests/signed_audio_scaling_test.c -lm
     run "Strict ASan/UBSan (no exclusions): signed_audio_scaling_test" "$A/signed_audio_scaling_test_strict"
     $STRICT_CC -o "$A/phys_signed_test_strict" tests/phys_signed_test.c -lm

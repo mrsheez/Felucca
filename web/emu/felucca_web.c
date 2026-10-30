@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 #define FELUCCA_WEB 1
+#define EDDA_TRUE_TEMPO 0                /* EDDA OS 1.7: the browser plays FS's rate, so FS's beat (fx.c) */
 #ifndef FELUCCA_CDC
 #define FELUCCA_CDC 1                    /* as src/felucca.c: MENU > USB SERIAL is there (nothing behind it) */
 #endif

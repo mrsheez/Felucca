@@ -103,6 +103,7 @@ static struct {
     uint32_t solo;                     /* GLO: the keys held that solo */
     uint32_t fill;                     /* GLO: the keys held that FILL (EDDA OS: A4; 1.5.5's E4) */
     uint32_t fill_ms;                  /* .. when it was pressed (a tap: EDDA's latch, layer_keys) */
+    uint32_t bend;                     /* GLO: the keys held that bend the tempo (EDDA OS: G#4 slower, A#4 faster) */
     uint32_t tap[4];                   /* GLO TAP: the last taps (fm1_ms) */
     uint8_t ntap;
     uint8_t quiet;                     /* #39: a layer closed after it opened: KNOB 1..4 do nothing until quiet_t + */
@@ -643,6 +644,12 @@ static void layer_key(uint32_t l, uint32_t k)
         if (key_black(k)) {
             if (p < NTRK)
                 trk[p].p[P_MUTE] = (int16_t)!trk[p].p[P_MUTE];
+            else if ((p == 6u || p == 7u) && song.g[G_CLOCK])
+                ui_message("BEND: CLK IS EXT");
+            else if (p == 6u || p == 7u) {              /* EDDA OS: G#4 / A#4 TEMPO BEND while held (fx.c tempo_bend) */
+                lys.bend |= 1u << k;
+                ui_message(p == 7u ? "BEND +" : "BEND -");
+            }
         } else if (p < NTRK) {
             lys.solo |= 1u << k;                        /* (layer_masks: perf_solo while held) */
         } else if (p == 4u) {
@@ -722,6 +729,18 @@ static void layer_keys(uint32_t keys)
                                                          * is read beside it: seq.c seq_cond_miss) */
         seq_fill = (uint8_t)(lys.fill != 0u);
         ui.force = 1;
+    }
+    lys.bend &= kb_layer;                               /* EDDA OS: the bend while its key is held (both: none) */
+    {
+        int32_t b = 0;
+        for (k = 0; lys.bend && k < 27u; k++)
+            if ((lys.bend >> k) & 1u)
+                b += key_place(k) == 7u ? 1 : -1;
+        b = song.g[G_CLOCK] ? 0 : b;
+        if (tempo_bend != b) {
+            tempo_bend = (int8_t)b;
+            ui.force = 1;
+        }
     }
     for (k = 0; k < 27u; k++)
         if ((lys.solo >> k) & 1u)
@@ -877,10 +896,12 @@ static uint32_t layer_leds(uint32_t *br)
             can = e < PF_N && ((ok >> e) & 1u);
             on = can && ((held >> e) & 1u);
         } else if (l == LAYER_GLO) {                    /* sounding lit; SOLO held lit, the others, C4, F4 breathe */
-            on = b ? p < NTRK && glo_sounding(p) : p < NTRK ? ((lys.solo >> k) & 1u)
+            on = b ? (p < NTRK ? glo_sounding(p) : (p == 6u || p == 7u) && ((lys.bend >> k) & 1u))
+               : p < NTRK ? ((lys.solo >> k) & 1u)
                : p == 5u ? edda.phase != ED_IDLE || edda.armed : p == 6u ? edda.stopped
                : p == 9u ? (seq_fill | edda.fill) != 0u : p == 14u ? ui.ml.on : p == 15u ? ui.viz : 0u;
-            can = !b && (p < NTRK || p == 4u || (p == 7u && !song.g[G_CLOCK]) || (p >= 5u && p <= 15u && p != 7u));
+            can = b ? (p == 6u || p == 7u) && !song.g[G_CLOCK]   /* (EDDA OS: G#4 / A#4 BEND, the own clock) */
+                : (p < NTRK || p == 4u || (p == 7u && !song.g[G_CLOCK]) || (p >= 5u && p <= 15u && p != 7u));
         } else if (l == LAYER_SCL) {                    /* the root lit, the scale's notes breathe */
             e = (k + 5u + 12u - root) % 12u;
             on = e == 0u;

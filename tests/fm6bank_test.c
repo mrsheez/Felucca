@@ -396,8 +396,8 @@ static int slot_test(void)
     const param_desc_t *d = &ENG_FM6.edit[7];
     uint32_t k;
     reset();
-    ok = param_turn(d, FM6_OWN, 1) == FM6_OWN && param_turn(d, FM6_OWN, -1) == 7 && param_turn(d, 7, 1) == FM6_OWN &&
-         param_turn(d, 7, 5) == FM6_OWN;
+    ok = param_turn(d, FM6_OWN, 1) == FM6_OWN && param_turn(d, FM6_OWN, -1) == FM6_OWN - 1 &&   /* (EDDA OS: E6 before OWN) */
+         param_turn(d, FM6_OWN - 1, 1) == FM6_OWN && param_turn(d, FM6_OWN - 1, 5) == FM6_OWN;
     slot_to(0, FM6_OWN + 3);
     ok &= trk[0].p[P_E7] == FM6_OWN && fm6_slot[0] == FM6_OWN;
     bad += check("no bank: the knob stops at OWN (B1..B32 skipped); a B value from elsewhere is refused (SLOT back)", ok);

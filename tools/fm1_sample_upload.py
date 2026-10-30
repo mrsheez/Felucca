@@ -50,7 +50,7 @@ def slot_info(r):
             out.append(f"USR{k + 1}: {'empty' if not nz else f'{nz} zones, {printable(r[i + 1:j])}, {r[j + 1]} KiB'}")
             i = j + 2
         cap = r[i:i + n] if len(r) >= i + n else [r[1]] * n
-        return [f"{s} (of {c} KiB)" for s, c in zip(out, cap)]
+        return [ln if c == r[1] else f"{ln} (a {c} KiB slot)" for ln, c in zip(out, cap)]
     except (IndexError, ValueError):
         raise ValueError("malformed SMP_INFO reply from the device") from None
 

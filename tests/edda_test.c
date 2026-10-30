@@ -11,6 +11,8 @@
  * Run by tests/run_tests.sh. */
 #include <stdio.h>
 #define UI_TEST_NO_MAIN 1
+#undef EDDA_TRUE_TEMPO                /* EDDA OS 1.7: the device's true tempo, whatever the suite's -D (fx.c) */
+#define EDDA_TRUE_TEMPO 1
 #include "ui_test.c"
 #include "old_pack.h"                 /* (FUN9 images: EDDA OS 1.1.5's projects) */
 
@@ -1012,14 +1014,14 @@ int main(int argc, char **argv)
             grid_track(&trk[0], 2, 16, 4, 36);             /* 1/16: a note every 4 steps */
             grid_track(&trk[1], 4, 12, 3, 60);             /* 8T: every 3 (a 12/8 timeline's beat) */
             grid_track(&trk[2], 1, 8, 2, 72);              /* 1/8: every 2 */
-            nb = (uint32_t)((uint64_t)beats * FS * 60u / (uint32_t)BPMS[bi] / CTL) + 2u;
+            nb = (uint32_t)((uint64_t)beats * TEMPO_N / (TEMPO_D * (uint32_t)BPMS[bi]) / CTL) + 2u;
             seq_start();
             grid_run(nb);
             seq_stop();
             if (grid_n[0] < beats || grid_n[1] < beats || grid_n[2] < beats || grid_n[3] < beats)
                 okd = 0;
             for (m = 0; m < beats && m < GRID_MAX && okd; m++) {
-                uint32_t want = (uint32_t)(((uint64_t)m * FS * 60u / (uint32_t)BPMS[bi] + CTL - 1u) / CTL);
+                uint32_t want = (uint32_t)(((uint64_t)m * TEMPO_N / (TEMPO_D * (uint32_t)BPMS[bi]) + CTL - 1u) / CTL);
                 if (grid_blk[0][m] != want || grid_blk[1][m] != want || grid_blk[2][m] != want || grid_blk[3][m] != want) {
                     printf("  %d BPM beat %u: 1/16 %u, 8T %u, 1/8 %u, EDDA %u, the exact beat %u\n", BPMS[bi], m, grid_blk[0][m],
                            grid_blk[1][m], grid_blk[2][m], grid_blk[3][m], want);
@@ -1050,11 +1052,91 @@ int main(int argc, char **argv)
                     }
                 top = nt;
             }
-            n0 = (uint32_t)(((uint64_t)c * FS * 60u / (128u * 4u) + CTL - 1u) / CTL);   /* 256 sixteenths */
+            n0 = (uint32_t)(((uint64_t)c * TEMPO_N / (TEMPO_D * 128u * 4u) + CTL - 1u) / CTL);   /* 256 sixteenths */
             ok = cnt > c && last - first >= n0 - 1u && last - first <= n0 + 1u;
             if (!ok) printf("  ARP: %u steps in %u blocks, the exact grid %u\n", c, last - first, n0);
         }
         ck("the ARP at 1/16, 128 BPM: 256 steps in the exact grid's time from its key (the remainder kept)", ok);
+    }
+    /* ------------------------------------------------------ the true tempo, TEMPO BEND (EDDA OS 1.7) */
+    {
+        uint16_t f = 0;
+        uint64_t s = 0;
+        uint32_t k, b, i, top = 0, nb = 0, at[24];
+        int ok;
+        reset(); mt_quiet();
+        song.g[G_BPM] = 112;
+        for (k = 0; k < 112u; k++)
+            s += grid_step(1, 1, &f);
+        ok = TEMPO_N == 45000000u && TEMPO_D == 17u && s == 2647058u && beat_samples() == 23634u &&
+             24000000ull * 60u * TEMPO_D == (unsigned long long)TEMPO_N * 544u;   /* (audio.c DAC_TICKS) */
+        song.g[G_BPM] = 128;
+        for (k = 0, f = 0, s = 0; k < 512u; k++)
+            s += grid_div(2, &f);
+        ok &= s == 2647058u;
+        ck("the true tempo: a beat is 45,000,000 / (17 BPM) frames (24 MHz / 544 a second): 112 beats at 112 BPM, 512 "
+           "sixteenths at 128 are a minute of the output (Felucca's FS beat: 24 ms short)", ok);
+
+        reset(); mt_quiet();
+        song.g[G_BPM] = 120;
+        ok = grid_bpm() == 120u && !tempo_bend;
+        btn_down(B_GLO); frames(100);
+        key_down(black(7)); frames(50);
+        ok &= tempo_bend == 1 && grid_bpm() == 125u && str_eq(ui.msg, "BEND +") && beat_samples() == 22058u;
+        {
+            uint32_t a = leds_at(0), b2 = leds_at(250);
+            ok &= ((a & b2) >> black(7)) & 1u && ((a ^ b2) >> black(6)) & 1u;   /* (held lit; G#4 breathes) */
+        }
+        key_up(black(7)); frames(50);
+        ok &= !tempo_bend && grid_bpm() == 120u;
+        key_down(black(6)); frames(50);
+        ok &= tempo_bend == -1 && grid_bpm() == 115u && str_eq(ui.msg, "BEND -");
+        key_down(black(7)); frames(50);
+        ok &= !tempo_bend;                                  /* (both: none) */
+        key_up(black(6)); frames(50);
+        ok &= tempo_bend == 1;
+        btn_up(B_GLO); frames(100);
+        ok &= tempo_bend == 1;                              /* (GLO let go, A#4 still held: still bending) */
+        key_up(black(7)); frames(50);
+        ok &= !tempo_bend && song.g[G_BPM] == 120;
+        song.g[G_CLOCK] = 1;
+        btn_down(B_GLO); frames(100);
+        key_down(black(7)); frames(50);
+        ok &= !tempo_bend && str_eq(ui.msg, "BEND: CLK IS EXT");
+        key_up(black(7)); frames(50); btn_up(B_GLO); frames(400);
+        song.g[G_CLOCK] = 0; frames(10);
+        ck("TEMPO BEND: GLO + A#4 held is BPM + (BPM + 12) / 25 (120: 125), G#4 the same down, both none, lit while held, "
+           "on past GLO; let go: the tempo as set; an external clock: none", ok);
+
+        reset(); mt_quiet();                                /* a second of BEND + at 120 BPM: the set ~40 ms ahead */
+        song.g[G_BPM] = 120;
+        grid_track(&trk[0], 2, 16, 4, 36);                  /* (a note every beat) */
+        for (i = 0; i < NVOICE; i++)
+            top = trk[0].v[i].age > top ? trk[0].v[i].age : top;
+        seq_start();
+        for (b = 0; nb < 24u && b < 30u * 44118u / CTL; b++) {
+            uint32_t nt = top;
+            tempo_bend = (int8_t)(b >= 2u * 44118u / CTL && b < 3u * 44118u / CTL);
+            events_block(CTL);
+            for (i = 0; i < NVOICE; i++)
+                if (trk[0].v[i].age > top) {
+                    if (!nb || at[nb - 1u] != b)
+                        at[nb++] = b;
+                    nt = trk[0].v[i].age > nt ? trk[0].v[i].age : nt;
+                }
+            top = nt;
+        }
+        tempo_bend = 0;
+        seq_stop();
+        {
+            uint32_t want = (uint32_t)((20ull * TEMPO_N / (TEMPO_D * 120u) + CTL - 1u) / CTL), shift = (want - at[20]) * CTL;
+            ok = nb == 24u && at[3] == (uint32_t)((3ull * TEMPO_N / (TEMPO_D * 120u) + CTL - 1u) / CTL) && shift >= 1700u &&
+                 shift <= 2000u && (at[21] - at[20]) * CTL >= 22058u - CTL && (at[21] - at[20]) * CTL <= 22059u + CTL;
+            if (!ok)
+                printf("  BEND: %u beats, beat 20 %u samples early (want 1700 .. 2000)\n", nb, shift);
+        }
+        ck("TEMPO BEND: a second of it at 120 BPM puts the set ~40 ms ahead (the steps that start meanwhile at 125), then "
+           "the beats 22,059 frames apart again", ok);
     }
     /* ------------------------------------------------------ dotted echoes */
     {   /* EDDA OS 1.1.5's dotted echoes are Felucca 1.5.1's now: 1/8D 1/16D 1/4D at 10..12 (THE ARRIVAL: DT_*) */
@@ -1234,7 +1316,7 @@ int main(int argc, char **argv)
         if (!ok) printf("  stopped: %u pulses\n", k);
         mo_reset();
         seq_start();
-        mo_run(10u * 60u * 44100u / CTL);                                                /* ten minutes */
+        mo_run((uint32_t)(10ull * TEMPO_N / TEMPO_D / CTL));                            /* ten minutes (of the output) */
         {
             uint32_t i, f = 0, j = 0, fa = mo_n, steps_ok = 1, nsteps = 0;
             for (i = 0; i < mo_n && fa == mo_n; i++)
@@ -1253,8 +1335,8 @@ int main(int argc, char **argv)
                 }
                 f++;
             }
-            {   /* the count: pulse j at floor(j N / 24 D) samples (N 2646000, D 128): those at or before the last block */
-                uint64_t x = (uint64_t)(mo_b - 1u) * CTL, want = ((x + 1u) * 24u * 128u + 2646000u - 1u) / 2646000u;
+            {   /* the count: pulse j at floor(j N / 24 D) samples (N TEMPO_N, D TEMPO_D 128): those at or before the last block */
+                uint64_t x = (uint64_t)(mo_b - 1u) * CTL, want = ((x + 1u) * 24u * TEMPO_D * 128u + TEMPO_N - 1u) / TEMPO_N;
                 ok &= f == (uint32_t)want;
                 if (f != (uint32_t)want) printf("  pulses %u, the grid %u\n", f, (uint32_t)want);
             }
