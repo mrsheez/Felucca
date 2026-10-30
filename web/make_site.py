@@ -13,7 +13,9 @@
   web/make_site.py build/felucca-X.Y.fwsc X.Y OUT_DIR
   web/make_site.py --onefile build/felucca-X.Y.fwsc X.Y OUT.html [NAME]
                               EDDA OS: the installer as one file with the package inside it (base64): opened
-                              from the disk in Chrome or Edge it installs with no site and no server
+                              from the disk in Chrome or Edge it installs with no site and no server. Its links
+                              that point into the site (the editor, the licences) point at the fork instead
+                              (EDDA_REPO, default mrsheez/Felucca: its source, its Pages site)
 
 The package must be one made by tools/fm1pkg_make.py (Felucca's own loader, no vendor files).
 Its identity (FM-1_9xx) is read from the package; the device must report it after
@@ -62,8 +64,23 @@ def onefile(pkg, version, out, title="EDDA OS"):
     """EDDA OS: the installer page as one file, the package inside it: no site, no server, no fetch (a page
     opened from the disk may not fetch); Chrome and Edge allow Web MIDI to a file opened from the disk"""
     import base64
+    import os
     raw = Path(pkg).read_bytes()
     product, html = installer_html(raw, pkg, version, {"name": title, "b64": base64.b64encode(raw).decode()})
+    repo = os.environ.get("EDDA_REPO", "mrsheez/Felucca")
+    user, name = repo.split("/")
+    src = f"https://github.com/{repo}"
+    for rel, url in (('href="../editor/"', f'href="https://{user.lower()}.github.io/{name}/webapp/editor/"'),
+                     ('href="../../firmware/LICENSES/Apache-2.0.txt"', f'href="{src}/blob/main/LICENSES/Apache-2.0.txt"'),
+                     ('href="../../firmware/LICENSES/"', f'href="{src}/tree/main/LICENSES"'),
+                     ('href="../../firmware/LICENSING.md"', f'href="{src}/blob/main/LICENSING.md"'),
+                     ('href="../../firmware/LICENSE"', f'href="{src}/blob/main/LICENSE"'),
+                     ('href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" style="color:inherit">'
+                      'github.com/hugelton/Felucca</a>',
+                      f'href="{src}" target="_blank" rel="noopener" style="color:inherit">github.com/{repo}</a> '
+                      '(Felucca: <a href="https://github.com/hugelton/Felucca" target="_blank" rel="noopener" '
+                      'style="color:inherit">github.com/hugelton/Felucca</a>)')):
+        html = html.replace(rel, url)                # (a file opened from the disk has no site around it)
     Path(out).write_text(html, encoding="utf-8")
     print(f"one-file installer: {out} ({len(html)} B): {title} {version}, {product}, package {len(raw)} B")
 
