@@ -85,6 +85,13 @@ jobs:
           cp "build/felucca-$EDDA_VERSION.fwsc" build/felucca.fwsc
           ls -la build/*.fwsc
 
+      - name: Size matrix (a build that did not fit; the options against the app slot, onto the ci-out branch)
+        if: failure() && steps.build.outcome == 'failure'
+        shell: bash
+        run: |
+          sh tools/size_matrix.sh "$EDDA_VERSION" | tee build-matrix.txt
+          python3 tools/build.py --release "$EDDA_VERSION" >/dev/null 2>&1 || true   # (the full build's object for the report)
+
       - name: Size report (the largest symbols, onto the ci-out branch)
         if: always()
         shell: bash
@@ -169,7 +176,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           rm -rf ci-out && mkdir -p ci-out
-          cp build-*.log build-size.txt build-syms.txt ci-out/ 2>/dev/null || true
+          cp build-*.log build-size.txt build-syms.txt build-matrix.txt ci-out/ 2>/dev/null || true
           cp build/felucca-*.fwsc build/tests.log ci-out/ 2>/dev/null || true
           { echo "run ${{ github.run_id }} ${{ github.sha }} $(date -u +%FT%TZ)"; echo "build: ${{ steps.build.outcome }}"
             echo "tests: ${{ steps.tests.outcome }}"; echo "sdk: ${{ steps.sdk.outputs.sdk }}"; ls -la ci-out; } > ci-out/RUN.txt
