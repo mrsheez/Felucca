@@ -5824,9 +5824,9 @@ static int test_viz(void)                             /* an EDDA_VIZ=0 build (th
     ok = ui.home && !ui.viz;
     btn_down(B_GLO); frames(100);
     key_down(white(15)); frame();
-    ok &= str_eq(ui.msg, "NO VIZ IN THIS BUILD") && !ui.viz;
+    ok &= str_eq(ui.msg, "VIZ NOT BUILT IN") && !ui.viz;
     key_up(white(15)); frame(); btn_up(B_GLO); frames(48);
-    return check("VIZ (EDDA_VIZ=0): GLO + G5 says NO VIZ IN THIS BUILD, nothing opens, HOME stays", ok);
+    return check("VIZ (EDDA_VIZ=0): GLO + G5 says VIZ NOT BUILT IN, nothing opens, HOME stays", ok);
 }
 #else
 static int test_viz(void)

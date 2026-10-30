@@ -1586,7 +1586,7 @@ static void ui_draw(void)
 #include "ui_viz.c"              /* EDDA OS: the twelve full-screen visualisers over HOME (vz_page, vz_glo_key) */
 #else
 static int vz_page(void) { ui.viz = 0; return 0; }
-static void vz_glo_key(void) { ui_message("NO VIZ IN THIS BUILD"); }
+static void vz_glo_key(void) { ui_message("VIZ NOT BUILT IN"); }
 static void vz_leave(void) { ui.viz = 0; }
 #endif
 static void ui_draw_page(uint32_t counting)

@@ -299,6 +299,9 @@ static void arp_follow_test(void)
 {
     track_t *t = &trk[0];
     uint32_t i;
+    edda_grid_off = 1;                             /* (EDDA OS: Felucca's per-step rounding here, so each arp_tick(period) is
+                                                    * one ARP step as this test counts them; its notes are what it checks:
+                                                    * the exact grid's ARP timing is tests/edda_test.c's) */
 
     /* the report: QNT SNAP, HOLD, a chord latched, then TRN */
     arp_reset(t);
@@ -421,6 +424,7 @@ static void arp_follow_test(void)
     t->p[P_TRANS] = 7;
     assert(arp_is(t, t->held[0], t->held[1]));
     puts("scales: the arp's latched / held keys follow TRN, ROOT, SCALE and QNT (#191); octave, MIDI IN, kits as before");
+    edda_grid_off = 0;
 }
 
 /* QNT SEQ+T (#218): TRN moves the sequence too, before it snaps; with OFF / SNAP / WHITE / SEQ the sequence plays as
@@ -450,7 +454,8 @@ static void seq_trn_test(void)
     t->p[P_SCALE] = 1;                             /* C major */
     t->p[P_ROOT] = 0;
     t->p[P_TRANS] = 2;
-    period = div_samples((uint32_t)t->p[P_SDIV]);
+    period = div_samples((uint32_t)t->p[P_SDIV]);   /* (EDDA OS: each advance one step as the sequencer counts it,
+                                                     * seq_len: the exact grid's length) */
 
     for (q = QN_OFF; q <= QN_SEQ; q++) {           /* the four older values: TRN leaves the sequence alone */
         t->p[P_QUANT] = (int16_t)q;
@@ -468,14 +473,14 @@ static void seq_trn_test(void)
     assert(t->seq_n == 2 && t->seq_notes[0] == 62 && t->seq_notes[1] == 65 && gated_note(t, 62) &&
            gated_note(t, 65) && gated(t) == 2);
     t->p[P_TRANS] = -1;                            /* while they ring: they end as they sounded */
-    events_block(period);                          /* step 2: F4-1 = E4 */
+    events_block(seq_len(t, period));                          /* step 2: F4-1 = E4 */
     assert(t->seq_idx == 1 && t->seq_n == 1 && t->seq_notes[0] == 64 && gated_note(t, 64) && gated(t) == 1);
     t->p[P_TRANS] = 7;                             /* during the TIE: E4 held */
-    events_block(period);
+    events_block(seq_len(t, period));
     assert(t->seq_idx == 2 && gated_note(t, 64) && gated(t) == 1);
-    events_block(period);                          /* REST */
+    events_block(seq_len(t, period));                          /* REST */
     assert(t->seq_idx == 3 && gated(t) == 0);
-    events_block(period);                          /* round again at +7: G4 B4 */
+    events_block(seq_len(t, period));                          /* round again at +7: G4 B4 */
     assert(t->seq_idx == 0 && t->seq_notes[0] == 67 && t->seq_notes[1] == 71 && gated(t) == 2);
     for (i = 0; i < 4000u; i++) {                  /* TRN on every block: nothing left held */
         t->p[P_TRANS] = (int16_t)((int32_t)(i * 7u % 49u) - 24);

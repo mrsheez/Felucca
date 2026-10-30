@@ -1,33 +1,77 @@
 # EDDA OS — the Mr. Sheez performance firmware for the M-VAVE FM-1
 
-EDDA OS is a fork of **Felucca 1.1.5.1** (Hügelton Instruments, GPL-3.0) built for the Mr. Sheez live set:
-the thirteen songs of *EDDA: The Arrival* ready to play (section 2.21), the key of the record on the decks,
-the EDDA rhythm language, the transition by subtraction on one key, a hard stop that re-enters on the one,
-16-WAV drum kits, the sequencer out over MIDI with clock, and twelve full-screen visualisers. Everything Felucca does is still there and behaves as before unless a
-section below says otherwise.
+EDDA OS is a fork of **Felucca 1.7.0** (Hügelton Instruments, GPL-3.0) built for the Mr. Sheez live set:
+the thirteen songs of *EDDA: The Arrival* ready to play (section 2.21), a tempo that is the tempo the decks show,
+a pitch bend to pull the set into phase by hand, the key of the record on the decks, the EDDA rhythm language,
+the transition by subtraction on one key, a hard stop that re-enters on the one, 16-WAV drum kits and the
+sequencer out over MIDI with clock. Everything Felucca 1.7.0 does is still there and behaves as Felucca's
+documentation says unless a section below says otherwise.
 
 | | |
 | --- | --- |
-| Version | 1.1.5-EDDA (the splash says `v1.1.5-edda`) |
-| Base | Felucca 1.1.5.1 (hugelton/Felucca `main`, merged); EDDA OS's commits sit on top (`git log main..edda`) |
+| Version | 1.7.0-EDDA (the splash says `v1.7.0-edda`; the package identity FM-1_917) |
+| Base | Felucca 1.7.0 (hugelton/Felucca `main` at 65b21d3, merged), felucca-bsp (MPL-2.0) and Felucca-Engines (MIT) as submodules; EDDA OS's commits on top |
 | Licence | GPL-3.0-only, as Felucca |
-| Verified | 3,546 host checks pass (Felucca's suites and `tests/edda_test.c`, under ASan/UBSan), THE ARRIVAL's thirteen songs played through the firmware's audio on every run; the package builds with JieLi's compiler on GitHub and its suites pass there |
+| Verified | {{CHECKS}} |
+| Built | with JieLi's compiler on GitHub: {{IMAGE}} |
 | Not yet | flashed onto an FM-1 (section 7) |
-| Install | from a Windows laptop with Chrome or Edge; no Mac or Linux needed (section 1) |
+| Install | one HTML file, Chrome or Edge, the FM-1 on USB (section 1.1) |
+
+## 0. What 1.7.0-EDDA changes
+
+**Felucca 1.7.0 underneath** (EDDA OS 1.1.5 had Felucca 1.1.5.1): step conditions (1:2 … 4:4, FILL, !FILL) and
+SEQ > DETAIL (each step's CHANCE, RATCH, NUDGE, VEL on the knobs); NUDGE (a step up to half a step early or 7/16 late,
+played with the track's QUANTIZE off); an INSERT effect per track (SOFT HARD FOLD FUZZ CRUSH PHASR FLANG CHOR, with
+MIX); MIDI LEARN; LFO 2 synced to the bars; 128 motion records; SEQ TOOLS' EUCLID, DOUBLE and HALF; a MIDI IN channel
+per track; MIDI Program Change; the HALL reverb, PHASE FOLD, humanize (VEL / TIME), the DEEP / TIGHT / PERC kits; FM6's
+32-voice bank from the editor; the second core (MENU > SYSTEM > 2ND CORE, beta, off unless you turn it on); the
+community fixes to the TRS clock, external-clock drift and TRS input. Projects are Felucca's FUN10.
+
+**New in EDDA OS:**
+- **The true tempo** (2.22): the FM-1 plays 44,117.6 samples a second, not the 44,100 every Felucca counts, so its
+  tempo ran 0.04 % fast. EDDA OS counts the real rate: 116 BPM on the FM-1 is 116.00 on the deck.
+- **TEMPO BEND** (2.23): GLO + **G#4** / **A#4** held slow down / speed up the set by about 4 %, a deck's pitch bend.
+- **USR4 moved** to 72 KiB at 0xEA000, clear of the FM-1's own radio calibration and Bluetooth address (2.9).
+
+**Changed:** FILL is Felucca's FILL condition, still on GLO + **A4** (a tap latches it to the end of the next bar, a
+hold is FILL while held); micro timing is Felucca's NUDGE (2.13); MIDI LEARN is on GLO + **F5** (Felucca's D4 is
+EDDA's RUN); the track filter is FX > **DJ FILTER**; the dotted echoes are Felucca's own; DRUM's KIT runs STD … 77,
+DEEP, TIGHT, PERC, then USR1–USR4 and EDDA.
+
+**Not in the device's build** (the app slot is full: Felucca 1.7.0 alone fills 513 KB of its 581,564 bytes): the
+twelve visualisers, the USB serial console (a developer's tool) and USB audio's 48 kHz option (the FM-1 still records
+to a computer over USB, at 44.1 kHz). The browser emulator has the visualisers; `EDDA_VIZ=1`, `FELUCCA_CDC=1` and
+`FELUCCA_UAC_48K=1` build each of them (section 6), not all into the slot together.
+
+**From 1.1.5:** EDDA OS 1.1.5's projects open (their nudges, with the track's QUANTIZE off so they play; their fills
+as FILL steps; kits and dotted times renumbered; THE ARRIVAL's song). A sample kept in 1.1.5's USR4 is not: that flash
+is Felucca's FM6 voice bank now. Upload it to USR4 again.
 
 ---
 
-## 1. Install it without a Mac or a Linux computer
-
-The FM-1's firmware is compiled with JieLi's toolchain, which runs only on Linux x86-64. You do not need
-that computer: GitHub runs the build on its own Linux machines and hosts the installer page. What you
-need is the Windows laptop, Chrome or Edge, the FM-1's USB cable, and a free GitHub account.
+## 1. Install it
 
 **Not from the iPhone.** Installing and the editor both talk to the FM-1 over Web MIDI with SysEx. No
-iPhone browser has Web MIDI (Safari never shipped it, and Chrome on iOS uses Safari's engine), so the
-iPhone can read this file and watch the build, but the install and the kit uploads happen on the laptop.
+iPhone browser has Web MIDI (Safari never shipped it, and Chrome on iOS uses Safari's engine), so the install
+and the kit uploads happen on the laptop (Windows, macOS or Linux).
 
-### 1.1 Route A — GitHub builds it and hosts the installer (recommended)
+### 1.1 The one-file installer (recommended)
+
+`EDDA-OS-Installer-1.7.0.html` is the whole installer with the package inside it: no site, no download, no
+account.
+
+1. Connect the FM-1 to the laptop with a USB **data** cable and switch it on. Close every app that uses MIDI
+   (DAWs, rekordbox's MIDI settings, an editor tab).
+2. Open the file in **Chrome or Edge** (double-click it; if another browser opens, right-click → Open with).
+3. Allow MIDI (with SysEx) when the browser asks, and press **Install**. The page takes the FM-1 into its
+   update mode, writes EDDA OS and restarts it: about two minutes, the bar to 100 % and the page says **Done**.
+   Do not unplug meanwhile. If anything stops it, press Install again: the update mode resumes where it was.
+4. The FM-1 starts EDDA OS (`v1.7.0-edda` on the splash). SAVE → turn to **ARRIVAL** for the songs.
+
+The installer writes only the FM-1's app area. It never writes the flash that holds your projects, samples and
+presets, or the unit's own radio calibration and Bluetooth address.
+
+### 1.2 Route A — GitHub builds it and hosts the installer
 
 Everything happens in the browser. Use the files from this delivery: `edda-os.bundle` (the git history),
 or `edda-os-fork.zip` if you prefer GitHub Desktop.
@@ -49,18 +93,16 @@ or `edda-os-fork.zip` if you prefer GitHub Desktop.
    published from the default branch). In **Settings → Pages → Build and deployment → Source**, choose
    **GitHub Actions**.
 6. **Actions → EDDA OS → Run workflow** (branch `edda`). The run fetches the toolchain, builds the
-   package, runs the test suites against it, and publishes the site: about 10 to 15 minutes. Its summary
+   package, runs the test suites against it, and publishes the site: about 25 minutes. Its summary
    page lists the package, its size against the FM-1's app slot, its SHA-256, and any check that did not pass.
 7. On the laptop, in Chrome or Edge, open `https://<your-user>.github.io/Felucca/webapp/installer/`, connect
    the FM-1 by USB, allow MIDI when asked, and press **Install**. The editor is at `…/webapp/editor/`.
 
 Every later push to `edda` rebuilds and republishes. The package is also kept with each run under
-**Artifacts → edda-os-fwsc** for the command-line installer (1.3).
+**Artifacts → edda-os-fwsc** for the command-line installer (1.4), and `python3 web/make_site.py --onefile
+felucca-1.7.0-EDDA.fwsc 1.7.0-EDDA EDDA-OS-Installer-1.7.0.html` makes the one-file installer from it.
 
-If the whole image does not fit the FM-1's app slot (the build checks this), the run ships the same
-build without the visualisers (`EDDA_VIZ=0`) and says so in its summary (section 7).
-
-### 1.2 Route B — build on the Windows laptop (WSL2)
+### 1.3 Route B — build on the Windows laptop (WSL2)
 
 WSL2 runs Ubuntu inside Windows 10/11, and JieLi's toolchain runs there natively.
 
@@ -69,9 +111,9 @@ WSL2 runs Ubuntu inside Windows 10/11, and JieLi's toolchain runs there natively
 
    ```
    sudo apt update && sudo apt install -y git python3-pil python3-fonttools python3-numpy curl xz-utils
-   git clone -b edda https://github.com/mrsheez/Felucca edda-os   # (or from edda-os.bundle / edda-os-fork.zip)
-   cd edda-os && sh edda-build.sh                     # -> build/felucca.fwsc
-   python3 web/make_site.py build/felucca.fwsc 1.1.5-EDDA /tmp/edda-site
+   git clone --recurse-submodules -b edda https://github.com/mrsheez/Felucca edda-os
+   cd edda-os && sh edda-build.sh --release 1.7.0-EDDA   # -> build/felucca-1.7.0-EDDA.fwsc
+   python3 web/make_site.py build/felucca-1.7.0-EDDA.fwsc 1.7.0-EDDA /tmp/edda-site
    cd /tmp/edda-site && python3 -m http.server 8000
    ```
 
@@ -80,46 +122,46 @@ WSL2 runs Ubuntu inside Windows 10/11, and JieLi's toolchain runs there natively
 3. In Windows Chrome or Edge open `http://localhost:8000/webapp/installer/` (Web MIDI is allowed on
    localhost) and install as in Route A.
 
-### 1.3 The command-line installer on Windows
+### 1.4 The command-line installer on Windows
 
 For a package from Route A's artifact or Route B: install Python 3 from python.org, then in PowerShell:
 
 ```
 py -m pip install mido python-rtmidi
-py tools\fm1_install.py felucca-1.1.5-EDDA.fwsc
+py tools\fm1_install.py felucca-1.7.0-EDDA.fwsc
 ```
 
 Close every other app that uses MIDI first (DAWs, the editor tab).
 
-### 1.4 Going back
+### 1.5 Going back
 
 - **To Felucca:** install it from `hugelton.github.io/Felucca`. EDDA OS keeps Felucca's update loader (it
-  answers as `FM-1_900`), its release identity (`FM-1_911` for 1.1.x) and its flash layout, so either installs
-  over the other. Projects, presets and user
-  samples stay (EDDA's 4th sample slot sits in flash Felucca leaves unused); Felucca opens EDDA projects
-  without their nudges and fill flags, and settings Felucca does not know are kept as they are.
+  answers as `FM-1_900`), its release identity (`FM-1_917` for 1.7.x) and its flash layout, so either installs
+  over the other. Projects, presets and user samples stay (EDDA's 4th sample slot sits in flash Felucca leaves
+  unused); Felucca 1.7 opens EDDA projects (FUN10 is its own format) and reads a value it does not have as its last
+  one: KIT USR1–4 and EDDA as PERC, SAMPLE's USR4, EKIT and LOG as USR3. It keeps the settings it does not know.
 - **To M-VAVE's firmware:** the installer's **Return to official V15** (with M-VAVE's `FM-1.fwsc`).
 - **If the FM-1 does not start:** see Felucca's README, *If the FM-1 does not start* (another cable, close
   MIDI apps, run the installer again; the recovery tool there needs a Mac and a Seeed XIAO RP2040).
 
 Installing firmware is at your own risk.
 
-### 1.5 Your fork (github.com/mrsheez/Felucca)
+### 1.6 Your fork (github.com/mrsheez/Felucca)
 
-Steps 1–4 of Route A are done: the fork exists, its workflows run, `edda` is pushed and `main` carries the
-same commits (a fast-forward, so Pages publishes from the default branch without changing it). Every push
-builds the package with JieLi's compiler, runs the suites and pushes the run's logs and package to the
-`ci-out` branch. One setting is left, because a workflow's own token may not turn Pages on: **Settings →
-Pages → Build and deployment → Source: GitHub Actions**. Then **Actions → EDDA OS → Run workflow** (branch
-`main`), and the installer is at `https://mrsheez.github.io/Felucca/webapp/installer/`.
+Steps 1–4 of Route A are done: the fork exists, its workflows run, `edda` and `main` carry EDDA OS (1.7.0
+from branch `edda-1.7`). Every push builds the package with JieLi's compiler, runs the suites and pushes the
+run's logs and package to the `ci-out` branch. One setting is left, because a workflow's own token may not
+turn Pages on: **Settings → Pages → Build and deployment → Source: GitHub Actions**. Then **Actions → EDDA OS →
+Run workflow** (branch `main`), and the installer is at `https://mrsheez.github.io/Felucca/webapp/installer/`.
 
 Without Pages, the latest run's package is at
-`https://github.com/mrsheez/Felucca/raw/ci-out/felucca-1.1.5-EDDA.fwsc` (its SHA-256 in the run's summary). Install
-it with the command-line installer (1.3), or serve the installer page from the laptop: with Python 3 on Windows,
-download the repository (**Code → Download ZIP**, branch `edda`), put the package in its folder, and run there
+`https://github.com/mrsheez/Felucca/raw/ci-out/felucca-1.7.0-EDDA.fwsc` (its SHA-256 in the run's summary). Install
+it with the one-file installer, the command-line installer (1.4), or serve the installer page from the laptop: with
+Python 3 on Windows, download the repository (**Code → Download ZIP**, branch `edda`), put the package in its folder,
+and run there
 
 ```
-py web\make_site.py felucca-1.1.5-EDDA.fwsc 1.1.5-EDDA site
+py web\make_site.py felucca-1.7.0-EDDA.fwsc 1.7.0-EDDA site
 cd site
 py -m http.server 8000
 ```
@@ -188,8 +230,10 @@ Every 8th bar the kick rests (the hole); bars 17–24 of every 32 move the SNARE
 backbeat changes voice, not place). Live remaps: the steps are not touched, OFF is instant.
 
 ### 2.6 FILL (GLO + A4)
-Steps flagged fill-only rest until FILL is on; **A4** plays them through the end of the next bar (again:
-off early). The bank's drum grids carry fills on their last steps. Cue CC 25.
+EDDA's fills are Felucca's FILL condition (SEQ > DETAIL, KNOB 1 past 100 %: 1:2 … 4:4, FILL, !FILL): a FILL step rests
+until FILL is on, a !FILL step plays only while it is off. **A4 tapped** latches FILL through the end of the next bar
+(tapped again: off early); **A4 held** past a third of a second is FILL while held, as Felucca's key. The bank's drum
+grids carry fills on their last steps. Cue CC 25.
 
 ### 2.7 MUTATE (GLO + B4)
 On the next one, the drums track's BELL lane becomes a Euclidean rhythm E(3, 5 or 7, LEN) with a random
@@ -209,7 +253,8 @@ grid, the patterns and the keys then play your WAVs.
 | Sound | LO TOM | HI TOM | MID TOM | CONGA | CRASH | HI CONGA | RIDE | RIDE BL |
 | GM note | 41 | 43 | 47 | 48 | 49 | 50 | 51 | 53 |
 
-Pads 1–8 are the grid's lanes. A note with no pad of its own plays its lane's pad, pitched to it, so every
+DRUM's KIT knob runs STD, 66, 10, 77, 80 (Felucca's), DEEP, TIGHT, PERC (Felucca 1.6's), then **USR1–USR4** and
+**EDDA** (THE ARRIVAL's kit, 2.21). Pads 1–8 are the grid's lanes. A note with no pad of its own plays its lane's pad, pitched to it, so every
 DRUM pattern plays on every kit, including one with 8 pads. TUNE ±12 semitones; TONE below 64 darkens;
 DECY below 64 shortens (gone after 25 ms at 0, 0.8 s at 32, the whole sample at 64 and up); SNAP above 64
 skips into the attack (tighter), below 64 fades it in (softer), up to 50 ms; ACC, DRV and the lane LEVELs
@@ -219,12 +264,15 @@ as the synth kit. A pad plays one voice at a time; the closed hat chokes the ope
 on each pad (or click it) → name it → **Upload**. **From a terminal:**
 `py tools\fm1_sample_upload.py kit 2 MYKIT kick.wav snare.wav ... ride_bell.wav` (`-` leaves a pad empty;
 `kitbuild` writes the files without a device). Any WAV works: 8–32 bit, float, any rate, any channels. Each
-pad is trimmed of trailing silence and holds up to 4 s; a slot holds 80 KiB, and when the kit does not fit
-the longest pads drop to 11025 Hz until it does.
+pad is trimmed of trailing silence and holds up to 4 s; a slot holds 80 KiB (USR4 72 KiB), and when the kit does
+not fit the longest pads drop to 11025 Hz until it does.
 
 ### 2.9 A fourth sample slot (USR4)
-SAMPLE SET 8, GRAIN SRC 8, SLICE SRC USR4, KIT USR4, the editor's 4th slot, and the backup. It sits in flash
-Felucca does not use (0xE7000–0xFB000), so going back to Felucca leaves the other three slots as they are.
+SAMPLE SET 8, GRAIN SRC 8, SLICE SRC USR4, KIT USR4, the editor's 4th slot, and the backup. 72 KiB (about 6.6 s at
+22,050 Hz) at 0xEA000–0xFC000: flash Felucca does not use, above Felucca's FM6 voice bank (0xE7000) and the two
+sectors that hold the FM-1's own radio calibration (0xE8000) and Bluetooth address (0xE9000), which EDDA OS never
+writes (1.1.5's USR4 started at 0xE7000 and could). The editor and `tools/fm1_sample_upload.py` read each slot's
+size from the FM-1 and size a kit for it.
 
 ### 2.10 CHORD+ and VOIC LEAD (SCL > CHORD)
 With CHRD on and QNT WHITE, the selected track's black keys change the chord while held:
@@ -237,24 +285,27 @@ They combine (MIN + 7TH = m7; SUS4 + 7TH = 7sus4) and the CHORD page names the r
 notes 18 ms apart, low to high. **VOIC LEAD** picks, from each chord's inversions, the one that moves least
 from the last chord: a keyboard player's voice leading.
 
-### 2.11 The track filter (FX > FILTER)
+### 2.11 The track filter (FX > DJ FILTER)
 One knob per track, as a DJ mixer's filter: left of centre a low-pass from 16.5 kHz down to 100 Hz, right a
-high-pass from 22 Hz up to 7.8 kHz, 12 dB/octave, off at 0 (bit for bit). After the SLICER, before the level
-and the sends. Automatable and lockable like any knob.
+high-pass from 22 Hz up to 7.8 kHz, 12 dB/octave, off at 0 (bit for bit). The last in the track's chain: after the
+SLICER and Felucca's INSERT, before the level and the sends. Its page follows INSERT 2. Automatable and lockable like
+any knob.
 
 ### 2.12 Dotted echoes (FX > DLY > TIME)
-**1/4D, 1/8D, 1/16D** after the straight and triplet times.
+**1/8D, 1/16D, 1/4D** after the straight and triplet times: Felucca's own since 1.5.1 (EDDA's came first; a 1.1.5
+project's dotted time is renumbered on load).
 
-### 2.13 Micro timing (SEQ > CHANCE > KNOB 4 NUDGE)
-Each step can sit up to three sixteenths of its own length early or late (−3…+3); the grid itself never
-moves, so nudges never accumulate. Nothing plays before PLAY: an early first step starts at once, as far into
-the step as it was early. Nudges hold through song chains and are saved in projects.
+### 2.13 Micro timing (SEQ > DETAIL > KNOB 3 NUDGE)
+Felucca's NUDGE: a step from half a step early (−8) to 7/16 late (+7), in sixteenths of its own length; live
+recording keeps each note's time. Nudges play when the track's **QUANTIZE** is OFF (SEQ > AUTOMATION, its QUANTIZE
+row, KNOB 4); ON (the default) plays every step on its start. The grid itself never moves, so nudges never
+accumulate. 1.1.5's −3…+3 nudges load as the same sixteenths, their track's QUANTIZE off.
 
 ### 2.14 The exact grid
-Felucca rounded each step's length on its own, so a 1/16 track and an 8T track drifted apart (54 ms after
-ten minutes at 120 BPM) and the ARP lost its remainder (93 ms late after 16 bars at 128 BPM). EDDA OS
-counts every step, the click, the beat clock, the SLICER, the FX layer and the ARP on one fractional grid:
-all of them meet on every beat, for as long as the set runs. Checked for ten minutes at 128 BPM.
+Felucca rounds each step's length on its own, so a 1/16 track and an 8T track drift apart (54 ms after
+ten minutes at 120 BPM) and the ARP loses its remainder (93 ms late after 16 bars at 128 BPM). EDDA OS
+counts every step, the click, the beat clock, the SLICER, the FX layer, MIDI clock out and the ARP on one fractional
+grid: all of them meet on every beat, for as long as the set runs. Checked for ten minutes at 128 BPM.
 
 ### 2.15 SEQ OUT — the sequencer on MIDI OUT (MENU > EDDA > SEQ OUT)
 - **OFF** (default): as Felucca, only the keys go out.
@@ -276,10 +327,12 @@ all of them meet on every beat, for as long as the set runs. Checked for ten min
 | CC 26 / CC 27 | the SONG section playing, 1–4 (A–D) / THE ARRIVAL's song loaded, 1–13 (0: none) |
 | notes C2 F2 D2 E2 G2 A2 | bar, run start, drop or re-entry, hard stop, bell re-rolled, a section starts |
 
-### 2.17 VIZ — twelve full-screen visualisers (tap HOME on HOME)
-Tap **HOME** on the HOME screen; tap again for the next one, its name at the foot for a moment; after the
-twelfth, HOME again. The keys, KNOB 1–4 (their value at the foot), SELECT, PRESET, ALGORITHM, PLAY, REC and
-the layers keep working; a page button leaves; the screen stays on while one shows.
+### 2.17 VIZ — twelve full-screen visualisers (GLO + G5; not in the device's build)
+They do not fit the app slot beside Felucca 1.7.0 (11.6 KB): the device's build leaves them out and GLO + G5 says
+VIZ NOT BUILT IN. The browser emulator has them, and a build with `EDDA_VIZ=1` (and, to make room, without
+something else: section 6) puts them on the FM-1: **GLO + G5** opens one over HOME, again the next, its name at the
+foot for a moment; after the twelfth, HOME again. The keys, KNOB 1–4, SELECT, PRESET, ALGORITHM, PLAY, REC and the
+layers keep working; a page button leaves; the screen stays on while one shows.
 
 | | | |
 | --- | --- | --- |
@@ -293,8 +346,8 @@ edge is anti-aliased: lines, rings and discs by their coverage, positions to a s
 shape moves. HOME's own oscilloscope draws its trace the same way.
 
 ### 2.18 Faster hands
-- **SELECT PAGES** (MENU > CONTROL > SELECT): the SELECT knob turns through every page, HOME at either end;
-  GLO + SELECT sets the tempo.
+- **SELECT ALL** (MENU > CONTROL > SELECT, after Felucca's BPM PAGE MODW VEL): the SELECT knob turns through every
+  page, HOME at either end; GLO + SELECT sets the tempo.
 - **SONG quick entry** (SEQ held, or SEQ → SONG): the white keys **F3 G3 A3 B3** append sections A B C D —
   tap A B B C for A, B ×2, C. While a song plays they **cue** instead (2.21).
 
@@ -304,7 +357,7 @@ TALK DRUM, LOG DRUM, EDDA EP; slots E1–E6), editable and exportable as `.syx` 
 COLOR): deep indigo, golden orange, electric blue; it passes Felucca's contrast lint.
 
 ### 2.20 What is kept with the settings
-SHOW CUES, SEQ OUT, RUN, REVEAL and SELECT PAGES survive power-off (with Felucca's other MENU settings).
+SHOW CUES, SEQ OUT, RUN, REVEAL and SELECT ALL survive power-off (with Felucca's other MENU settings).
 KEY lives on in the project (ROOT and SCALE); ACT starts from 1.
 
 ### 2.21 THE ARRIVAL — the album's thirteen songs (SAVE > ARRIVAL)
@@ -370,31 +423,49 @@ their 1–4 kHz is left to the voice. The shared budget of 8 voices never cuts a
 part of notes now gives up its own release tail first, a kit's hits go before a held note, and a kit's lowest
 hit — the kick — rings out as a part's bass does.
 
+**Their tempo is the deck's.** With the true tempo (2.22) a song at 116 plays at 116.00: set the deck's tempo to the
+song's and they stay together; GLO + G#4 / A#4 (2.23) pull them into phase.
+
 **Changing them.** The music is `tools/arrival_songs.py`, a score in Python (notes by name, drum rows as
 strings); `tools/gen_arrival.py` encodes it into 12 KB of `build/gen/edda_arrival.h` at build time.
 `build/host/arrival_render build/arrival` renders all thirteen to WAV (`[SONG] [SECONDS] [STEMS]`), and
 `tests/arrival_check.py` reports the balance per section and track and the LEVELs that would put each track in
 its place.
 
+### 2.22 The true tempo
+Every Felucca counts a beat as 44,100 × 60 / BPM samples, but the FM-1's audio runs at 24 MHz / 544 =
+**44,117.647 samples a second**, so its tempo plays 0.04 % fast: 112 on the screen is 112.045, about 24 ms a minute
+against a record at 112, a sixteenth apart in under six minutes. EDDA OS counts the real rate on its internal clock:
+a beat is 45,000,000 / (17 × BPM) samples (exactly a minute of output for 112 beats at 112), every clock on the exact
+grid with it (2.14) and MIDI clock out (2.15). The pitch stays as it was (0.7 cent sharp: nobody hears it). On an
+external clock the FM-1 follows the clock, as before.
+
+### 2.23 TEMPO BEND (GLO + G#4 / A#4)
+A deck's pitch bend for the whole set: **A#4 held** plays every clock (the tracks, the ARP, the click, EDDA's bars,
+the SONG, MIDI clock out, the SLICER, the FX layer) at the tempo + (BPM + 12) / 25 (about 4 %: 125 at 120), **G#4
+held** the same down; let go, the tempo as set, the set's phase moved: a second of it at 120 BPM is about 40 ms. Both
+held: none. The keys stay lit while held, also after GLO is let go. Each clock takes the bend from its next step, so
+the gates, the delay and the LFOs keep the tempo as set. On an external clock: BEND: CLK IS EXT, nothing.
+
 ---
 
 ## 3. Controls at a glance
 
 **GLO layer** (hold GLO): F#3 G#3 A#3 C#4 mute tracks 1–4 · F3–B3 solo while held · C4 all unmuted ·
-**D4 RUN · E4 STOP · F4 TAP · G4 ACT+ · A4 FILL · B4 MUTATE · C5 / D5 / E5 KEY −1 / +1 / relative** ·
-SELECT the tempo.
+**D4 RUN · E4 STOP · F4 TAP · G4 ACT+ · A4 FILL (tap: to the next bar's end; hold: while held) · B4 MUTATE ·
+C5 / D5 / E5 KEY −1 / +1 / relative · F5 MIDI LEARN · G#4 / A#4 TEMPO BEND − / + (held)** · KNOB 1–4 the levels ·
+SELECT the tempo · GLO + PLAY from the top.
 
 **MENU > EDDA** (hold HOME, ALGORITHM to the EDDA tab): KEY · SHOW CUES · SEQ OUT · ACT · RUN · REVEAL.
-**MENU > CONTROL**: SELECT (TEMPO / PAGES).
+**MENU > CONTROL**: SELECT (BPM / PAGE / MODW / VEL / ALL).
 
-**New pages and knobs**: SAVE > ARRIVAL (KNOB 1 the song, OCT+ LOAD, PLAY) · FX > FILTER (FILT) · FX > DLY >
-TIME 1/4D 1/8D 1/16D · SEQ > CHANCE KNOB 4 NUDGE · DRUM EDIT 1 KIT USR1–4, EDDA · SAMPLE SET 8 (USR4), 9 EKIT,
-10 LOG · SCL > CHORD VOIC LEAD.
+**New pages and knobs**: SAVE > ARRIVAL (KNOB 1 the song, OCT+ LOAD, PLAY) · FX > DJ FILTER · DRUM EDIT 1 KIT
+USR1–4, EDDA · SAMPLE SET 8 (USR4), 9 EKIT, 10 LOG · SCL > CHORD VOIC LEAD · FM6 SLOT E1–E6.
 
-**Gestures**: HOME on HOME = VIZ (again: next) · black keys with CHRD + QNT WHITE = CHORD+ · F3–B3 on SONG =
-sections A–D (playing: cue the next one, or one more pass of the one playing).
+**Gestures**: black keys with CHRD + QNT WHITE = CHORD+ · F3–B3 on SONG = sections A–D (playing: cue the next one,
+or one more pass of the one playing).
 
-The web editor sees the new MENU rows (protocol ids 18–24), the 4th slot and the kits.
+The web editor sees the new MENU rows, the 4th slot (its 72 KiB) and the kits.
 
 ---
 
@@ -408,9 +479,9 @@ The web editor sees the new MENU rows (protocol ids 18–24), the 4th slot and t
 | A web editor in the FM-1's look | Felucca's editor; EDDA's rows, slots and kits appear in it |
 | CHORD+: black keys change the chord, strum, voice leading | **In** (2.10) |
 | A filter on every track, one knob | **In** (2.11) |
-| 12 full-screen visualisers | **In** (2.17) |
+| 12 full-screen visualisers | Built, not in the device's build (2.17: the app slot); in the browser emulator |
 | Parameter locks | **In** (Felucca 1.1) |
-| Micro timing | **In** (2.13) |
+| Micro timing | **In** (2.13, Felucca's NUDGE) |
 | Fills with one finger | **In** (2.6) |
 | Chains: tap A B B C | **In** (2.18, on the SONG page) |
 | Patterns out over MIDI | **In** (2.15, with clock) |
@@ -421,9 +492,9 @@ The web editor sees the new MENU rows (protocol ids 18–24), the 4th slot and t
 | SELECT turns the pages | **In** (2.18, an option) |
 | Bigger values, the menu in sections | **In** (Felucca's LARGE and tabbed menu) |
 
-Beyond SLOOP: THE ARRIVAL's thirteen songs with their own kit and log drum, the Camelot lock and path, the run,
-the hard stop, REVEAL, MUTATE, the show cues, the exact grid, SEQ OUT's run-aware output, the West African
-pattern bank, the voice bank.
+Beyond SLOOP: THE ARRIVAL's thirteen songs with their own kit and log drum, the true tempo and TEMPO BEND, the Camelot
+lock and path, the run, the hard stop, REVEAL, MUTATE, the show cues, the exact grid, SEQ OUT's run-aware output, the
+West African pattern bank, the voice bank; and Felucca 1.7.0's step conditions, inserts, MIDI learn and second core.
 
 ---
 
@@ -432,7 +503,9 @@ pattern bank, the voice bank.
 1. FM-1 3.5 mm out → stereo-to-1/4" **mono** cable → Omnis-Duo **MIC 2**. Talkover OFF. FM-1 master low,
    bring it up on the mic knob.
 2. Set **KEY** to the Camelot of the record playing, or walk it with C5 / D5 / E5 as you mix the one-step
-   path. Tap the tempo on GLO + F4, or send MIDI clock from the laptop and set CLOCK to it.
+   path. Set the FM-1 to the record's BPM (GLO + SELECT, or tap it on GLO + F4) and the deck to the same: with the
+   true tempo they stay together. Start the FM-1 on the one, then hold **G#4 / A#4** (TEMPO BEND) until the kicks
+   sit together. With the laptop, rekordbox's Link → a Link-to-MIDI-clock bridge → the FM-1's USB, CLOCK to it.
 3. For a song of the album: SAVE > ARRIVAL, the song, OCT+, PLAY (its tempo and key come with it: set the
    decks to them, or sing over it alone). Otherwise track 4 DRUM on your own kit (KIT USR1, or EDDA) with
    3STEP or OGENE12; track 1 LOG DRUM with LOGDRUM; track 2 a pad or STABS; track 3 the lead (OJA, OGENE,
@@ -440,18 +513,23 @@ pattern bank, the voice bank.
 4. REVEAL on for long passages; MUTATE when the room needs a new figure; **D4** to leave a record by
    subtraction; **E4** for the hard stop and the re-entry.
 5. USB to the stream machine: SEQ OUT +CLOCK drives a DAW or a second synth in time with the FM-1, the show
-   cues on channel 16 drive the lights, and the same USB carries Felucca's 44.1/48 kHz audio for recording.
-6. Between records, tap HOME on HOME: CLOCK or BULBS for you, PULSE or TUNNEL for the front row.
+   cues on channel 16 drive the lights, and the same USB carries the FM-1's audio (44.1 kHz) for recording.
 
 ---
 
 ## 6. Building and testing from source
 
 ```
-sh edda-build.sh                   # Linux x86-64 (or WSL2): the toolchain, the vendored SDK files -> build/felucca.fwsc
-SANITIZE=1 sh tests/run_tests.sh   # every suite; tests/run_host_only.sh without a package
-EDDA_VIZ=0 ./build.sh              # the same firmware without the visualisers (~17 KB less code)
+git submodule update --init         # firmware/bsp (felucca-bsp), firmware/engines (Felucca-Engines)
+sh edda-build.sh --release 1.7.0-EDDA   # Linux x86-64 (or WSL2): the toolchain, the SDK files -> build/felucca-1.7.0-EDDA.fwsc
+SANITIZE=1 sh tests/run_tests.sh    # every suite against build/felucca.fwsc; tests/run_host_only.sh without a package
 ```
+
+The device's build (`firmware/src/felucca.c`): `EDDA_VIZ 0`, `FELUCCA_CDC 0`, `FELUCCA_UAC_48K 0`. What each costs in
+the app slot (JieLi's linker, `tools/size_matrix.sh`): the visualisers 11.6 KB, the serial console 7.0 KB, USB audio's
+48 kHz resampler 8.3 KB, the second core 2.0 KB, USB audio 11.1 KB. With the visualisers in, even without the console,
+the second core and USB audio the image is 3.5 KB over. The host suites keep Felucca's nominal tempo
+(`-DEDDA_TRUE_TEMPO=0`: their timings are Felucca's, bit for bit); `tests/edda_test.c` checks the true one.
 
 Felucca's `BUILDING.md` covers macOS with Docker and the build options. `.github/workflows/edda-build.yml`
 is Route A's build.
@@ -460,67 +538,62 @@ is Route A's build.
 
 ## 7. What is verified, and what is not
 
-**Verified on the host** (gcc and clang, Felucca's own harness with the real sequencer, UI and MIDI code,
-under ASan/UBSan): 3,546 checks pass. EDDA's own (`tests/edda_test.c`, `tests/ui_test.c`) cover the Camelot
-wheel and path, every bank pattern, Euclidean rhythms, the run phase by phase at 120 BPM, the hard stop and
-re-entry, REVEAL, FILL, MUTATE, the cues, the user kits on a 16-pad kit built by the real builder (pads, the
-GM fall-back, TUNE / DECY / SNAP, the choke, levels, an empty kit, USR4), CHORD+ and VOIC LEAD, the filter's
-response, dotted echo lengths, micro timing at the pattern's start and in chains, the exact grid (ten minutes
-at 128 BPM, two at 97 and 173, the ARP), SEQ OUT (pairing through chords, ties, slides, ratchets, lanes,
-mutes, a full queue, OFF; the clock's pulse 6k in step k's block for ten minutes; START / STOP; none on an
-external clock), the settings round trip, VIZ navigation and the spectrum's bands, SELECT PAGES and the SONG
-keys, and THE ARRIVAL: the album's titles, tempi and keys, every section in range, the arrangements, the load (each
-synth track in the song's key, the EDDA kit, the log drum), SAVE > ARRIVAL's knob, LOAD and PLAY, a project keeping
-the song, CLEAR SONG, the live cues (silent keys, NEXT, CUE OFF, ONE MORE, the jump after exactly one pass, a cue
-on the last pass playing on) and their show cues; then every song is played through the firmware's audio (3 to 4
-minutes each, sounding, nothing clipped, no held note cut by the voice budget, the master limiter at most 8 dB).
-Every screen, in every palette, passes Felucca's layout lint (0 findings over 166 screens × 11 palettes).
-The web editor's protocol and kit builder tests pass; the browser emulator's source builds and runs natively.
+**Verified on the host** (gcc, Felucca's own harness with the real sequencer, UI, MIDI and audio code, under
+ASan/UBSan): {{HOSTCHECKS}}. Felucca 1.7.0's suites run against EDDA OS as they are, except where EDDA changes what
+they check (FILL on A4, MIDI LEARN on F5, the kits after PERC, FM6's EDDA presets before the bank, SELECT's ALL, the
+DJ FILTER page, USR4's 72 KiB, the exact grid's step starts): those checks test EDDA's behaviour instead. They keep
+Felucca's nominal tempo (`-DEDDA_TRUE_TEMPO=0`), so their timings stay Felucca's, bit for bit; Felucca's 104 golden
+renders are unchanged. EDDA's own (`tests/edda_test.c`, `tests/ui_test.c`) build the device's true tempo and cover
+it (a beat of 45,000,000 / (17 × BPM) samples: 112 beats at 112 BPM are exactly a minute of output), TEMPO BEND (the
+keys, the LEDs, an external clock, a second of it at 120 BPM moving the set 40 ms ahead and the beats back to 22,059
+samples apart after), the Camelot wheel and path, every bank pattern, Euclidean rhythms, the run phase by phase, the
+hard stop and re-entry, REVEAL, FILL (tap and hold), MUTATE, the cues, the user kits on a 16-pad kit built by the real
+builder (in USR1 and, sized for its 72 KiB, in USR4), CHORD+ and VOIC LEAD, the DJ filter's response, EDDA OS
+1.1.5's projects migrating (nudges, fills, kits, dotted times, the song), the exact grid (ten minutes at 128 BPM,
+two at 97 and 173, the ARP, MIDI clock out's pulse 6k in step k's block for ten minutes), SEQ OUT, the settings round
+trip, the device's build without the visualisers, and THE ARRIVAL: titles, tempi, keys, sections, arrangements,
+the load, SAVE > ARRIVAL, the live cues and their show cues; then every song is played through the firmware's audio
+(3 to 4 minutes each, sounding, nothing clipped, no held note cut by the voice budget, the master limiter at most
+8 dB). Every screen, in every palette, passes Felucca's layout lint. The web editor's protocol (the slots' own sizes
+included), the kit builder, the backup and the one-file installer (onto a simulated FM-1: stock → update loader →
+EDDA OS, every byte it asks for checked) pass.
 
-**Built with JieLi's compiler** (GitHub Actions, run 37848134635, every visualiser and all thirteen songs in):
-the image is 538,700 bytes of the 581,564-byte app slot (42,864 spare: THE ARRIVAL's songs, kit and log drum take
-about 66 KB), RAM (.data + .bss) 93,688 of 98,304 bytes, the pool 334,788 of 344,064 bytes (9,276 spare; the build
-requires 8,192), register access in `hal/` only. The package
-carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s SHA-256s,
-so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real
-package, sanitizers and fuzzers included, THE ARRIVAL's render check with the same figures as on the host, and the
-browser emulator builds to WebAssembly and plays (1.2 % of real time for a heavy song), except the static cost check
-below. Timed on the host, the songs' audio costs on average 48–72 % of the heaviest mix Felucca's CPU check renders
-(four parts and drums at the budget of 8), their heaviest second at most about the same as that mix.
+**Built with JieLi's compiler** (GitHub Actions, {{RUN}}): {{BUILT}}. Register access in `hal/` and the BSP only. The
+package carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s
+SHA-256s, so it is put together exactly as Felucca's are. {{CITESTS}}
 
-**Not yet:** a flash onto an FM-1 and listening tests of the voices, the kits and the songs on its own outputs (the
-songs have been heard as host renders: the same code, the same numbers, a computer's DAC). `tests/target_budget.py`, a static
-count of the instructions in the audio code's loops from JieLi's disassembly, reports four functions over
-Felucca's figures, all EDDA's intended work: `drum_render` (the user kits' sample voice now inside it; its
-per-sample loop has no divides), the audio interrupt `fm1_alnk0_irq` (+19 %: SEQ OUT, the run, the cues),
-`slicer_track` (+59 %) and `perf_begin` (+29 %: both the exact grid's clocks). THE ARRIVAL, the live cues and their
-show cues leave these figures as they were (the cues run in noinline functions once a pass). The host CPU check, which times
-the renders, passes with nothing over budget. After a good test on the FM-1, `BUDGET_UPDATE=1 python3
+**Not yet:** a flash onto an FM-1, and listening on its own outputs (the songs have been heard as host renders: the
+same code, the same numbers, a computer's DAC). On the device, three checks are worth a minute: the splash says
+`v1.7.0-edda`; SAVE > ARRIVAL, a song, OCT+, PLAY sounds; and the true tempo: at 120 BPM against a metronome app or a
+DAW at 120.00, the FM-1 should hold the click for ten minutes (Felucca's count gains 0.24 s in that time, half a
+beat). `tests/target_budget.py`, a static count of the audio code's loop instructions from JieLi's disassembly,
+reports the functions EDDA OS works in beyond Felucca's figures ({{BUDGET}}); the host CPU check, which times the
+renders, passes with nothing over budget. After a good test on the FM-1, `BUDGET_UPDATE=1 python3
 tests/target_budget.py build/felucca.dis tests/target_budget.txt` re-bases the static figures.
 
 ---
 
 ## 8. Frontier
 
-- **Ableton Link over the AC7911's Wi-Fi.** The chip has a radio Felucca does not use yet.
-- **The chant lane**: the room's "Yaa" in a user slot, a key as the call.
-- **YAA counter in**: the stream kit's count as MIDI CC into MUTATE's density.
-- **Set file**: the crate's keys and tempos as a Camelot path for C5 / D5.
+Next, in the order they pay on stage (the research behind them: `docs/fm1-landscape-2026-10.md`):
+
+- **Tempo to a hundredth, and a tap that sets the phase.** The tempo in 0.01 BPM steps (shown to two decimals) for
+  records off the whole number, and taps that also fix where the one is, so PLAY lands on the record's next downbeat.
+- **Mix-in / mix-out macros**: the run's subtraction as a timed handover, phrase-aligned (8 / 16 / 32 bars).
+- **Log-drum tools**: the slide and the "tsk" as per-step locks, the log drum's pitch envelope on a knob.
+- **The visualisers back** on the device, once 5 KB more of the app slot is found.
+- **Ableton Link over the AC791N's Wi-Fi** (the chip has a radio Felucca does not use), BLE MIDI (~45 KB: not beside
+  everything else), the chant lane and the set file as before.
 
 ---
 
-## 9. Where the FM-1 scene stood (7 October 2026)
+## 9. Where the FM-1 scene stands (30 October 2026)
 
-| Firmware | Author | What it is | Licence |
-| --- | --- | --- | --- |
-| FM-1+VA | Baud Girl | Menu rebuild, fixes to the stock FM engine, a supersaw VA engine | free, open source promised |
-| Felucca | Hügelton / Leo Kuroshita | 13 engines, 4 tracks, 64 steps, chords, mod matrix, FX layer, web installer and editor, browser build, host tests | GPL-3.0 |
-| Groove OS | Peter Gombos | 8-track groovebox | paid |
-| SLOOP | 3dSam | 4-track groovebox on Felucca's engines | free, open source |
-| X0X / OMNI | Charles Vestal | ReBirth-style groovebox / Omnichord-style instrument | open source |
-
-Sources: github.com/hugelton/Felucca; synthanatomy.com (Sep 28–Oct 6 2026); sonicstate.com 29 Sep 2026;
-pianoandsynth.com 28 Sep 2026; matrixsynth.com 4 Oct 2026.
+Felucca shipped seven releases between 9 and 28 October (1.4 … 1.7.0: the second core, step conditions, inserts,
+MIDI learn, felucca-bsp); about a hundred community firmwares now compete on dual cores, eight tracks and live scenes;
+M-VAVE answered with stock V16 and an open branch, FM1 Open. None of the firmwares or the grooveboxes reviewed ships
+deck-grade tempo and phase tools, mix-in and mix-out macros timed to the phrase, or a log-drum engine: that is where
+EDDA OS leads. The whole survey, with its sources: `docs/fm1-landscape-2026-10.md`.
 
 Felucca © 2026 Leo Kuroshita, Hügelton Instruments, GPL-3.0-only. EDDA OS's additions are released under the
 same licence.
