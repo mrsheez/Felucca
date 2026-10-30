@@ -12,8 +12,8 @@ documentation says unless a section below says otherwise.
 | Version | 1.7.0-EDDA (the splash says `v1.7.0-edda`; the package identity FM-1_917) |
 | Base | Felucca 1.7.0 (hugelton/Felucca `main` at 65b21d3, merged), felucca-bsp (MPL-2.0) and Felucca-Engines (MIT) as submodules; EDDA OS's commits on top |
 | Licence | GPL-3.0-only, as Felucca |
-| Verified | {{CHECKS}} |
-| Built | with JieLi's compiler on GitHub: {{IMAGE}} |
+| Verified | every host suite passes: 7,728 checks in `tests/run_host_only.sh`, 7,860 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
+| Built | with JieLi's compiler on GitHub: 576,616 of the 581,564-byte app slot (4,948 spare), RAM 61,268 of 73,728 bytes, the pool 329,448 of 368,640 |
 | Not yet | flashed onto an FM-1 (section 7) |
 | Install | one HTML file, Chrome or Edge, the FM-1 on USB (section 1.1) |
 
@@ -64,7 +64,7 @@ account.
    (DAWs, rekordbox's MIDI settings, an editor tab).
 2. Open the file in **Chrome or Edge** (double-click it; if another browser opens, right-click → Open with).
 3. Allow MIDI (with SysEx) when the browser asks, and press **Install**. The page takes the FM-1 into its
-   update mode, writes EDDA OS and restarts it: about two minutes, the bar to 100 % and the page says **Done**.
+   update mode, writes EDDA OS and restarts it: a few minutes, the bar to 100 % and the page says **Done**.
    Do not unplug meanwhile. If anything stops it, press Install again: the update mode resumes where it was.
 4. The FM-1 starts EDDA OS (`v1.7.0-edda` on the splash). SAVE → turn to **ARRIVAL** for the songs.
 
@@ -73,8 +73,8 @@ presets, or the unit's own radio calibration and Bluetooth address.
 
 ### 1.2 Route A — GitHub builds it and hosts the installer
 
-Everything happens in the browser. Use the files from this delivery: `edda-os.bundle` (the git history),
-or `edda-os-fork.zip` if you prefer GitHub Desktop.
+For someone starting from nothing (your fork is set up already: 1.6). Everything happens in the browser, with the
+files of the first delivery: `edda-os.bundle` (the git history), or `edda-os-fork.zip` for GitHub Desktop.
 
 1. Sign in at github.com. Open **github.com/hugelton/Felucca** and press **Fork**. Keep the name.
 2. In your fork, open the **Actions** tab and press *I understand my workflows, go ahead and enable them*
@@ -539,7 +539,7 @@ is Route A's build.
 ## 7. What is verified, and what is not
 
 **Verified on the host** (gcc, Felucca's own harness with the real sequencer, UI, MIDI and audio code, under
-ASan/UBSan): {{HOSTCHECKS}}. Felucca 1.7.0's suites run against EDDA OS as they are, except where EDDA changes what
+ASan/UBSan): 7,728 checks pass in `tests/run_host_only.sh`, 7,860 in `tests/run_tests.sh` against the package. Felucca 1.7.0's suites run against EDDA OS as they are, except where EDDA changes what
 they check (FILL on A4, MIDI LEARN on F5, the kits after PERC, FM6's EDDA presets before the bank, SELECT's ALL, the
 DJ FILTER page, USR4's 72 KiB, the exact grid's step starts): those checks test EDDA's behaviour instead. They keep
 Felucca's nominal tempo (`-DEDDA_TRUE_TEMPO=0`), so their timings stay Felucca's, bit for bit; Felucca's 104 golden
@@ -558,16 +558,16 @@ the load, SAVE > ARRIVAL, the live cues and their show cues; then every song is 
 included), the kit builder, the backup and the one-file installer (onto a simulated FM-1: stock → update loader →
 EDDA OS, every byte it asks for checked) pass.
 
-**Built with JieLi's compiler** (GitHub Actions, {{RUN}}): {{BUILT}}. Register access in `hal/` and the BSP only. The
+**Built with JieLi's compiler** (GitHub Actions, run 41040776728, commit e4b7446): the image is 576,616 bytes of the 581,564-byte app slot (4,948 spare), RAM (.data + .bss) 61,268 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). Register access in `hal/` and the BSP only. The
 package carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s
-SHA-256s, so it is put together exactly as Felucca's are. {{CITESTS}}
+SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_917, every byte it asks for checked), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (2.0 % of real time for a heavy song). The one exception is the static cost check below.
 
 **Not yet:** a flash onto an FM-1, and listening on its own outputs (the songs have been heard as host renders: the
 same code, the same numbers, a computer's DAC). On the device, three checks are worth a minute: the splash says
 `v1.7.0-edda`; SAVE > ARRIVAL, a song, OCT+, PLAY sounds; and the true tempo: at 120 BPM against a metronome app or a
 DAW at 120.00, the FM-1 should hold the click for ten minutes (Felucca's count gains 0.24 s in that time, half a
 beat). `tests/target_budget.py`, a static count of the audio code's loop instructions from JieLi's disassembly,
-reports the functions EDDA OS works in beyond Felucca's figures ({{BUDGET}}); the host CPU check, which times the
+reports the functions EDDA OS works in beyond Felucca's figures (`drum_render` +400 %: the user kits' sample voice inside it, its per-sample loop with no divides; `perf_begin` +29 %: the exact grid's 1/16 clock. The audio interrupt is within its budget (+4 %) and `slicer_track` under it (−13 %)); the host CPU check, which times the
 renders, passes with nothing over budget. After a good test on the FM-1, `BUDGET_UPDATE=1 python3
 tests/target_budget.py build/felucca.dis tests/target_budget.txt` re-bases the static figures.
 
