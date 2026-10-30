@@ -28,7 +28,13 @@ static void fm1_audio_init(int32_t *b, uint32_t n, void (*isr)(void), uint32_t p
 void isr_alnk0(void) {}
 #define FELUCCA_UAC 1                                  /* audio.c taps USB audio: here into tap */
 static int32_t tap_blk[2 * CTL];
-static void uac_tap(const int32_t *out, uint32_t n) { memcpy(tap_blk, out, 8u * n); }
+static struct { uint32_t feed; } uac = {1};             /* a computer records (audio.c: uac_tap_q15) */
+static void uac_tap(const int32_t *out, uint32_t n)     /* (24-bit, as bsp/chip/usb.c takes it): kept as Q15 */
+{
+    uint32_t i;
+    for (i = 0; i < 2u * n; i++)
+        tap_blk[i] = out[i] / 256;
+}
 static void uac_render_start(void) {}
 #include "../firmware/src/audio.c"
 
@@ -295,6 +301,59 @@ static void usb_clean(void)
     }
 }
 
+/* 1.2 (Discussion #165): MENU > SCOPE. OUT (the default) the HOME scope reads the music after MASTER (audio.c, before
+ * the click); MIX the mix before MASTER (fx.c scope_take_mix): the same picture at any MASTER. The click in neither */
+static int16_t scope_run(uint32_t mix, int32_t master, uint32_t click)
+{
+    uint32_t i;
+    int16_t pk = 0;
+    fresh();
+    trk[0].p[P_SLEN] = 16; trk[0].p[P_SDIV] = 2; trk[0].p[P_SGATE] = 127;
+    for (i = 0; i < 16u; i++)
+        trk[0].step[i] = (step_t){{(uint8_t)(48 + (i * 5u) % 12u)}, 1, ST_NOTE, 0, 100};
+    song.g[G_BPM] = 120; song.master_q12 = (uint16_t)master;
+    click_mode = click ? CLICK_ON : CLICK_OFF;
+    scope_mix = (uint8_t)mix;
+    scope_w = 0;
+    memset(scope_buf, 0, sizeof scope_buf);
+    transport_req = 1;
+    run(ceil_div(QB * 2u, CTL) + 8u);                  /* (the window: the start of beat 3, its click) */
+    for (i = 0; i < SCOPE_N; i++)
+        pk = (int16_t)(abs(scope_buf[i]) > pk ? abs(scope_buf[i]) : pk);
+    return pk;
+}
+static void scope(void)
+{
+    static int16_t mix_full[SCOPE_N], out_full[SCOPE_N];
+    static int32_t dac_off[MAXB * CTL];
+    int16_t pk_out, pk_out4, pk_mix, pk_mix4;
+    uint32_t w, n, i, dac_click = 0;
+    int same_out;
+    pk_out = scope_run(0, 4096, 0);
+    memcpy(out_full, scope_buf, sizeof out_full);
+    memcpy(dac_off, dac, sizeof dac_off);
+    w = scope_w;
+    n = nb;
+    pk_out4 = scope_run(0, 1024, 0);
+    pk_mix = scope_run(1, 4096, 0);
+    memcpy(mix_full, scope_buf, sizeof mix_full);
+    check("SCOPE: OUT and MIX take every other sample alike (as many, the music heard)",
+          scope_w == w && w == n * CTL / 2u && pk_out > 1000);
+    pk_mix4 = scope_run(1, 1024, 0);
+    printf("click: scope peaks: OUT %d, OUT at MASTER 1/4 %d; MIX %d, MIX at MASTER 1/4 %d\n", pk_out, pk_out4, pk_mix, pk_mix4);
+    check("SCOPE OUT follows MASTER (1/4: -12 dB +-1.5); MIX the same at any MASTER (bit for bit), as OUT at its top (+-1.5 dB)",
+          fabs(20.0 * log10((double)pk_out / pk_out4) - 12.04) < 1.5 && !memcmp(mix_full, scope_buf, sizeof mix_full) &&
+          fabs(20.0 * log10((double)pk_out / pk_mix)) < 1.5);
+    (void)scope_run(0, 4096, 1);
+    for (i = 0; i < nb * CTL; i++)
+        dac_click |= dac[i] != dac_off[i];
+    same_out = !memcmp(out_full, scope_buf, sizeof out_full);
+    (void)scope_run(1, 4096, 1);
+    check("the click: in the DAC, in neither scope (OUT, MIX bit for bit as without it)",
+          dac_click && same_out && !memcmp(mix_full, scope_buf, sizeof mix_full));
+    scope_mix = 0;
+}
+
 /* the count-in: PLAY from stop with a track armed */
 static void count_in(void)
 {
@@ -459,6 +518,7 @@ int main(void)
     sound();
     modes();
     usb_clean();
+    scope();
     count_in();
     count_in_notes();
     ext_clock();

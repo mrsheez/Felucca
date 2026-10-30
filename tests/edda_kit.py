@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 """EDDA OS: a synthetic 16-pad drum kit for the host tests (tests/edda_test.c), as 16 WAV files and the kit slot
-built from them (tools/fm1_sample_upload.py kitbuild -> OUT.hdr / OUT.bin).
+built from them (tools/fm1_sample_upload.py kitbuild -> OUT.hdr / OUT.bin), and the same kit for EDDA OS 1.7's
+72 KiB USR4 (OUT_usr4.hdr / .bin: more pads at 11025 Hz).
 
   tests/edda_kit.py OUT_PREFIX
 
@@ -95,6 +96,12 @@ def main(prefix):
     nz = hdr[6]
     rates = [struct.unpack_from("<I", hdr, 32 + z * 28 + 16)[0] for z in range(nz)]
     print(f"kit: {nz} pads, rates {sorted(set(rates))}, {out.with_suffix('.bin').stat().st_size} B")
+    sys.path.insert(0, str(HERE.parent / "tools"))
+    import fm1_sample_upload as up                      # (the 72 KiB USR4: the builder's own fit for that slot)
+    h4, d4 = up.build_kit("EDDAKIT", files, sio.slot_max_data(3))
+    Path(str(out) + "_usr4.hdr").write_bytes(h4)
+    Path(str(out) + "_usr4.bin").write_bytes(d4)
+    print(f"kit for USR4: {h4[6]} pads, {len(d4)} B of {sio.slot_max_data(3)}")
 
 
 if __name__ == "__main__":

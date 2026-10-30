@@ -12,7 +12,7 @@ part is a row of steps per lane (drum: K kick, S snare, C clap, H shaker, O caba
 high; the pads L low conga, E ekwe, Q high conga, U udu, W claves, G bottle, Z low shaker, A ogene low), '.' rest,
 'o' ghost, 'x' hit, 'X' accent, '1'..'9' a level.
 """
-from gen_arrival import (KIT_EDDA, SET_FLUTE, SET_LOG, SET_PIANO, SET_SAX, cat, drum, mel, nn, rep, sound)
+from gen_arrival import (DT_4D, DT_8D, KIT_EDDA, SET_FLUTE, SET_LOG, SET_PIANO, SET_SAX, cat, drum, mel, nn, rep, sound)
 
 V_POLY, V_MONO, V_LEGATO = 0, 1, 2
 MIN, MAJ = 2, 1                     # P_SCALE
@@ -184,7 +184,7 @@ def up_nepa():
                 guitar(A, damp=52, brit=60, level=110, pan=-14, gate=40),
                 sax(A),
                 kit(shaker=76, conga=80, rim=94, bell=60)],
-        globals=dict(DTIME=11, DFDBK=38, DCOLOR=60, DMIX=60, RSIZE=86, RDAMP=70, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=38, DCOLOR=60, DMIX=60, RSIZE=86, RDAMP=70, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], gtr, [], rep(intro, 4)], motion=[(1, 0, "ED_FX", -36)])),
             ("GROOVE", dict(tracks=[log, gtr, [], rep(groove, 4)])),
@@ -226,7 +226,7 @@ def we_outside():
                 sound("ANALOG", "STRINGS", role="pad", ATK=70, REL=80, LEVEL=96, PAN=0, CHOR=40, REV=44, ROOT=G, SCALE=MIN,
                       QUANT=1, SGATE=127),
                 kit(shaker=74, rim=92, conga=88)],
-        globals=dict(DTIME=11, DFDBK=44, DCOLOR=56, DMIX=56, RSIZE=92, RDAMP=64, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=44, DCOLOR=56, DMIX=56, RSIZE=92, RDAMP=64, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], rh, drone, rep(intro, 4)], motion=[(1, 0, "ED_FX", -30)])),
             ("GROOVE", dict(tracks=[log, rh, drone, rep(groove, 4)])),
@@ -266,7 +266,7 @@ def oya_come():
                 sound("GRAIN", "CLOUD PAD", role="pad", E0=SET_FLUTE, ATK=60, REL=70, LEVEL=96, PAN=0, CHOR=30, REV=50,
                       ROOT=D, SCALE=MIN, QUANT=1, SGATE=127),
                 kit(shaker=76, bell=62, clap=92)],
-        globals=dict(DTIME=11, DFDBK=40, DCOLOR=60, DMIX=56, RSIZE=90, RDAMP=60, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=40, DCOLOR=60, DMIX=56, RSIZE=90, RDAMP=60, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], pno, pad, rep(intro, 4)], motion=[(1, 0, "ED_FX", -28)])),
             ("GROOVE", dict(tracks=[log, pno, pad, rep(groove, 4)])),
@@ -310,7 +310,7 @@ def where_you_sleep():
                 sound("WHEEL", "SOFT FLUTE", role="keys", LEVEL=100, PAN=-6, CHOR=0, REV=40, ROOT=Gs, SCALE=MIN, QUANT=1),
                 flute(Gs),
                 kit(shaker=74, rim=90, conga=84)],
-        globals=dict(DTIME=10, DFDBK=50, DCOLOR=50, DMIX=62, RSIZE=100, RDAMP=56, RTYPE=0),
+        globals=dict(DTIME=DT_4D, DFDBK=50, DCOLOR=50, DMIX=62, RSIZE=100, RDAMP=56, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], org, riff, rep(intro, 4)], motion=[(1, 0, "ED_FX", -24)])),
             ("GROOVE", dict(tracks=[log, org_stab, [], rep(groove, 4)])),
@@ -357,7 +357,7 @@ def e_go_be():
                 piano(C, level=98),
                 guitar(C, role="lead", damp=72, brit=78, level=106, pan=10, gate=50),
                 kit(shaker=76, conga=86, bell=60)],
-        globals=dict(DTIME=11, DFDBK=36, DCOLOR=64, DMIX=54, RSIZE=86, RDAMP=66, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=36, DCOLOR=64, DMIX=54, RSIZE=86, RDAMP=66, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], pno, riff, rep(intro, 4)], motion=[(2, 0, "ED_FX", -20)])),
             ("GROOVE", dict(tracks=[log, pno, [], rep(groove, 4)])),
@@ -407,7 +407,7 @@ def i_dey_waka():
                       SCALE=MIN, QUANT=1, SGATE=127),
                 flute(Bb, level=98, rev=50, dly=36),
                 kit(shaker=72, bell=70, clap=104, rev=10)],
-        globals=dict(DTIME=11, DFDBK=52, DCOLOR=48, DMIX=62, RSIZE=104, RDAMP=50, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=52, DCOLOR=48, DMIX=62, RSIZE=104, RDAMP=50, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], pad, riff, rep(bell, 4)])),
             ("HOOK", dict(tracks=[eight, pad, riff, cat(hook, hook, hook, hook4)])),
@@ -451,7 +451,7 @@ def body_know():
                       SGATE=40),
                 sax(G, level=94),
                 kit(shaker=76, conga=90, clap=98)],
-        globals=dict(DTIME=11, DFDBK=40, DCOLOR=62, DMIX=54, RSIZE=84, RDAMP=70, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=40, DCOLOR=62, DMIX=54, RSIZE=84, RDAMP=70, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], org, [], rep(intro, 4)], motion=[(1, 0, "ED_FX", -30)])),
             ("GROOVE", dict(tracks=[log, org, [], rep(groove, 4)])),
@@ -497,7 +497,7 @@ def do_am_again():
                 guitar(D, scale=MAJ, role="lead", damp=70, brit=80, level=104, pan=-10, gate=48, SLCR=SL_GATE, SLPAT=13,
                        SLRATE=0, SLDEPTH=50),
                 kit(shaker=74, cabasa=70, clap=100, bell=64)],
-        globals=dict(DTIME=11, DFDBK=36, DCOLOR=64, DMIX=52, RSIZE=84, RDAMP=70, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=36, DCOLOR=64, DMIX=52, RSIZE=84, RDAMP=70, RTYPE=0),
         sections=[
             ("BREAK", dict(tracks=[sparse, pno, rep(loop, 4), rep(brk, 4)], motion=[(2, 0, "ED_FX", -30)])),
             ("BUILD", dict(tracks=[silence_last_beat(sparse)[:48] + [None] * 16, pno[:48] + [None] * 16,
@@ -544,7 +544,7 @@ def you_dey_whine_me():
                 sound("VOICE", "VOX LEAD", role="lead", LEVEL=96, PAN=6, CHOR=16, DLY=30, REV=40, VOICE=V_LEGATO,
                       GLIDE=6, ROOT=E, SCALE=MIN, QUANT=1),
                 kit(shaker=74, cabasa=68, conga=96, clap=98)],
-        globals=dict(DTIME=11, DFDBK=42, DCOLOR=60, DMIX=56, RSIZE=86, RDAMP=64, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=42, DCOLOR=60, DMIX=56, RSIZE=86, RDAMP=64, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], rh, [], rep(intro, 4)], motion=[(1, 0, "ED_FX", -26)])),
             ("GROOVE", dict(tracks=[log, rh, [], rep(groove, 4)])),
@@ -590,7 +590,7 @@ def turn_am_up():
                 piano(E, scale=MAJ, level=100, rev=40),
                 guitar(E, scale=MAJ, role="lead", damp=60, brit=86, level=100, pan=8, gate=40, rev=30, dly=10),
                 kit(shaker=74, cabasa=70, clap=100, bell=62)],
-        globals=dict(DTIME=11, DFDBK=34, DCOLOR=66, DMIX=50, RSIZE=84, RDAMP=72, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=34, DCOLOR=66, DMIX=50, RSIZE=84, RDAMP=72, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[sparse, pno, gtr, rep(brk, 4)])),
             ("BUILD", dict(tracks=[silence_last_beat(sparse)[:48] + [None] * 16, pno[:48] + [None] * 16,
@@ -636,7 +636,7 @@ def enjoyment_only():
                 guitar(C, role="lead", damp=66, brit=76, level=104, pan=-10, gate=48, SLCR=SL_GATE, SLPAT=13, SLRATE=0,
                        SLDEPTH=46),
                 kit(shaker=74, bell=66, clap=96)],
-        globals=dict(DTIME=11, DFDBK=40, DCOLOR=60, DMIX=56, RSIZE=88, RDAMP=66, RTYPE=0),
+        globals=dict(DTIME=DT_8D, DFDBK=40, DCOLOR=60, DMIX=56, RSIZE=88, RDAMP=66, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], pno, rep(loop, 2), rep(intro, 4)], motion=[(2, 0, "ED_FX", -34)])),
             ("GROOVE", dict(tracks=[log, pno, rep(loop, 2), rep(groove, 4)], motion=[(2, 0, "ED_FX", -16)])),
@@ -678,7 +678,7 @@ def ring_me():
                 sound("VOICE", "CHOIR AAH", role="pad", ATK=60, REL=70, LEVEL=96, CHOR=20, REV=48, ROOT=D, SCALE=MIN,
                       QUANT=1, SGATE=127),
                 kit(shaker=74, cabasa=68, conga=90, clap=98)],
-        globals=dict(DTIME=10, DFDBK=46, DCOLOR=56, DMIX=60, RSIZE=92, RDAMP=60, RTYPE=0),
+        globals=dict(DTIME=DT_4D, DFDBK=46, DCOLOR=56, DMIX=60, RSIZE=92, RDAMP=60, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], rep(bell, 2), hum, rep(intro, 4)])),
             ("GROOVE", dict(tracks=[log, [], hum, rep(groove, 4)])),
@@ -722,7 +722,7 @@ def japa_and_come_back():
                 rhodes(Gs, level=100),
                 sax(Gs, level=96, rev=46),
                 kit(shaker=74, conga=86, bell=60)],
-        globals=dict(DTIME=10, DFDBK=48, DCOLOR=54, DMIX=60, RSIZE=96, RDAMP=58, RTYPE=0),
+        globals=dict(DTIME=DT_4D, DFDBK=48, DCOLOR=54, DMIX=60, RSIZE=96, RDAMP=58, RTYPE=0),
         sections=[
             ("INTRO", dict(tracks=[[], rh, riff, rep(intro, 4)], motion=[(1, 0, "ED_FX", -26), (2, 0, "LEVEL", 80)])),
             ("GROOVE", dict(tracks=[log, rh, [], rep(groove, 4)])),

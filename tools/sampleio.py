@@ -253,6 +253,12 @@ def key_split(roots):
 SLOT_SIZE, SLOT_DATA_OFF, SLOT_RATE, SLOT_ZONES = 0x14000, 512, 22050, 16
 SLOT_HDR_LEN = 32 + SLOT_ZONES * 28
 SLOT_MAX_DATA = SLOT_SIZE - SLOT_DATA_OFF
+SLOT4_SIZE = 0x12000                               # EDDA OS's USR4 (eng_sample.c SMP_USER4_SIZE): 72 KiB
+
+
+def slot_max_data(k):
+    """slot k's (0..3) room for ADPCM: USR1..3 80 KiB, USR4 72 KiB, less the header"""
+    return (SLOT4_SIZE if k == 3 else SLOT_SIZE) - SLOT_DATA_OFF
 
 
 def note_from_name(name, default=60):
@@ -270,7 +276,7 @@ def to_int16(x):
     return [max(-32768, min(32767, int(v / pk * 30000))) for v in x]
 
 
-def user_slot(name, zones):
+def user_slot(name, zones, max_data=SLOT_MAX_DATA):
     """zones: [(int16 samples at SLOT_RATE, root, lo or None, hi or None)] -> (header bytes, ADPCM data).
     Zones without lo/hi split the keyboard between their roots."""
     zs, data = [], bytearray()
@@ -278,9 +284,9 @@ def user_slot(name, zones):
         adp, st = ima_encode(s, 0)
         zs.append(dict(off=len(data), n=len(s), ls=0, le=len(s) - 1, root=root, lo=lo, hi=hi, pred=st[0], idx=st[1]))
         data += adp
-    if len(data) > SLOT_MAX_DATA:
-        raise ValueError(f"too long: {len(data)} B of ADPCM, a slot holds {SLOT_MAX_DATA} B "
-                         f"({SLOT_MAX_DATA * 2 / SLOT_RATE:.1f} s in all)")
+    if len(data) > max_data:
+        raise ValueError(f"too long: {len(data)} B of ADPCM, the slot holds {max_data} B "
+                         f"({max_data * 2 / SLOT_RATE:.1f} s in all)")
     if not 1 <= len(zs) <= SLOT_ZONES:
         raise ValueError(f"1..{SLOT_ZONES} files per slot")
     zs.sort(key=lambda z: z["root"])
@@ -315,7 +321,7 @@ def trim_tail(x, floor=0.002, hold=0.02, sr=22050):
     return x[:min(len(x), end + int(hold * sr))]
 
 
-def kit_slot(name, pads, rates=KIT_RATES):
+def kit_slot(name, pads, rates=KIT_RATES, max_data=SLOT_MAX_DATA):
     """pads: 16 entries of (rate, [float samples]) or None (an empty pad) -> (header bytes, ADPCM data).
     Each pad is one zone at its note (KIT_PAD_NOTES), mono, 22050 Hz; when the kit does not fit the slot the
     longest pads are re-encoded at 11025 Hz, longest first, until it does (or the kit is refused)."""
@@ -345,10 +351,10 @@ def kit_slot(name, pads, rates=KIT_RATES):
             data += adp
         return zs, data
     zs, data = encode()
-    while len(data) > SLOT_MAX_DATA:
+    while len(data) > max_data:
         cand = [e for e in snd if e[2] + 1 < len(rates)]
         if not cand:
-            raise ValueError(f"too long: {len(data)} B of ADPCM at the lowest rate, a slot holds {SLOT_MAX_DATA} B")
+            raise ValueError(f"too long: {len(data)} B of ADPCM at the lowest rate, the slot holds {max_data} B")
         max(cand, key=lambda e: len(e[1]))[2] += 1    # the longest pad still at a higher rate: one rate down
         zs, data = encode()
     zb = b"".join(struct.pack("<5I2h4B", z["off"], z["n"], z["ls"], z["le"], z["rate"], z["root"] * 16, z["pred"],

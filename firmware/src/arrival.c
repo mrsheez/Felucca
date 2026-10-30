@@ -29,6 +29,7 @@ typedef struct {
     uint16_t mot;                /* the section's automation, 0 none */
     char name[7];                /* "INTRO", "DROP" (the SONG page) */
 } arv_sec_t;
+typedef struct { uint8_t slot, repeat; } arv_row_t;   /* a row of the arrangement: a section (all four tracks on it) */
 typedef struct {
     char name[20], shrt[13], chant[11], line[24];   /* the title (SAVE > ARRIVAL), the music's name once loaded (a
                                                    * project's 12), the Igbo chant word, the line it opens on */
@@ -36,7 +37,7 @@ typedef struct {
     uint16_t glob;                        /* global overrides (params: G_* ids) */
     arv_snd_t snd[NTRK];
     arv_sec_t sec[4];
-    chain_row_t row[CHAIN_ROWS];
+    arv_row_t row[CHAIN_ROWS];
 } arv_song_t;
 #include "edda_arrival.h"
 
@@ -68,9 +69,9 @@ static void arv_bar(uint32_t id, int32_t tr, step_t *st)
         }
         s->n = (uint8_t)(n < 4u ? n : 4u);
         if (h & 0x20u) {
-            s->flags = (uint8_t)(*b++ & (3u | SF_RATCH | SF_EDDA));
-            s->probability = *b++;
-            if (s->probability > 101u)
+            s->flags = (uint8_t)(*b++ & (3u | SF_RATCH));
+            s->probability = *b++;                    /* (a chance, or a condition: the fills, COND_FILL) */
+            if (s->probability >= COND_FIRST + NCOND)
                 s->probability = 0;
         }
     }
@@ -118,6 +119,7 @@ static void arv_section(uint32_t n, uint32_t s, chain_pattern_t *d)
         d->timing[k][2] = 0;
         d->timing[k][3] = (int16_t)clamp(arv_param(sg->snd[k].par, P_SGATE, TP[P_SGATE].def), TP[P_SGATE].min,
                                          TP[P_SGATE].max);
+        d->qnt[k] = 1;                                  /* QUANTIZE ON: every step on the grid (the EDDA rule) */
     }
     m = have ? sc->mot : 0u;
     if (m) {
@@ -158,6 +160,36 @@ static const char *arv_sec_name(uint32_t s)
     return ARV_SONGS[arv_cur - 1u].sec[s].name;
 }
 
+/* the SONG page's timeline of the song's sections (ui_graph.c graph_project_used, as project.c project_info for a
+ * slot): section s's name, each track's pattern length (1/48 quarters) and picture (steps_density); 0 for a section the
+ * song does not have. Decoded into a scratch source in the pool (main loop) */
+static uint32_t len48_of(int32_t len, int32_t div);
+static uint32_t steps_density(const step_t *st, int32_t len, uint8_t *n);
+static chain_pattern_t arv_scr __attribute__((section(".pool")));
+static int arv_info(uint32_t s, char *b, uint16_t *len48, uint32_t *den, uint8_t *n)
+{
+    const char *nm = arv_sec_name(s);
+    uint32_t k;
+    b[0] = 0;
+    if (len48)
+        memset(len48, 0, NTRK * sizeof *len48);
+    if (den) {
+        memset(den, 0, NTRK * sizeof *den);
+        memset(n, 0, NTRK);
+    }
+    if (!nm[0])
+        return 0;
+    str_cpy(b, nm, 13);
+    arv_section(arv_cur - 1u, s, &arv_scr);
+    for (k = 0; k < NTRK; k++) {
+        if (len48)
+            len48[k] = (uint16_t)len48_of(arv_scr.timing[k][0], arv_scr.timing[k][1]);
+        if (den)
+            den[k] = steps_density(arv_scr.step[k], arv_scr.timing[k][0], &n[k]);
+    }
+    return 1;
+}
+
 /* the globals a song sets (the sound of the room, the tempo); the others (the clock, MIDI, the tuning) are the
  * player's: a song never changes them */
 static int arv_glob_ok(uint32_t id)
@@ -182,10 +214,9 @@ static void arv_load(uint32_t n)
     arv_section(n, 0, a);                               /* section A: the tracks' steps, LEN DIV, the automation */
     memset(&chain_config, 0, sizeof chain_config);
     chain_config.count = (uint8_t)(sg->nrow < CHAIN_ROWS ? sg->nrow : CHAIN_ROWS);
-    for (i = 0; i < CHAIN_ROWS; i++) {
-        chain_config.row[i].slot = (uint8_t)(i < chain_config.count ? sg->row[i].slot & 3u : 0u);
-        chain_config.row[i].repeat = (uint8_t)(i < chain_config.count ? clamp(sg->row[i].repeat, 1, 16) : 1);
-    }
+    for (i = 0; i < CHAIN_ROWS; i++)                    /* (a section: the four tracks on its slot, song_chain.c) */
+        chain_config.row[i] = chain_row_of(i < chain_config.count ? sg->row[i].slot & 3u : 0u,
+                                           i < chain_config.count ? (uint32_t)clamp(sg->row[i].repeat, 1, 16) : 1u);
     motion = a->motion;
     memset(motion_active, 0, sizeof motion_active);
     motion_base_valid = 0;

@@ -11,6 +11,8 @@ static unsigned char host_samples[4][0x14000];
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
+#define MENU_NF (32u + FELUCCA_CPU2)                 /* 1.6.1 (core.h FELUCCA_CPU2, the default): 2ND CORE, id 32 */
+#define MENU_N (MENU_NF + 6u)                        /* EDDA OS: its six after Felucca's, ids 100..105 */
 
 static uint32_t host_progress = 1, host_erases, host_writes;
 static uint8_t host_wire[4096];
@@ -142,6 +144,29 @@ static int motion_locks(void)
     bad += check("MOTION op 6, 127: every lock goes, the automation stays", host_wire[6] == 0 && host_wire[8] == 1 &&
         host_wire[14] == 0 && !motion_lock_count(&trk[1]));
     motion_clear(&trk[1]);
+    /* 1.2 (INFO 41 01 00 01): 128 records; ops 1..7 reply as before (max 64, at most 64 records), op 8 all of them */
+    {
+        uint32_t i, ok = 1;
+        for (i = 0; i < MOTION_MAX - 1u; i++)            /* 127 on track 2: two ids a step */
+            ok &= !motion_set_event(&trk[1], i % NSTEP, i < NSTEP ? P_REV : P_DLY, (int16_t)(i % 100u));
+        a[1] = 5; a[2] = 63; a[3] = P_PAN; a[4] = (uint8_t)((-3 + 8192) & 127); a[5] = (uint8_t)((-3 + 8192) >> 7);
+        n = request(ED_MOTION, a, 6);                   /* the 128th: a lock of PAN -3 */
+        ok &= host_wire[6] == 0 && motion.count == MOTION_MAX && host_wire[8] == 64 && host_wire[9] == 64 &&
+              n == 5u + 5u + 64u * 4u + 64u + 1u;
+        bad += check("MOTION 1.2: 128 records on one track; op 5's reply as before: max 64, its first 64 listed", ok);
+        a[1] = 3; a[2] = 0; a[3] = P_CHOR; a[4] = 0; a[5] = 64;
+        n = request(ED_MOTION, a, 6);
+        bad += check("  the 129th: rc 2 (full)", host_wire[6] == 2 && motion.count == MOTION_MAX);
+        a[1] = 8; n = request(ED_MOTION, a, 2);
+        ok = n == 5u + 7u + 128u * 4u + 128u + 1u && host_wire[8] == 0 && host_wire[9] == 1 && host_wire[10] == 0 &&
+             host_wire[11] == 1 && host_wire[12 + 127u * 4u] == 63 && host_wire[13 + 127u * 4u] == P_PAN &&
+             ed_rv(&host_wire[14 + 127u * 4u]) == -3 && host_wire[12 + 128u * 4u + 127u] == 1 &&
+             host_wire[12 + 128u * 4u] == 0 && n <= sizeof ed_out;
+        bad += check("  op 8: count and max as two 7-bit bytes (128), all 128 records, then their kinds", ok);
+        a[1] = 8; a[2] = 0;
+        bad += check("  op 8 with a further byte: no reply", !request(ED_MOTION, a, 3));
+        motion_clear(&trk[1]);
+    }
     return bad;
 }
 
@@ -151,20 +176,30 @@ static int preferences(void)
     uint8_t a[4] = {0, 7, 0, 0};
     reset();
     uint32_t n = request(ED_INFO, a, 0);
+    uint32_t e = n - 6u;                                  /* (1.5.5: 4B 01 NCOND, 1.6: 45 01 5 last, below) */
     bad += check("INFO explicitly tags display capabilities after SONG without changing command 33",
         ED_SONG == 33 && ED_UI_STATE == 34 && ED_FAV_SET == 38 &&
-        host_wire[n - 31] == CHAIN_ROWS && host_wire[n - 30] == 0x55 &&
-        host_wire[n - 29] == 1 && host_wire[n - 28] == 9 &&
-        host_wire[n - 27] == 0x4d && host_wire[n - 26] == 1 &&
-        host_wire[n - 25] == MOTION_MAX && host_wire[n - 24] == 1 &&
-        host_wire[n - 23] == 0x42 && host_wire[n - 22] == 1 && host_wire[n - 21] == 3 &&
-        host_wire[n - 20] == 0x46 && host_wire[n - 19] == 1 && host_wire[n - 18] == FM6_NFACTORY &&
-        host_wire[n - 17] == 0 &&                        /* (no bank since 1.0.3) */
-        host_wire[n - 16] == 0x53 && host_wire[n - 15] == 1 && host_wire[n - 14] == 3 &&
-        host_wire[n - 13] == 0x50 && host_wire[n - 12] == 1 && host_wire[n - 11] == 3 &&   /* FM6 v2: no bank, preset patches */
-        host_wire[n - 10] == 0x4E && host_wire[n - 9] == 1 && host_wire[n - 8] == 25 &&   /* MENU settings: 25 items (1.2 + EDDA OS) */
-        host_wire[n - 7] == 0x52 && host_wire[n - 6] == 1 && host_wire[n - 5] == 4 &&   /* RATCH */
-        host_wire[n - 4] == 0x4C && host_wire[n - 3] == 1 && host_wire[n - 2] == 1);   /* 1.1 parameter locks */
+        host_wire[e - 47] == CHAIN_ROWS && host_wire[e - 46] == 0x55 &&
+        host_wire[e - 45] == 1 && host_wire[e - 44] == 9 &&
+        host_wire[e - 43] == 0x4d && host_wire[e - 42] == 1 &&
+        host_wire[e - 41] == 64u && host_wire[e - 40] == 1 &&   /* (64 kept: 41 01 says 128) */
+        host_wire[e - 39] == 0x42 && host_wire[e - 38] == 1 && host_wire[e - 37] == 3 &&
+        host_wire[e - 36] == 0x46 && host_wire[e - 35] == 1 && host_wire[e - 34] == FM6_NFACTORY &&
+        host_wire[e - 33] == 0 &&                        /* (no bank since 1.0.3) */
+        host_wire[e - 32] == 0x53 && host_wire[e - 31] == 1 && host_wire[e - 30] == 3 &&
+        host_wire[e - 29] == 0x50 && host_wire[e - 28] == 1 && host_wire[e - 27] == 3 &&   /* FM6 v2: no bank, preset patches */
+        host_wire[e - 26] == 0x4E && host_wire[e - 25] == 1 && host_wire[e - 24] == MENU_N &&   /* MENU settings: 33 items (1.6.1: 2ND CORE; a FELUCCA_CPU2=0 build 32) */
+        host_wire[e - 23] == 0x52 && host_wire[e - 22] == 1 && host_wire[e - 21] == 4 &&   /* RATCH */
+        host_wire[e - 20] == 0x4C && host_wire[e - 19] == 1 && host_wire[e - 18] == 1 &&   /* 1.1 parameter locks */
+        host_wire[e - 17] == 0x41 && host_wire[e - 16] == 1 && host_wire[e - 15] == 0 && host_wire[e - 14] == 1 &&   /* 1.2: 128 */
+        host_wire[e - 13] == 0x54 && host_wire[e - 12] == 1 && host_wire[e - 11] == NUDGE_DIV &&   /* 1.2: NUDGE */
+        host_wire[e - 10] == 0x57 && host_wire[e - 9] == 1 && host_wire[e - 8] == NTRK &&   /* 1.2: SONG lanes */
+        host_wire[e - 7] == 0x56 && host_wire[e - 6] == 1 && host_wire[e - 5] == 32 &&   /* 1.4.1: FM6 voice bank */
+        host_wire[e - 4] == 0x43 && host_wire[e - 3] == 1 && host_wire[e - 2] == ML_N);   /* 1.5: MIDI LEARN */
+    bad += check("INFO 1.5.5: 4B 01 11, a step's condition after its nudge",
+        host_wire[n - 7] == 0x4B && host_wire[n - 6] == 1 && host_wire[n - 5] == NCOND);
+    bad += check("INFO 1.6: 45 01 5, CUSTOM's colours, last",
+        host_wire[n - 4] == 0x45 && host_wire[n - 3] == 1 && host_wire[n - 2] == 5);
     request(ED_UI_SET, a, 2);
     bad += check("UI_SET updates the actual palette and reports RAM-only saving",
         host_wire[5] == 3 && settings.palette == 7 && T_BG == UI_PALETTES[7].bg);
@@ -278,10 +313,10 @@ static int steps(void)
     reset();
     TSEL->step[0].hit = TSEL->step[0].acc = 0x80;
     bad += check("legacy 8-byte step writes preserve lane data",
-                 request(ED_STEP_SET, a, 9) == 20u && TSEL->step[0].note[0] == 60 &&
+                 request(ED_STEP_SET, a, 9) == 22u && TSEL->step[0].note[0] == 60 &&
                  TSEL->step[0].hit == 0x80 && TSEL->step[0].acc == 0x80);
     bad += check("full grid step writes preserve high lane bits and constrain accents",
-                 request(ED_STEP_SET, a, 12) == 20u && TSEL->step[0].hit == 0x92 && TSEL->step[0].acc == 2);
+                 request(ED_STEP_SET, a, 12) == 22u && TSEL->step[0].hit == 0x92 && TSEL->step[0].acc == 2);
     before = TSEL->step[0]; a[2] = 71;
     for (n = 2; n <= sizeof a; n++) {
         if (n == 9u || n == 12u || n == 13u) continue;   /* (14: a[13], the ratchet, 0 is refused) */
@@ -290,7 +325,7 @@ static int steps(void)
     bad += check("partial or oversized step payloads never mutate a valid step", ok);
     a[0] = 1; a[1] = 0; memcpy(a + 2, (const uint8_t[]){1,64,0,0,0,ST_NOTE,0,99}, 8);
     bad += check("TRACK_STEP accepts its legacy payload on an unselected track",
-                 request(ED_TRACK_STEP, a, 10) == 21u && trk[1].step[0].note[0] == 64 && song.sel == 0);
+                 request(ED_TRACK_STEP, a, 10) == 23u && trk[1].step[0].note[0] == 64 && song.sel == 0);
     before = trk[1].step[0]; a[3] = 65;
     bad += check("TRACK_STEP rejects an incomplete grid extension",
                  !request(ED_TRACK_STEP, a, 11) && !memcmp(&before, &trk[1].step[0], sizeof before));
@@ -298,36 +333,66 @@ static int steps(void)
     memcpy(a, (const uint8_t[]){0, 1, 60, 0, 0, 0, ST_NOTE, SF_ACCENT, 100, 0, 0, 0, 80, 3}, 14);
     n = request(ED_STEP_SET, a, 14);
     bad += check("STEP_SET with the ratchet: x3 kept, replied after the chance, flags without it",
-                 n == 20u && step_ratchet(&TSEL->step[0]) == 3u && step_chance(&TSEL->step[0]) == 80u &&
-                 host_wire[n - 2] == 3 && host_wire[n - 3] == 80 && host_wire[12] == SF_ACCENT);
+                 n == 22u && step_ratchet(&TSEL->step[0]) == 3u && step_chance(&TSEL->step[0]) == 80u &&
+                 host_wire[n - 4] == 3 && host_wire[n - 5] == 80 && host_wire[n - 3] == 8 && host_wire[12] == SF_ACCENT);
     a[7] = SF_SLIDE; n = request(ED_STEP_SET, a, 13);
-    ok = n == 20u && step_ratchet(&TSEL->step[0]) == 3u && TSEL->step[0].flags == (SF_SLIDE | 2u << SF_RATCH_SH);
+    ok = n == 22u && step_ratchet(&TSEL->step[0]) == 3u && TSEL->step[0].flags == (SF_SLIDE | 2u << SF_RATCH_SH);
     n = request(ED_STEP_SET, a, 9);
     bad += check("STEP_SET without the ratchet (an older editor) keeps the step's own",
-                 ok && n == 20u && step_ratchet(&TSEL->step[0]) == 3u);
+                 ok && n == 22u && step_ratchet(&TSEL->step[0]) == 3u);
     before = TSEL->step[0]; ok = 1;
     for (n = 0; n < 8u; n++) {
         a[13] = (uint8_t)(n < 4u ? 0u : 5u + n);
         ok &= !request(ED_STEP_SET, a, 14) && !memcmp(&before, &TSEL->step[0], sizeof before);
     }
     bad += check("STEP_SET refuses a ratchet outside 1..4 and leaves the step", ok);
-    {   /* EDDA OS: a step's nudge and fill flags are the device's: STEP_SET (any length) keeps them */
-        step_set_nudge(&TSEL->step[0], -2);
-        TSEL->step[0].flags |= SF_FILL;
-        memcpy(a, (const uint8_t[]){0, 1, 62, 0, 0, 0, ST_NOTE, SF_ACCENT, 100, 0, 0, 0, 80, 2}, 14);
-        n = request(ED_STEP_SET, a, 14);
-        ok = n == 20u && step_nudge(&TSEL->step[0]) == -2 && (TSEL->step[0].flags & SF_FILL) && step_ratchet(&TSEL->step[0]) == 2u &&
-             (TSEL->step[0].flags & SF_ACCENT) && host_wire[12] == SF_ACCENT;   /* (the reply's flags: accent | slide only) */
-        n = request(ED_STEP_SET, a, 9);
-        ok &= n == 20u && step_nudge(&TSEL->step[0]) == -2 && (TSEL->step[0].flags & SF_FILL);
-        bad += check("STEP_SET keeps the step's nudge and fill (EDDA OS); the reply's flags stay accent | slide", ok);
-    }
     memcpy(a, (const uint8_t[]){1, 2, 1, 64, 0, 0, 0, ST_NOTE, 0, 99, 0, 0, 0, 100, 4}, 15);
     n = request(ED_TRACK_STEP, a, 15);
-    ok = n == 21u && step_ratchet(&trk[1].step[2]) == 4u && host_wire[n - 2] == 4;
+    ok = n == 23u && step_ratchet(&trk[1].step[2]) == 4u && host_wire[n - 4] == 4;
     a[14] = 1; n = request(ED_TRACK_STEP, a, 15);
     bad += check("TRACK_STEP sets the ratchet of any track (x4, then back to x1)",
-                 ok && n == 21u && step_ratchet(&trk[1].step[2]) == 1u && !(trk[1].step[2].flags & SF_RATCH));
+                 ok && n == 23u && step_ratchet(&trk[1].step[2]) == 1u && !(trk[1].step[2].flags & SF_RATCH));
+    /* NUDGE (1.2, INFO 54 01 16): the nudge + 8 after the ratchet, both ways; a write without it keeps the step's */
+    memcpy(a, (const uint8_t[]){0, 1, 60, 0, 0, 0, ST_NOTE, SF_ACCENT, 100, 0, 0, 0, 80, 1, 8 - 5}, 15);
+    n = request(ED_STEP_SET, a, 15);
+    ok = n == 22u && step_nudge(&TSEL->step[0]) == -5 && host_wire[n - 3] == 3 && host_wire[12] == SF_ACCENT &&
+         (TSEL->step[0].flags & (SF_ACCENT | SF_SLIDE)) == SF_ACCENT;
+    a[7] = SF_SLIDE; n = request(ED_STEP_SET, a, 14);
+    ok &= n == 22u && step_nudge(&TSEL->step[0]) == -5 && host_wire[12] == SF_SLIDE;
+    n = request(ED_STEP_SET, a, 9);
+    ok &= step_nudge(&TSEL->step[0]) == -5;
+    bad += check("STEP_SET with the nudge (-5): kept, replied + 8 after the ratchet; a write without it keeps it", ok);
+    before = TSEL->step[0];
+    a[14] = 16;
+    bad += check("STEP_SET refuses a nudge byte above 15 and leaves the step",
+                 !request(ED_STEP_SET, a, 15) && !memcmp(&before, &TSEL->step[0], sizeof before));
+    memcpy(a, (const uint8_t[]){2, 7, 1, 64, 0, 0, 0, ST_NOTE, 0, 99, 0, 0, 0, 100, 1, 15}, 16);
+    n = request(ED_TRACK_STEP, a, 16);
+    bad += check("TRACK_STEP sets the nudge of any track (+7)", n == 23u && step_nudge(&trk[2].step[7]) == 7 &&
+                 host_wire[n - 3] == 15);
+    /* 1.5.5 (#209, INFO 4B 01 11): the condition after the nudge (0 none, 1..11), replied with the chance 100 before
+     * it; a write without it and a chance of 100 keeps the condition (an editor that does not know them), another
+     * chance replaces it */
+    memcpy(a, (const uint8_t[]){0, 1, 60, 0, 0, 0, ST_NOTE, 0, 100, 0, 0, 0, 100, 1, 8, 6}, 16);
+    n = request(ED_STEP_SET, a, 16);
+    ok = n == 22u && step_cond(&TSEL->step[0]) == 6u && host_wire[n - 2] == 6 && host_wire[n - 5] == 100;
+    n = request(ED_STEP_SET, a, 13);                  /* (chance 100, no condition byte) */
+    ok &= n == 22u && step_cond(&TSEL->step[0]) == 6u;
+    a[12] = 40; n = request(ED_STEP_SET, a, 13);
+    ok &= step_chance(&TSEL->step[0]) == 40u && !step_cond(&TSEL->step[0]) && host_wire[n - 2] == 0;
+    a[12] = 100; a[15] = 10; n = request(ED_STEP_SET, a, 16);
+    ok &= step_cond(&TSEL->step[0]) == COND_FILL;
+    a[15] = 0; n = request(ED_STEP_SET, a, 16);
+    ok &= !TSEL->step[0].probability;
+    bad += check("STEP_SET with the condition (1:4, FILL, none); without it a chance of 100 keeps it, 40 % replaces it", ok);
+    before = TSEL->step[0];
+    a[15] = NCOND + 1u;
+    bad += check("STEP_SET refuses a condition byte above 11 and leaves the step",
+                 !request(ED_STEP_SET, a, 16) && !memcmp(&before, &TSEL->step[0], sizeof before));
+    memcpy(a, (const uint8_t[]){3, 9, 1, 64, 0, 0, 0, ST_NOTE, 0, 99, 0, 0, 0, 100, 1, 8, 11}, 17);
+    n = request(ED_TRACK_STEP, a, 17);
+    bad += check("TRACK_STEP sets the condition of any track (!FILL)", n == 23u && step_cond(&trk[3].step[9]) == COND_NFILL &&
+                 host_wire[n - 2] == 11);
     return bad;
 }
 
@@ -371,7 +436,7 @@ static int samples(void)
     bad += check("END cannot change published sample zones without BEGIN",
                  request(ED_SMP_END, a, n) == 8u && host_wire[6] == 2 && host_writes == 2 &&
                  usr_zone[0][0].rate == 65536u);
-    {   /* EDDA OS: the 4th slot (slot 3 at 0xE7000) over the same commands; SMP_INFO lists 4; slot 4 is refused */
+    {   /* EDDA OS: the 4th slot (slot 3 at 0xEA000, 72 KiB) over the same commands; SMP_INFO lists 4; slot 4 is refused */
         uint32_t w0 = host_writes, e0 = host_erases;
         int ok;
         h.zone[0].rate = 65536;
@@ -393,9 +458,20 @@ static int samples(void)
                 while (host_wire[p]) p++;
                 p += 2u;
             }
-            ok &= nz[0] == 1u && nz[1] == 0u && nz[2] == 0u && nz[3] == 1u && host_wire[p] == 0xF7u;
+            ok &= nz[0] == 1u && nz[1] == 0u && nz[2] == 0u && nz[3] == 1u && host_wire[p] == 80u &&
+                  host_wire[p + 1u] == 80u && host_wire[p + 2u] == 80u && host_wire[p + 3u] == 72u &&   /* (each slot's KiB) */
+                  host_wire[p + 4u] == 0xF7u;
         }
-        bad += check("EDDA OS: slot 3 (USR4, flash 0xE7000) takes BEGIN / WRITE / END like the others; SMP_INFO lists 4 slots; slot 4 is no slot", ok);
+        {   /* USR4 is 72 KiB: a write past it is refused, its last 256 bytes taken */
+            a[0] = 3;
+            ok &= request(ED_SMP_BEGIN, a, 1) == 8u && !host_wire[6] && !usr_nz[3];
+            a[0] = 3; a[1] = 0; a[2] = 0x12000u >> 7 & 0x7Fu; a[3] = 0x12000u >> 14;
+            n = pack7(data, 256, a + 4) + 4u;
+            ok &= request(ED_SMP_WRITE, a, n) == 11u && host_wire[9] != 0u;
+            a[0] = 3; a[1] = 0; a[2] = (0x12000u - 0x100u) >> 7 & 0x7Fu; a[3] = (0x12000u - 0x100u) >> 14;
+            ok &= request(ED_SMP_WRITE, a, n) == 11u && host_wire[9] == 0u;
+        }
+        bad += check("EDDA OS: slot 3 (USR4, flash 0xEA000, 72 KiB) takes BEGIN / WRITE / END like the others; SMP_INFO lists 4 slots and their KiB; slot 4 is no slot", ok);
     }
     song.playing = 1; host_progress = 0; a[0] = 0; a[1] = 0;
     bad += check("user-preset STORE does not mutate RAM when audio cannot stop",
@@ -421,6 +497,42 @@ static int song_protocol(void)
                  request(ED_SONG, a, sizeof a) == 14u && host_wire[6] == 2 && !memcmp(&before, &chain_config, sizeof before));
     chain.armed = 0; a[0] = 2;
     bad += check("SONG PLAY refuses extra argument bytes", !request(ED_SONG, a, 2) && !transport_req);
+    {   /* 1.2 (`57 01 04`): sections with a slot per track, ops 4..7; the v6 ops see each section's clock lane */
+        static const uint8_t set[] = {5, 2, 0, 1, CHAIN_SILENT, 0, 3, CHAIN_SILENT, CHAIN_SILENT, CHAIN_SILENT, CHAIN_SILENT, 1};
+        static const uint8_t q4[] = {4}, q0[] = {0}, bad5[] = {5, 1, 0, 0, 5, 0, 1}, old4[] = {1, 1, CHAIN_SILENT, 1};
+        static const uint8_t info[] = {0};
+        uint32_t n, i, tag = 0;
+        reset();
+        n = request(ED_SONG, set, sizeof set);
+        bad += check("SONG op 5 sets sections (T1 A, T2 B, T3 -, T4 A x3; all - x1), the reply in lanes",
+                     n == 5u + 6u + 2u * 5u + 1u && host_wire[5] == 5 && !host_wire[6] && host_wire[7] == 2 &&
+                     !memcmp(host_wire + 11, set + 2, 10) && chain_config.count == 2 &&
+                     !memcmp(&chain_config.row[0], &(chain_row_t){{0, 1, CHAIN_SILENT, 0}, 3}, sizeof(chain_row_t)) &&
+                     chain_config.row[1].slot[0] == CHAIN_SILENT && chain_config.row[1].repeat == 1);
+        n = request(ED_SONG, q4, 1);
+        bad += check("SONG op 4 queries them as set", n == 22u && host_wire[5] == 4 && !memcmp(host_wire + 11, set + 2, 10));
+        n = request(ED_SONG, q0, 1);
+        bad += check("SONG op 0 (v6 editors): a row per section, its clock lane's slot (T1 A; all - : A)",
+                     n == 16u && host_wire[11] == 0 && host_wire[12] == 3 && host_wire[13] == 0 && host_wire[14] == 1);
+        bad += check("SONG op 5: a slot past - (5) refused, the sections kept",
+                     request(ED_SONG, bad5, sizeof bad5) == 22u && host_wire[6] == 1 && chain_config.count == 2);
+        bad += check("SONG op 1 (v6): no - in a row of one slot", request(ED_SONG, old4, sizeof old4) == 16u &&
+                     host_wire[6] == 1 && chain_config.count == 2);
+        chain.armed = 1;
+        bad += check("SONG op 5 waits for a pending start (rc 2)", request(ED_SONG, set, sizeof set) == 22u && host_wire[6] == 2);
+        chain.armed = 0;
+        n = request(ED_INFO, info, 0);
+        for (i = 5; i + 2u < n; i++)
+            if (host_wire[i] == 0x57 && host_wire[i + 1u] == 1 && host_wire[i + 2u] == NTRK) tag = 1;
+        bad += check("INFO says the lanes: 57 01 04", tag);
+        {
+            uint8_t q[4] = {0, P_SQNT, 0, 0};
+            trk[0].p[P_SQNT] = 1; chain.running = 1;
+            request(ED_SET, q, 4);
+            chain.running = 0;
+            bad += check("SET of QUANTIZE waits while a song plays (its slots set it)", trk[0].p[P_SQNT] == 1);
+        }
+    }
     return bad;
 }
 
@@ -565,9 +677,9 @@ static int fm6_patches(void)
 /* UP_PUT -> UP_GET: every value round-trips through the v4 record (a byte each), negative ones too */
 static int user_preset_roundtrip(void)
 {
-    static uint8_t a[16 + 2u * P_COUNT + 32u];
+    static uint8_t a[16 + 2u * P_COUNT + 32u + 18u];
     int16_t want[P_COUNT], got[P_COUNT];
-    uint32_t k = 0, i, p, ok;
+    uint32_t k = 0, i, p, ok, n;
     int bad = 0;
     reset();
     a[k++] = 3; a[k++] = 0;                                /* slot U04, ANALOG */
@@ -599,6 +711,28 @@ static int user_preset_roundtrip(void)
     for (i = 0; i < 16u; i++, p += 2u)
         ok &= host_wire[p] == (i & 1u ? 0u : 48u + i);
     bad += check("UP_GET returns the values and the pattern UP_PUT sent", ok);
+    bad += check("  .. then kind 0 and (1.2) the category: none sent, ANALOG's (OTHER)",
+                 host_wire[p] == 0u && host_wire[p + 1u] == CAT_OTHER && host_wire[p + 2u] == 0xF7);
+    {   /* 1.2 (Discussion #90): UP_PUT's category after the kind's 16 bytes; UP_LIST lists the categories after the slots */
+        uint32_t k0 = k;
+        a[k++] = 0;
+        for (i = 0; i < 16u; i++) a[k++] = 0;
+        a[k++] = CAT_PAD;
+        a[0] = 3;
+        request(ED_UP_PUT, a, k);
+        ok = host_wire[6] != 1u && up_cat(3) == CAT_PAD;
+        a[k - 1u] = CAT_N;
+        request(ED_UP_PUT, a, k);
+        ok &= host_wire[6] == 1u && up_cat(3) == CAT_PAD;
+        a[0] = 3;
+        request(ED_UP_GET, a, 1);
+        ok &= host_wire[p] == 0u && host_wire[p + 1u] == CAT_PAD;
+        a[0] = 2; a[1] = 2;
+        n = request(ED_UP_LIST, a, 2);
+        ok &= host_wire[5] == 2u && host_wire[6] == 2u && host_wire[n - 3u] == 0u && host_wire[n - 2u] == CAT_PAD;
+        bad += check("UP_PUT with a category (after the kind's 16 bytes; past the last: rc 1), UP_GET and UP_LIST give it", ok);
+        k = k0;
+    }
     return bad;
 }
 
@@ -766,7 +900,7 @@ static int usb_burst(void)
 }
 
 /* ---- MENU_DESC / MENU_SET (72, 73): the menu's settings over the editor ---- */
-typedef struct { uint32_t index, id, kind, nnames, tab, rest; int32_t value, min, max; char name[16], names[26][12], tabname[16]; } menu_item_t;
+typedef struct { uint32_t index, id, kind, nnames, tab, rest; int32_t value, min, max; char name[16], names[26][12], tabname[16], unit[16]; } menu_item_t;
 static uint32_t menu_desc(uint32_t index, menu_item_t *it)   /* the reply's payload length; it parsed */
 {
     uint8_t a[1] = {(uint8_t)index};
@@ -779,7 +913,11 @@ static uint32_t menu_desc(uint32_t index, menu_item_t *it)   /* the reply's payl
     it->value = ed_rv(host_wire + 8); it->min = ed_rv(host_wire + 10); it->max = ed_rv(host_wire + 12);
     for (k = 0; p < n - 1u && host_wire[p] && k < 15u; ) it->name[k++] = (char)host_wire[p++];
     p++;
-    while (p < n - 1u && it->nnames < 26u && (int32_t)it->nnames < it->max - it->min + 1) {   /* (kind 0: max - min + 1) */
+    if (it->kind == 1u) {                                   /* (a number: its unit, then the tab) */
+        for (k = 0; p < n - 1u && host_wire[p] && k < 15u; ) it->unit[k++] = (char)host_wire[p++];
+        p++;
+    }
+    while (it->kind == 0u && p < n - 1u && it->nnames < 26u && (int32_t)it->nnames < it->max - it->min + 1) {   /* (kind 0: max - min + 1) */
         for (k = 0; p < n - 1u && host_wire[p] && k < 11u; ) it->names[it->nnames][k++] = (char)host_wire[p++];
         p++; it->nnames++;
     }
@@ -798,39 +936,59 @@ static uint32_t menu_set(uint32_t id, int32_t v)            /* -> rc; host_wire[
     uint32_t n = request(ED_MENU_SET, a, 3);
     return n == 10u && host_wire[4] == ED_MENU_SET ? host_wire[5] : 99u;
 }
+#define TCH_NAMES "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,OMNI,OFF"
 static int menu_protocol(void)
 {
-    /* EDDA OS: 25 items; 1.0.4's 12, 1.1's and 1.2's six, then KEY SHOW CUES ACT RUN REVEAL (the EDDA tab between AUDIO and SYSTEM),
-     * SEQ OUT (appended: its row is between SHOW CUES and ACT), SELECT (a row of CONTROL) */
-    static const char *const WANT[25][2] = {
-        {"COLOR", 0}, {"STYLE", "FLAT,LINE"}, {"LARGE", "OFF,ON"}, {"ANIM", "ON,OFF"}, {"LEDS", "OFF,DIM LO,DIM HI,INV"},
+    static const char *const WANT[MENU_N][2] = {
+        {"COLOR", 0}, {"STYLE", "FLAT,LINE"}, {"LARGE", "OFF,ON"}, {"ANIM", "ON,OFF,IDLE"}, {"LEDS", "OFF,DIM LO,DIM HI,INV,INV LO,INV HI"},
         {"HOLD", "0.3 s,0.4 s,0.5 s,0.6 s"}, {"KNOB ACCEL", "OFF,ON"}, {"FX LATCH", "OFF,ON"}, {"BPM LOCK", "OFF,ON"},
         {"SPEAKER EQ", "FLAT,LOWCUT,BASS+"}, {"USB LEVEL", "MASTER,FIXED"}, {"USB SERIAL", "ON,OFF"},
         {"CLICK", "OFF,REC,ON"}, {"CLICK LEVEL", "LOW,MID,HIGH"}, {"COUNT-IN", "OFF,1 BAR,2 BARS"},   /* (1.1: appended) */
         {"RESTORE LAST", "ON,OFF"}, {"SCALE LEDS", "OFF,ON"},                                        /* (1.2) */
         {"SCREEN OFF", "NEVER,5 MIN,15 MIN,30 MIN,60 MIN"},
-        {"KEY", "OFF,1A,1B,2A,2B,3A,3B,4A,4B,5A,5B,6A,6B,7A,7B,8A,8B,9A,9B,10A,10B,11A,11B,12A,12B"},
+        {"SCOPE", "OUT,MIX"}, {"STEP PREVIEW", "OFF,ON"}, {"CHORD ENTRY", "HOLD,ADD"},                  /* (1.2) */
+        {"MIDI IN", "CH1-4,SEL,CH5-8,CH9-12,CH13-16,TRACK"}, {"TUNE", 0},   /* (1.2: the project's ROUT and TUNE; TUNE a number) */
+        {"HOME", "SCOPE,TRACKS,LEVELS"},                                                       /* (1.3; 1.5: LEVELS) */
+        {"HELP", "OFF,ON"},                                                                          /* (1.5) */
+        {"SELECT", "BPM,PAGE,MODW,VEL,ALL"},                                                         /* (1.5.5; 1.5.6 MODW VEL; EDDA OS ALL) */
+        {"T1 CHANNEL", TCH_NAMES}, {"T2 CHANNEL", TCH_NAMES}, {"T3 CHANNEL", TCH_NAMES}, {"T4 CHANNEL", TCH_NAMES},   /* (1.5.5) */
+        {"AUTO SELECT", "OFF,ON"}, {"SCREEN WAKE", "+MIDI,PANEL"},                                   /* (1.5.5) */
+#if FELUCCA_CPU2
+        {"2ND CORE", "OFF,ON (BETA)"},                                                            /* (1.6.1; OFF the default) */
+#endif
+        {"KEY", "OFF,1A,1B,2A,2B,3A,3B,4A,4B,5A,5B,6A,6B,7A,7B,8A,8B,9A,9B,10A,10B,11A,11B,12A,12B"},   /* (EDDA OS, ids 100..) */
         {"SHOW CUES", "OFF,ON"}, {"ACT", "1 BULB,2 BULBS,3 BULBS,4 BULBS,5 BULBS"}, {"RUN", "SHORT,LONG"}, {"REVEAL", "OFF,ON"},
-        {"SEQ OUT", "OFF,NOTES,+CLOCK"}, {"SELECT", "TEMPO,PAGES"}};
-    static const int32_t DEF[25] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
-    static const uint8_t TAB[25] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 4, 2, 2, 2, 4, 1, 0, 3, 3, 3, 3, 3, 3, 1};      /* DISPLAY CONTROL AUDIO EDDA SYSTEM */
-    static const char *const TABN[5] = {"DISPLAY", "CONTROL", "AUDIO", "EDDA", "SYSTEM"};
+        {"SEQ OUT", "OFF,NOTES,+CLOCK"}};
+    static const int32_t DEF[MENU_N] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 0, 0,
+#if FELUCCA_CPU2
+                                        0,
+#endif
+                                        0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
+    static const uint8_t TAB[MENU_N] = {0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 5, 2, 2, 2, 5, 1, 0, 0, 1, 1, 3, 2, 0, 5, 1, 3, 3, 3, 3, 3, 3,
+#if FELUCCA_CPU2
+                                        5,
+#endif
+                                        4, 4, 4, 4, 4, 4};   /* DISPLAY CONTROL AUDIO MIDI EDDA SYSTEM (1.2; EDDA OS: its tab) */
+    static const char *const TABN[6] = {"DISPLAY", "CONTROL", "AUDIO", "MIDI", "EDDA", "SYSTEM"};
     int bad = 0, ok = 1;
     uint32_t i, k, n;
     menu_item_t it;
-    char joined[96];
+    char joined[128];
     const char *json = getenv("MENU_JSON");
     FILE *jf = json ? fopen(json, "w") : 0;
     reset();
     if (jf) fprintf(jf, "[");
-    for (i = 0; i < 25u; i++) {
+    for (i = 0; i < MENU_N; i++) {
         n = menu_desc(i, &it);
         joined[0] = 0;
         for (k = 0; k < it.nnames; k++) { if (k) strcat(joined, ","); strcat(joined, it.names[k]); }
-        ok &= n > 10u && it.index == i && it.id == i && it.kind == 0 && it.min == 0 &&
-              it.max + 1 == (int32_t)it.nnames && !strcmp(it.name, WANT[i][0]) &&
-              (WANT[i][1] ? !strcmp(joined, WANT[i][1]) : it.nnames == NPALETTES) &&
-              it.value == (DEF[i] < 0 ? (int32_t)settings.palette : DEF[i]) &&
+        ok &= i == 22u ? n > 10u && it.index == i && it.id == i && it.kind == 1 && it.min == -50 && it.max == 50 &&
+                         !it.nnames && !strcmp(it.unit, "ct") && !strcmp(it.name, "TUNE")     /* (a number: cents) */
+                       : n > 10u && it.index == i && it.id == (i < MENU_NF ? i : 100u + i - MENU_NF) && it.kind == 0 &&
+                         it.min == 0 && !it.unit[0] &&
+                         it.max + 1 == (int32_t)it.nnames && !strcmp(it.name, WANT[i][0]) &&
+                         (WANT[i][1] ? !strcmp(joined, WANT[i][1]) : it.nnames == NPALETTES);
+        ok &= it.value == (DEF[i] < 0 ? (int32_t)settings.palette : DEF[i]) &&
               it.tab == TAB[i] && !strcmp(it.tabname, TABN[TAB[i]]) && !it.rest;
         if (i == 0)
             for (k = 0; k < NPALETTES; k++) ok &= !strcmp(it.names[k], UI_PALETTES[k].name);
@@ -839,12 +997,12 @@ static int menu_protocol(void)
             fprintf(jf, "%s\n {\"id\":%u,\"kind\":%u,\"min\":%d,\"max\":%d,\"value\":%d,\"name\":\"%s\",\"names\":[", i ? "," : "",
                     it.id, it.kind, it.min, it.max, it.value, it.name);
             for (k = 0; k < it.nnames; k++) fprintf(jf, "%s\"%s\"", k ? "," : "", it.names[k]);
-            fprintf(jf, "],\"tab\":%u,\"tabName\":\"%s\"}", it.tab, it.tabname);
+            fprintf(jf, "],\"unit\":\"%s\",\"tab\":%u,\"tabName\":\"%s\"}", it.unit, it.tab, it.tabname);
         }
     }
     if (jf) { fprintf(jf, "]\n"); fclose(jf); }
-    bad += check("MENU_DESC: 25 items (1.0.4's 12 in the menu's order, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, EDDA OS's KEY, SHOW CUES, ACT, RUN, REVEAL, SEQ OUT, SELECT), ids 0..24, names, defaults", ok);
-    bad += check("MENU_DESC (1.0.5): after the names each item's tab, index and name (DISPLAY CONTROL AUDIO EDDA SYSTEM)", ok);
+    bad += check(FELUCCA_CPU2 ? "MENU_DESC: 39 items (... 1.5.5, then 1.6.1 2ND CORE id 32: OFF / ON (BETA), OFF by default; then EDDA OS's KEY SHOW CUES ACT RUN REVEAL SEQ OUT, ids 100..105), names, defaults" : "MENU_DESC (FELUCCA_CPU2=0): 38 items (1.0.4's 12 in the menu's order, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, 1.2's SCOPE, STEP PREVIEW, CHORD ENTRY, MIDI IN, TUNE, 1.3's HOME, 1.5's HELP, 1.5.5's SELECT, T1..T4 CHANNEL, AUTO SELECT, SCREEN WAKE, EDDA OS's six), ids 0..31 and 100..105, names, defaults; TUNE a number -50..50 ct", ok);
+    bad += check("MENU_DESC (1.0.5): after the names (TUNE: the unit) each item's tab, index and name (DISPLAY CONTROL AUDIO MIDI EDDA SYSTEM)", ok);
     {   /* an older editor reads the names and stops: the tab is past them, nothing it reads moved */
         uint32_t m = menu_desc(4, &it), p = 14, q;
         for (q = 0; q < 1u + it.nnames; q++) { while (host_wire[p]) p++; p++; }   /* name, the names */
@@ -853,14 +1011,14 @@ static int menu_protocol(void)
         bad += check("MENU_DESC: the tab comes after every byte of the 1.0.4 reply (older editors ignore it)", ok);
     }
     ok = 1;
-    for (i = 0; i < 25u; i++) {
+    for (i = 0; i < MENU_N; i++) {
         menu_desc(i, &it);
-        ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "ABOUT");
+        ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "ABOUT") && strcmp(it.name, "INFO");
     }
-    n = menu_desc(25, &it);
-    ok &= n == 2u && it.index == 25 && it.id == 127;
+    n = menu_desc(MENU_N, &it);
+    ok &= n == 2u && it.index == MENU_N && it.id == 127;
     n = menu_desc(127, &it);
-    bad += check("MENU_DESC: no CALIBRATION / ABOUT; an index past the list answers index, 127 (no item)",
+    bad += check("MENU_DESC: no CALIBRATION / INFO / ABOUT; an index past the list answers index, 127 (no item)",
                  ok && n == 2u && it.index == 127 && it.id == 127);
     {
         uint8_t a[3] = {0, 0, 0};
@@ -891,17 +1049,43 @@ static int menu_protocol(void)
     ok &= menu_set(16, 1) == 3 && (ui_rec_prefs & 0x40u) && click_mode == CLICK_ON && cin_bars == 2u;   /* (its own bit) */
     ok &= menu_set(17, 0) == 3 && scr_get() == 0u && menu_set(17, 9) == 3 && scr_get() == 4u &&   /* (clamped) */
           menu_set(17, 2) == 3 && scr_get() == 2u && ui_scr == 1u;
-    ok &= menu_set(18, 15) == 3 && edda.camelot == 15u && trk[0].p[P_ROOT] == 9;   /* EDDA: KEY 8A over the editor */
-    ok &= menu_set(19, 1) == 3 && edda.cues == 1u;   /* SHOW CUES ON (the default is OFF) */
-    ok &= menu_set(20, 2) == 3 && edda.act == 3u && menu_set(22, 1) == 3 && edda.reveal == 1u;
-    ok &= menu_set(23, 2) == 3 && edda.seq_out == 2u && edda_prefs == (1u | 2u << 1 | 1u << 4);   /* SEQ OUT +CLOCK, kept */
-    ok &= menu_set(24, 1) == 3 && (ui_rec_prefs & 0x80u) && click_mode == CLICK_ON && cin_bars == 2u;   /* SELECT PAGES (its own bit) */
-    for (i = 0; i < 25u; i++) {                         /* MENU_DESC reads them back */
-        static const int32_t SET[25] = {2, 1, 1, 1, 1, 3, 1, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 15, 1, 2, 0, 1, 2, 1};
+    ok &= menu_set(18, 1) == 3 && ui_prefs2 == 1u && scope_mix;                                    /* (1.2: their own byte) */
+    ok &= menu_set(19, 1) == 3 && ui_prefs2 == 3u && menu_set(20, 1) == 3 && ui_prefs2 == 7u;
+    ok &= menu_set(21, 2) == 0 && song.g[G_ROUTE] == 2 && menu_set(22, -13) == 0 && song.g[G_TUNE] == -13;   /* (1.2: the
+                                                         * project's, rc 0: in the music, no settings record) */
+    ok &= menu_set(23, 1) == 3 && ui_home_view == HV_TRACKS && ui_prefs2 == 7u && ui_scr == 1u;   /* (1.3: its own byte) */
+    ok &= menu_set(24, 1) == 3 && ui_prefs2 == 15u && help_on();                                  /* (1.5: HELP, bit 3) */
+    ok &= menu_set(25, 1) == 3 && ui_prefs2 == 31u;                                               /* (1.5.5: SELECT, bit 4) */
+    ok &= menu_set(26, 9) == 0 && mch_get(0) == 9u && song.mch[0] == 9u && menu_set(27, MCH_OMNI) == 0 &&   /* (1.5.5: */
+          mch_get(1) == MCH_OMNI && menu_set(28, MCH_OFF) == 0 && mch_get(2) == MCH_OFF && menu_set(29, 0) == 0 &&   /* the */
+          mch_get(3) == 0u && song.mch[3] == 13u;           /* project's T1..T4 CHANNEL, rc 0, as MIDI IN) */
+    ok &= menu_set(30, 1) == 3 && (ui_rec_prefs & 0x80u) && (ui_rec_prefs & 0x40u) && click_mode == CLICK_ON &&   /* (1.5.5:
+                                                         * AUTO SELECT, a setting: bit 7 of ui_rec_prefs) */
+          ui_prefs2 == 31u;                             /* (its own byte: SELECT's bit 4 untouched) */
+    ok &= menu_set(31, 1) == 3 && ui_prefs2 == 63u && (ui_rec_prefs & 0x80u) && ui_scr == 1u;   /* (1.5.5: SCREEN WAKE
+                                                         * PANEL, bit 5 of ui_prefs2; SCREEN OFF's byte untouched) */
+#if FELUCCA_CPU2
+    ok &= menu_set(32, 1) == 3 && ui_prefs2 == 0xBFu;   /* (2ND CORE ON (BETA), bit 7 of ui_prefs2) */
+#else
+    ok &= menu_set(32, 1) == 1 && ui_prefs2 == 0x3Fu;   /* (no 2ND CORE in a FELUCCA_CPU2=0 build: an unknown id, nothing set) */
+#endif
+    /* EDDA OS: its rows, ids 100..105 (KEY SHOW CUES ACT RUN REVEAL SEQ OUT) */
+    ok &= menu_set(100, 15) == 3 && edda.camelot == 15u && trk[0].p[P_ROOT] == 9;   /* KEY 8A over the editor */
+    ok &= menu_set(101, 1) == 3 && edda.cues == 1u;   /* SHOW CUES ON (the default is OFF) */
+    ok &= menu_set(102, 2) == 3 && edda.act == 3u && menu_set(104, 1) == 3 && edda.reveal == 1u;
+    ok &= menu_set(105, 2) == 3 && edda.seq_out == 2u && (edda_prefs & ED_PREFS) == (1u | 2u << 1 | 1u << 4);   /* SEQ OUT
+                                                         * +CLOCK, kept with the settings */
+    ok &= menu_set(33, 1) == 1 && menu_set(99, 1) == 1 && menu_set(106, 1) == 1;   /* (the ids between: none) */
+    for (i = 0; i < MENU_N; i++) {                         /* MENU_DESC reads them back */
+        static const int32_t SET[MENU_N] = {2, 1, 1, 1, 1, 3, 1, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 1, 1, 1, 2, -13, 1, 1, 1, 9, 16, 17, 0, 1, 1,
+#if FELUCCA_CPU2
+                                            1,
+#endif
+                                            15, 1, 2, 0, 1, 2};
         menu_desc(i, &it);
         ok &= it.value == SET[i];
     }
-    bad += check("MENU_SET: every setting applied as the menu does (palette, EQ, USB LEVEL, CLICK, COUNT-IN at once, RESTORE LAST, SCALE LEDS, SCREEN OFF, EDDA's), read back", ok);
+    bad += check("MENU_SET: every setting applied as the menu does (palette, EQ, USB LEVEL, CLICK, COUNT-IN at once, RESTORE LAST, SCALE LEDS, SCREEN OFF, SCOPE, STEP PREVIEW, CHORD ENTRY, HOME, HELP, SELECT, T1..T4 CHANNEL, AUTO SELECT, SCREEN WAKE, 2ND CORE ON (bit 7 of ui_prefs2; none in a FELUCCA_CPU2=0 build)), read back", ok);
     ok = menu_set(3, 0) == 3 && !(ui_prefs & PREF_ANIM_OFF) && (ui_prefs & PREF_LARGE) && menu_set(10, 0) == 3 &&
          !fx_usb_fixed && menu_set(1, 0) == 3 && ui_style == ST_FLAT;
     bad += check("MENU_SET: a flag back to its default leaves the other flags", ok);
@@ -909,19 +1093,23 @@ static int menu_protocol(void)
     /* clamping: the reply carries the device's value */
     ok = menu_set(0, 50) == 3 && ed_rv(host_wire + 7) == (int32_t)NPALETTES - 1 && settings.palette == NPALETTES - 1u;
     ok &= menu_set(0, -5) == 3 && ed_rv(host_wire + 7) == 0 && settings.palette == 0u;
-    ok &= menu_set(4, 99) == 3 && ed_rv(host_wire + 7) == 3 && settings_leds == LEDS_INV;
+    ok &= menu_set(4, 99) == 3 && ed_rv(host_wire + 7) == 5 && settings_leds == LEDS_INV && leds_inv() == 2u;   /* (1.5.6: INV HI last) */
     ok &= menu_set(5, 8191) == 3 && ed_rv(host_wire + 7) == 3 && settings_hold == 3u;
     ok &= menu_set(2, 7) == 3 && ed_rv(host_wire + 7) == 1 && (ui_prefs & PREF_LARGE);
     ok &= menu_set(14, 9) == 3 && ed_rv(host_wire + 7) == 2 && cin_bars == 2u;
     ok &= menu_set(12, -1) == 3 && ed_rv(host_wire + 7) == 0 && click_mode == CLICK_OFF;
-    bad += check("MENU_SET: out-of-range values clamped, the reply says the value the device took", ok);
+    ok &= menu_set(21, 9) == 0 && ed_rv(host_wire + 7) == 5 && song.g[G_ROUTE] == 5;   /* (1.5.5: TRACK the last) */
+    ok &= menu_set(26, 40) == 0 && ed_rv(host_wire + 7) == 17 && mch_get(0) == MCH_OFF;   /* (T1 CHANNEL) */
+    ok &= menu_set(22, -99) == 0 && ed_rv(host_wire + 7) == -50 && song.g[G_TUNE] == -50;
+    ok &= menu_set(22, 51) == 0 && ed_rv(host_wire + 7) == 50 && song.g[G_TUNE] == 50;
+    bad += check("MENU_SET: out-of-range values clamped, the reply says the value the device took (TUNE -50..50)", ok);
 
     /* an id nobody has */
     {
         static uint8_t fav0[sizeof favorites], set0[sizeof settings];
         uint8_t hold0 = settings_hold, leds0 = settings_leds;
         memcpy(fav0, &favorites, sizeof favorites); memcpy(set0, &settings, sizeof settings);
-        ok = menu_set(25, 1) == 1 && host_wire[6] == 25 && ed_rv(host_wire + 7) == 1;   /* (18..24: EDDA OS's ids) */
+        ok = menu_set(MENU_N, 1) == 1 && host_wire[6] == MENU_N && ed_rv(host_wire + 7) == 1;
         ok &= menu_set(126, -3) == 1 && host_wire[6] == 126 && ed_rv(host_wire + 7) == -3;
         ok &= menu_set(127, 0) == 1 && host_wire[6] == 127;
         ok &= !memcmp(fav0, &favorites, sizeof favorites) && !memcmp(set0, &settings, sizeof settings) &&
@@ -986,12 +1174,13 @@ static int drum_kit_retired(void)
     request(ED_DESC, a, 2);
     {   /* scope, id, fmt, min, max, def (v14 each), "KIT", "", then the 13 names */
         const char *n = (const char *)host_wire + 5 + 3 + 6;
-        static const char *const WANT[13] = {"STD", "66", "10", "77", "80", "10", "66", "55", "77", "USR1", "USR2", "USR3", "USR4"};
+        static const char *const WANT[17] = {"STD", "66", "10", "77", "80", "10", "66", "55", "77", "DEEP", "TIGHT", "PERC",
+                                             "USR1", "USR2", "USR3", "USR4", "EDDA"};
         n += strlen(n) + 1; n += strlen(n) + 1;
-        for (i = 0; i < 13u; i++, n += strlen(n) + 1)
+        for (i = 0; i < 17u; i++, n += strlen(n) + 1)
             ok &= !strcmp(n, WANT[i]);
     }
-    bad += check("DESC of DRUM KIT: STD 66 10 77 80 10 66 55 77 USR1..USR4 (1..3 as the kits they play; EDDA OS: the user kits)", ok);
+    bad += check("DESC of DRUM KIT: STD 66 10 77 80 10 66 55 77 DEEP TIGHT PERC USR1..USR4 EDDA (1..3 as the kits they play; EDDA OS: the user kits, THE ARRIVAL's)", ok);
     for (r = 1, ok = ed_eng(TSEL) == ENGI_DRUM; r < 4u; r++) {
         uint32_t u = r + 8192u;
         a[0] = 0; a[1] = P_E0; a[2] = u & 127u; a[3] = u >> 7;
@@ -1028,11 +1217,193 @@ static int drum_kit_retired(void)
     return bad;
 }
 
+/* 1.5 MIDI LEARN (78 LEARN_GET, 79 LEARN_SET; editor_learn.c): the map as the device keeps it (midi_learn.c) */
+static int learn_entry(uint32_t i, uint32_t used, uint32_t cc, uint32_t k, uint32_t id)   /* (a LEARN_GET reply) */
+{
+    const uint8_t *e = &host_wire[6u + 4u * i];      /* (ML_N, then the entries) */
+    return e[0] == used && e[1] == cc && e[2] == k && e[3] == id;
+}
+static int learn_protocol(void)
+{
+    int bad = 0, ok;
+    uint32_t n, i;
+    reset();
+    memset(favorites.factory[14], 0, 32);
+    n = request(ED_LEARN_GET, 0, 0);
+    ok = n == 6u + 1u + 4u * ML_N && host_wire[4] == ED_LEARN_GET && host_wire[5] == ML_N;
+    for (i = 0; i < ML_N; i++)
+        ok &= !memcmp(&host_wire[6u + 4u * i], "\0\0\0\0", 4);
+    bad += check("LEARN_GET: 16 entries, all empty at first", ok);
+    {
+        const uint8_t a[] = {0, 74, 3, P_E0 + 2}, b[] = {0, 20, 0, P_LEVEL}, c[] = {0, 20, 1, P_PAN};
+        n = request(ED_LEARN_SET, a, 4);
+        ok = n == 6u + 2u + 4u * ML_N && host_wire[4] == ED_LEARN_SET && (host_wire[5] == 0u || host_wire[5] == 3u) &&
+             host_wire[6] == ML_N && !memcmp(&host_wire[7], (const uint8_t[]){1, 74, 3, P_E0 + 2}, 4);   /* (rc, then GET's) */
+        request(ED_LEARN_SET, b, 4);
+        request(ED_LEARN_SET, c, 4);                     /* (CC20 again: T2 PAN in place of T1 LEVEL) */
+        n = request(ED_LEARN_GET, 0, 0);
+        ok &= learn_entry(0, 1, 74, 3, P_E0 + 2) && learn_entry(1, 1, 20, 1, P_PAN) && learn_entry(2, 0, 0, 0, 0);
+        bad += check("LEARN_SET op 0: learns (DRUM's TONE on CC74); CC20 again replaces its parameter", ok);
+    }
+    {
+        const uint8_t bad1[] = {0, 64, 0, 1}, bad2[] = {0, 21, 4, 1}, bad3[] = {0, 21, 0, P_COUNT}, bad4[] = {0, 120, 0, 1};
+        ok = request(ED_LEARN_SET, bad1, 4) && host_wire[5] == 1u;
+        ok &= request(ED_LEARN_SET, bad2, 4) && host_wire[5] == 1u;
+        ok &= request(ED_LEARN_SET, bad3, 4) && host_wire[5] == 1u;
+        ok &= request(ED_LEARN_SET, bad4, 4) && host_wire[5] == 1u;
+        n = request(ED_LEARN_GET, 0, 0);
+        ok &= learn_entry(0, 1, 74, 3, P_E0 + 2) && learn_entry(1, 1, 20, 1, P_PAN);
+        for (i = 0; i < ML_N - 2u; i++) {
+            const uint8_t f[] = {0, (uint8_t)(40u + i), 2, (uint8_t)i};
+            request(ED_LEARN_SET, f, 4);
+        }
+        { const uint8_t f[] = {0, 90, 2, 40}; ok &= request(ED_LEARN_SET, f, 4) && host_wire[5] == 5u; }
+        bad += check("LEARN_SET refuses CC64 / CC120, track 4, a parameter past P_COUNT (rc 1); a 17th: rc 5 (full)", ok);
+    }
+    {
+        const uint8_t one[] = {1, 74}, all[] = {2}, odd[] = {3};
+        request(ED_LEARN_SET, one, 2);
+        n = request(ED_LEARN_GET, 0, 0);
+        ok = learn_entry(0, 0, 0, 0, 0) && learn_entry(1, 1, 20, 1, P_PAN) && ml_count() == ML_N - 1u;
+        ok &= request(ED_LEARN_SET, odd, 1) && host_wire[5] == 1u;
+        request(ED_LEARN_SET, all, 1);
+        ok &= host_wire[5] != 1u && host_wire[5] != 5u && !ml_count() && !favorites.factory[14][0] && !memcmp(favorites.factory[14], favorites.factory[14] + 1, 31);
+        ok &= request(ED_LEARN_GET, odd, 1) == 0u;          /* (GET takes no arguments) */
+        bad += check("LEARN_SET op 1 clears one CC, op 2 all; unknown ops rc 1; GET with arguments: no reply", ok);
+    }
+    (void)n;
+    return bad;
+}
+
+/* 1.6 (#244): CUSTOM, the user's palette: PALETTE_GET / PALETTE_SET (80, 81; INFO 45 01 5), COLOR's 11th value */
+static uint32_t palette_cmd(uint32_t cmd, const uint8_t *a, uint32_t n) { return request(cmd, a, n); }
+/* a PALETTE_SET frame: op, then 5 x (r, g, b) */
+static uint32_t pal_send(uint32_t op, const uint16_t *c)
+{
+    uint8_t a[16];
+    uint32_t i;
+    a[0] = (uint8_t)op;
+    for (i = 0; i < 5u; i++) { a[1 + 3 * i] = (uint8_t)(c[i] >> 11); a[2 + 3 * i] = (uint8_t)((c[i] >> 5) & 63u); a[3 + 3 * i] = (uint8_t)(c[i] & 31u); }
+    return palette_cmd(ED_PALETTE_SET, a, 16);
+}
+static uint16_t rgb565(uint32_t r, uint32_t g, uint32_t b) { return (uint16_t)((r >> 3) << 11 | (g >> 2) << 5 | b >> 3); }
+static int custom_palette(void)
+{
+    int bad = 0, ok;
+    uint8_t a[4] = {0};
+    const uint16_t good[5] = {rgb565(8, 16, 40), rgb565(24, 32, 64), rgb565(240, 240, 255), rgb565(120, 200, 255), rgb565(255, 160, 40)};
+    const uint16_t flat[5] = {rgb565(80, 80, 80), rgb565(90, 90, 90), rgb565(100, 100, 100), rgb565(110, 110, 110), rgb565(120, 120, 120)};
+    uint32_t n, i;
+    reset();
+    n = palette_cmd(ED_PALETTE_GET, a, 0);
+    ok = n == 5u + 2u + 15u + 1u && host_wire[4] == ED_PALETTE_GET && host_wire[5] == 0 && host_wire[6] == 5 &&
+         host_wire[7] == (T_BG >> 11) && host_wire[8] == ((T_BG >> 5) & 63u);        /* (nothing stored: the palette in use, to start from) */
+    bad += check("PALETTE_GET: none stored (flags 0), five colours: the palette in use", ok);
+    ok = palette_cmd(ED_PALETTE_GET, a, 1) == 0u;
+    bad += check("  PALETTE_GET takes no arguments", ok);
+    n = pal_send(0, flat);
+    ok = n > 0u && host_wire[5] == 0 && T_BG == flat[0] && T_TEXT == flat[2] && !(ui_cpal_flags & CPAL_STORED);
+    bad += check("PALETTE_SET: colours that are hard to read are shown too (a preview: the editor warns, the device does not refuse)", ok);
+    a[0] = 3; request(ED_PALETTE_SET, a, 1);
+    n = pal_send(1, flat);
+    ok = n > 0u && (host_wire[5] == 0 || host_wire[5] == 3) && (ui_cpal_flags & CPAL_STORED) && cpal_on() && T_BG == flat[0];
+    bad += check("  and stored (op 1: rc as UI_SET, no rc 5)", ok);
+    a[0] = 2; request(ED_PALETTE_SET, a, 1);
+    ok = ui_cpal_flags == 0u && palette_n() == NPALETTES;
+    bad += check("  a way back: op 2 removes it", ok);
+    {
+        uint8_t b[16] = {1, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};          /* red 32: out of range */
+        ok = request(ED_PALETTE_SET, b, 16) > 0u && host_wire[5] == 1;
+        b[1] = 0; b[2] = 64;                                                           /* green 64 */
+        ok &= request(ED_PALETTE_SET, b, 16) > 0u && host_wire[5] == 1;
+        ok &= request(ED_PALETTE_SET, b, 15) > 0u && host_wire[5] == 1;               /* (the wrong length: rc 1) */
+        b[0] = 9;
+        ok &= request(ED_PALETTE_SET, b, 16) > 0u && host_wire[5] == 1;               /* an unknown op */
+        ok &= !(ui_cpal_flags & CPAL_STORED);
+    }
+    bad += check("  a value out of range, an unknown op: rc 1, nothing stored", ok);
+    n = pal_send(0, good);                                                          /* the preview: gfx.c's copy only */
+    ok = n > 0u && host_wire[5] == 0 && T_BG == good[0] && T_TEXT == good[2] && T_THEME == good[3] && T_ACCENT == good[4] &&
+         ui_cpal_flags == 0u && ui_cpal[0] == 0 && palette_n() == NPALETTES;
+    bad += check("PALETTE_SET op 0 (preview): the colours are shown at once, nothing is stored", ok);
+    ok = T_SEL == ux_mix(good[0], good[3], UI_SEL_PCT) && T_MID == ux_mix(good[0], good[2], UI_MID_PCT) && T_INK == good[0] &&
+         !ux.mono && ux.light == 0u;
+    bad += check("  the other tokens derived as for any palette (SEL, MID, INK), not GREY", ok);
+    a[0] = 3; n = palette_cmd(ED_PALETTE_SET, a, 1);
+    ok = n > 0u && host_wire[5] == 0 && T_BG == UI_PALETTES[settings.palette].bg;
+    bad += check("PALETTE_SET op 3: the preview dropped, the palette in use again", ok);
+    n = pal_send(1, good);
+    ok = n > 0u && host_wire[4] == ED_PALETTE_SET && (host_wire[5] == 3 || host_wire[5] == 0) && ui_cpal_flags == (CPAL_STORED | CPAL_ACTIVE) &&
+         palette_cur() == NPALETTES && palette_n() == NPALETTES + 1u && T_BG == good[0] && host_wire[6] == 3 && host_wire[7] == 5;
+    for (i = 0; i < 5u; i++) ok &= (uint16_t)(ui_cpal[2 * i] | ui_cpal[2 * i + 1] << 8) == good[i];
+    bad += check("PALETTE_SET op 1: stored, in use (flags 3), five colours little endian in the settings' bytes", ok);
+    n = palette_cmd(ED_PALETTE_GET, a, 0);
+    ok = host_wire[5] == 3 && host_wire[6] == 5 && host_wire[7] == (good[0] >> 11) && host_wire[8] == ((good[0] >> 5) & 63u) &&
+         host_wire[9] == (good[0] & 31u);
+    bad += check("PALETTE_GET after: flags 3 and the stored colours (r5 g6 b5, three 7-bit bytes each)", ok);
+    n = palette_cmd(ED_UI_PALETTES, a, 0);
+    ok = n > 0u && host_wire[5] == NPALETTES + 1u && !strncmp((const char *)host_wire + 6 + 0, UI_PALETTES[0].name, 1);
+    {   /* the names: each a 12-byte field (ed_str): the last one is CUSTOM */
+        uint32_t pos = 6, k;
+        for (k = 0; k < NPALETTES; k++) pos += (uint32_t)strlen((const char *)host_wire + pos) + 1u;
+        ok &= !strcmp((const char *)host_wire + pos, "CUSTOM");
+    }
+    bad += check("UI_PALETTES: CUSTOM listed last while one is stored", ok);
+    a[0] = 0; a[1] = NPALETTES; n = request(ED_UI_SET, a, 2);
+    ok = n > 0u && host_wire[5] != 1 && palette_cur() == NPALETTES;
+    a[1] = 3; request(ED_UI_SET, a, 2);
+    ok &= palette_cur() == 3u && settings.palette == 3u && (ui_cpal_flags & CPAL_STORED) && !(ui_cpal_flags & CPAL_ACTIVE) &&
+          T_BG == UI_PALETTES[3].bg;
+    a[1] = NPALETTES; request(ED_UI_SET, a, 2);
+    ok &= palette_cur() == NPALETTES && T_BG == good[0] && settings.palette == 3u;
+    a[1] = NPALETTES + 1u; request(ED_UI_SET, a, 2);
+    ok &= host_wire[5] == 1;
+    bad += check("UI_SET 0: CUSTOM (10) selectable like a built-in palette, a built-in one leaves it stored (settings.palette the base)", ok);
+    {   /* COLOR in MENU: 11 values, CUSTOM last */
+        menu_item_t it;
+        menu_desc(0, &it);
+        ok = it.max == (int32_t)NPALETTES && it.nnames == NPALETTES + 1u && !strcmp(it.names[NPALETTES], "CUSTOM") &&
+             it.value == (int32_t)NPALETTES;
+        ok &= menu_set(0, 5) == 3 && palette_cur() == 5u && T_BG == UI_PALETTES[5].bg;
+        ok &= menu_set(0, 99) == 3 && palette_cur() == NPALETTES && T_BG == good[0];
+        bad += check("MENU COLOR: 11 values while CUSTOM is stored (CUSTOM last), MENU_SET reaches it", ok);
+    }
+    n = palette_cmd(ED_UI_STATE, a, 0);
+    ok = n > 0u && host_wire[6] == NPALETTES;
+    bad += check("UI_STATE: the palette byte is 10 while CUSTOM is in use", ok);
+    a[0] = 2; n = palette_cmd(ED_PALETTE_SET, a, 1);
+    ok = n > 0u && ui_cpal_flags == 0u && palette_cur() == settings.palette && palette_n() == NPALETTES && T_BG == UI_PALETTES[settings.palette].bg;
+    for (i = 0; i < 10u; i++) ok &= ui_cpal[i] == 0;
+    bad += check("PALETTE_SET op 2: removed (flags 0, bytes 0), the built-in palette is back, COLOR has 10 values again", ok);
+    a[0] = 0; a[1] = NPALETTES; n = request(ED_UI_SET, a, 2);
+    ok = host_wire[5] == 1;
+    bad += check("UI_SET 0 with CUSTOM (10) but none stored: rc 1", ok);
+    {   /* a settings object with the bytes round trips (settings_export / settings_import), none stored reads as none */
+        persist_t p;
+        pal_send(1, good);
+        settings_export(&p);
+        memset(&favorites, 0, sizeof favorites);
+        ok = settings_import(&p, sizeof p) == 1 && ui_cpal_flags == 3u && palette_n() == NPALETTES + 1u;
+        palette_apply();
+        ok &= T_BG == good[0] && T_ACCENT == good[4];
+        bad += check("settings: CUSTOM kept by an export and an import, in use after palette_apply", ok);
+        p.favorites.factory[15][12] = 3; p.favorites.factory[15][0] = p.favorites.factory[15][4] = 0x55;   /* hard to read: kept as saved */
+        p.favorites.factory[15][1] = p.favorites.factory[15][5] = 0x55;
+        ok = settings_import(&p, sizeof p) == 1 && ui_cpal_flags == 3u && ui_cpal[0] == 0x55 && palette_n() == NPALETTES + 1u;
+        bad += check("settings: colours that are hard to read are kept as saved (the user's choice)", ok);
+        p.favorites.factory[15][12] = 0xFE;
+        ok = settings_import(&p, sizeof p) == 1 && ui_cpal_flags == 0u && ui_cpal[0] == 0;
+        bad += check("settings: a flags byte without the stored bit: none, the colours zero; the bits past the two dropped", ok);
+    }
+    return bad;
+}
+
 #ifndef EDITOR_TEST_NO_MAIN                              /* (robust_test.c, fuzz_*.c: this file is their base) */
 int main(void)
 {
     int bad = preferences() + motion_locks() + framing() + uart_recovery() + steps() + samples() + song_protocol() + malformed_saves() +
-              fm6_patches() + user_preset_roundtrip() + live_sync() + usb_burst() + menu_protocol() + drum_kit_retired();
+              fm6_patches() + user_preset_roundtrip() + live_sync() + usb_burst() + menu_protocol() + drum_kit_retired() +
+              learn_protocol() + custom_palette();
     printf("%s\n", bad ? "EDITOR TEST FAILED" : "editor test passed");
     return bad != 0;
 }

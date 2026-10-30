@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * EDDA OS: VIZ, twelve full-screen visualisers over HOME (SLOOP's: a tap of HOME on the tracks screen). Included by
- * ui_draw.c (ui_draw_page draws it, ui_input.c's HOME tap opens and steps it: vz_home_tap).
+ * ui_draw.c (ui_draw_page draws it; GLO + G5 opens and steps it, ui_layer.c: vz_glo_key; HOME tapped leaves: vz_leave).
  *
  * HOME tapped on HOME opens the visualiser shown last (SCOPE at power-on); tapped again: the next one, its number and
  * name at the foot for a moment; past the twelfth: HOME again (SCOPE the next time). A page button leaves for its page;
@@ -1084,29 +1084,40 @@ static int vz_page(void)
     return 1;
 }
 /* HOME tapped (ui_input.c): on HOME the visualiser; in it the next one, past the last HOME */
-static void vz_home_tap(void)
+/* EDDA OS: GLO + G5 opens the visualisers over HOME (the one last shown; from another page HOME first), again the next,
+ * after the twelfth closed. HOME tapped in one, or a page button, leaves (Felucca's HOME round as it is: HOME MIXER
+ * CLOCK). Not over a step entry or a pick */
+static void vz_enter(void)
 {
-    int clean = ui.home && !ui.viz && !ui.plk_src && !ui.entry_open && !song.seq_mode && !ui.layer;
-    if (ui.viz && ui.home) {
-        if (vz.n + 1u >= VZ_COUNT) {
-            ui.viz = 0;
-            vz.last = 0;
-            go_home();
-            return;
-        }
-        vz.n++;
-        vz.last = vz.n;
-        vz.name_ms = (fm1_ms + VZ_NAME_MS) | 1u;
-        vz.fresh = 1;
-        ui.force = 1;
+    go_home();
+    if (ui.plk_src || ui.entry_open || song.seq_mode)
+        return;
+    ui.viz = 1;
+    vz.n = vz.last < VZ_COUNT ? vz.last : 0u;
+    vz.name_ms = (fm1_ms + VZ_NAME_MS) | 1u;
+    vz.fresh = 1;
+    vz.band = 0;
+    ui.force = 1;
+}
+static void vz_leave(void)
+{
+    ui.viz = 0;
+    ui.force = 1;
+}
+static void vz_glo_key(void)
+{
+    if (!ui.viz || !ui.home) {
+        vz_enter();
         return;
     }
-    go_home();
-    if (clean) {
-        ui.viz = 1;
-        vz.n = vz.last < VZ_COUNT ? vz.last : 0u;
-        vz.name_ms = (fm1_ms + VZ_NAME_MS) | 1u;
-        vz.fresh = 1;
-        vz.band = 0;
+    if (vz.n + 1u >= VZ_COUNT) {                       /* past the twelfth: closed (the next opens SCOPE) */
+        vz.last = 0;
+        vz_leave();
+        return;
     }
+    vz.n++;
+    vz.last = vz.n;
+    vz.name_ms = (fm1_ms + VZ_NAME_MS) | 1u;
+    vz.fresh = 1;
+    ui.force = 1;
 }

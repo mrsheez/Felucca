@@ -41,15 +41,20 @@ static uint32_t pow2_q16(int32_t d16)
  * 3 slots of 80 KiB at flash 0xA0000.. (Felucca data region), read through the plain XIP
  * window. Slot = header (magic, count, name, data length, CRC32) + up to 16 zones in the
  * smp_zone_t layout (off relative to the slot's data at +512) + IMA ADPCM data.
- * EDDA OS: a 4th slot (USR4) at 0xE7000 (hal/fm1_flash.h FL_SMP4_LO, the free run above the autosave); its
- * number follows the others everywhere (SET / SRC values, the editor's slot 3, backup id 35), so every stored
- * value keeps its meaning. smp_user_addr(k): a slot's flash address. */
-#include "../hal/fm1_xip.h"   /* relative: hostsim includes this file too */
+ * EDDA OS: a 4th slot (USR4) at 0xEA000, 72 KiB (EDDA 1.7: in felucca-bsp's FL_XDATA1, past the FM6 voice bank's sector
+ * 0xE7000 and the two sectors that hold the unit's own radio calibration (the SDK VM, 0xE8000) and Bluetooth address
+ * (BTIF, 0xE9000), which a stock firmware put back would want; storage_hw.c ST_SMP4_*); its number follows the others
+ * everywhere (SET / SRC values, the editor's slot 3, backup id 35), so every stored value keeps its meaning.
+ * smp_user_addr(k), smp_user_size(k): a slot's flash address and size (the editor's SMP_INFO says each). Its sectors'
+ * bytes 0xF00..0xF07 hold sample data (ADPCM), never an update record: the record scans want "AT" and a CRC-16. */
+#include "../bsp/chip/fm1_xip.h"   /* relative: hostsim includes this file too */
 #define SMP_USER_SLOTS 4
 #define SMP_USER_BASE 0xA0000u
-#define SMP_USER4_BASE 0xE7000u
+#define SMP_USER4_BASE 0xEA000u                    /* (1.1.5: 0xE7000, 80 KiB: now the FM6 voice bank's, the unit's RF and BT) */
+#define SMP_USER4_SIZE 0x12000u
 #define SMP_USER_SIZE 0x14000u
 static uint32_t smp_user_addr(uint32_t k) { return k < 3u ? SMP_USER_BASE + k * SMP_USER_SIZE : SMP_USER4_BASE; }
+static uint32_t smp_user_size(uint32_t k) { return k < 3u ? SMP_USER_SIZE : SMP_USER4_SIZE; }
 #define SMP_USER_DATA 512u
 #define SMP_USER_MAGIC 0x504D5346u                  /* "FSMP" */
 /* EDDA OS: THE ARRIVAL's sets (tools/gen_samples.py SMP_XSETS: EKIT, the bank's drum kit; LOG, the log drum) come
@@ -98,7 +103,7 @@ static void smp_user_scan(uint32_t k)
     usr_nz[k] = 0;
     slc_user_scan(k, 0);
     if (h->magic == SMP_USER_MAGIC && h->version == 1 && h->nz && h->nz <= 16u &&
-        h->data_len <= SMP_USER_SIZE - SMP_USER_DATA) {
+        h->data_len <= smp_user_size(k) - SMP_USER_DATA) {
         base = (uint32_t)(uintptr_t)(smp_user_xip(k) + SMP_USER_DATA) - (uint32_t)(uintptr_t)SMP_DATA;
         for (nz = h->nz, i = 0; i < nz; i++) {
             smp_zone_t *z = &zt[i];

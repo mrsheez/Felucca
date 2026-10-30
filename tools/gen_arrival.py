@@ -38,7 +38,7 @@ def _enum(first):
 
 P = _enum("P_LEVEL")
 G = _enum("G_BPM")
-assert P["P_E0"] == 91 and P["P_LN0"] == 83 and G["G_RTYPE"] == 24, "core.h moved: check the ids"
+assert P["P_E0"] == 103 and P["P_LN0"] == 83 and G["G_RTYPE"] == 24, "core.h moved: check the ids"   # (1.7: 111 parameters)
 
 ENG = {"ANALOG": 0, "PHASE": 2, "LOFI": 3, "SAMPLE": 4, "VOICE": 5, "TRIO": 6, "WHEEL": 7, "GRAIN": 8, "PHYS": 9,
        "DRUM": 10, "NOISE": 11, "FM6": 12}
@@ -55,7 +55,11 @@ PRESET = {("ANALOG", "SAW LEAD"): 0, ("ANALOG", "SOFT PAD"): 1, ("ANALOG", "SQR 
           ("FM6", "HILIFE"): 10, ("FM6", "TALK DRUM"): 11, ("FM6", "LOG DRUM"): 12,
           ("FM6", "EDDA EP"): 13}
 SET_PIANO, SET_FLUTE, SET_SAX, SET_EKIT, SET_LOG = 0, 2, 3, 9, 10    # SAMPLE SET values (eng_sample.c)
-KIT_EDDA = 13                                                         # DRUM KIT EDDA (eng_drum.c DK_EDDA)
+KIT_EDDA = 16                                                         # DRUM KIT EDDA (eng_drum.c DK_EDDA; 13 in 1.1.5)
+# the delay's dotted TIMEs (params.c N_DTIME, Felucca 1.5.1's order; EDDA OS 1.1.5 had 1/4D 1/8D 1/16D at 10..12)
+DT_8D, DT_16D, DT_4D = 10, 11, 12
+# a fill-only step: the FILL condition in the chance byte (core.h COND_FIRST + COND_FILL - 1; 1.1.5: flag 32)
+COND_FILL_PROB = 102 + 10 - 1
 DIV = {"1/4": 0, "1/8": 1, "1/16": 2, "1/32": 3, "8T": 4, "16T": 5}
 
 NOTE = {"C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "F": 5, "F#": 6, "Gb": 6, "G": 7, "G#": 8, "Ab": 8,
@@ -88,7 +92,7 @@ def step(time=0, nts=(), vel=100, hit=0, acc=0, flags=0, prob=0):
     return dict(time=time, notes=list(nts), vel=vel, hit=hit, acc=acc, flags=flags, prob=prob)
 
 
-SF_ACCENT, SF_SLIDE, SF_FILL = 1, 2, 32
+SF_ACCENT, SF_SLIDE = 1, 2
 
 
 def mel(length, events, vel=100):
@@ -105,7 +109,7 @@ def mel(length, events, vel=100):
             elif o == "S":
                 fl |= SF_SLIDE
             elif o == "F":
-                fl |= SF_FILL
+                pr = COND_FILL_PROB
             elif o[0] == "v":
                 v = int(o[1:])
             elif o[0] == "r":
@@ -163,10 +167,10 @@ def drum(length, rows, fills=(), ratch=None):
                 pads.append(PAD[k])
                 plain.append(lvl(c))
         if hit or pads:
-            fl = SF_FILL if s in fills else 0
+            fl = 0
             if ratch and s in ratch:
                 fl |= (ratch[s] - 1) << 3
-            st[s] = step(0, pads[:4], max(plain) if plain else 100, hit, acc, fl)
+            st[s] = step(0, pads[:4], max(plain) if plain else 100, hit, acc, fl, COND_FILL_PROB if s in fills else 0)
     return st
 
 

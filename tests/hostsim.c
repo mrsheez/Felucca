@@ -23,7 +23,7 @@
 #define memcpy felucca_memcpy
 #define memcmp felucca_memcmp
 #include "felucca_tables.h"
-#include "../firmware/src/libc.c"
+#include "../firmware/bsp/chip/libc.c"
 #undef memset
 #undef memcpy
 #undef memcmp
@@ -36,7 +36,7 @@ static struct { volatile uint32_t notes, buttons; } fm1_in;
 #include "../firmware/src/slicer.c"
 #include "../firmware/src/fx.c"
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
-#include "../firmware/src/usb.c"
+#include "../firmware/bsp/chip/usb.c"
 #include "../firmware/src/midi_uart.c"                /* TRS MIDI IN: its parser (um_byte) feeds midi_in_q */
 #include "../firmware/src/song_chain.c"
 #include "../firmware/src/seq.c"
@@ -73,6 +73,8 @@ static void host_tracks_init(void)                /* as felucca_init: defaults, 
     uint32_t i, k;
     for (i = 0; i < G_COUNT; i++)
         song.g[i] = GP[i].def;
+    song.g[G_RTYPE] = 0;                          /* ROOM, the power-on reverb until 1.2: the renders (goldens) as
+                                                   * before, ROOM bit for bit; HALL, the default since: reverb_test.c */
     for (k = 0; k < NTRK; k++) {
         for (i = 0; i < P_E0; i++)
             trk[k].p[i] = TP[i].def;
@@ -132,6 +134,7 @@ static void host_preset(track_t *t, uint32_t e, uint32_t pi)
 {
     host_preset_req(t, e, pi);
     t->engine = t->eng_req;                       /* (DIGITAL without FELUCCA_FM4: FM6) */
+    eng_mem_claim(t);                             /* (voice.c engine_block would at the next block) */
 }
 
 /* A saved SAMPLE PERC sound, as 1.0.2 and earlier stored it (SET 4, the GM kit; retired since: every load
@@ -841,6 +844,7 @@ int main(int argc, char **argv)
     for (i = 0; i < G_COUNT; i++) song.g[i] = GP[i].def;
     for (i = 0; i < P_E0; i++) inst.p[i] = TP[i].def;
     inst.eng_req = inst.engine = (uint8_t)eng;
+    eng_mem_claim(&inst);
     for (i = 0; i < 8; i++) inst.p[P_E0 + i] = ENGINES[eng]->edit[i].def;
     if (ENGINES[eng]->npresets) {
         const preset_t *p = &ENGINES[eng]->presets[preset % ENGINES[eng]->npresets];

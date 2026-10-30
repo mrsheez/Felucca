@@ -21,7 +21,7 @@
  *    page), read back at a scan, kept for the same sample only, junk and torn writes ignored, a long sample. */
 #include <stdarg.h>
 #include <stdint.h>
-static uint32_t host_slots[4u * 0x14000u / 4u];          /* USR1..4, as the flash at 0xA0000 (USR4: 0xE7000, mapped after) */
+static uint32_t host_slots[4u * 0x14000u / 4u];          /* USR1..4, as the flash at 0xA0000 (USR4: 0xEA000, mapped after) */
 #define SMP_USER_XIP(k) ((const uint8_t *)host_slots + (k) * SMP_USER_SIZE)
 #define main hostsim_main
 #include "hostsim.c"
@@ -42,7 +42,7 @@ static int st_read(uint32_t off, void *dst, uint32_t n) { (void)off; (void)dst; 
 /* a flash offset in the slots -> its place in host_slots (USR4 at SMP_USER4_BASE follows USR3), or -1 */
 static int32_t host_slot_off(uint32_t off, uint32_t n)
 {
-    if (off >= SMP_USER4_BASE && off + n <= SMP_USER4_BASE + SMP_USER_SIZE)
+    if (off >= SMP_USER4_BASE && off + n <= SMP_USER4_BASE + SMP_USER4_SIZE)
         return (int32_t)(3u * SMP_USER_SIZE + off - SMP_USER4_BASE);
     if (off >= SMP_USER_BASE && off + n <= SMP_USER_BASE + 3u * SMP_USER_SIZE)
         return (int32_t)(off - SMP_USER_BASE);

@@ -112,7 +112,8 @@ static void edda_camelot_apply(uint32_t v)
 typedef struct {
     const char *name;            /* at most 8 characters */
     uint8_t kind, len, div, vel; /* len 1..32: a two-bar phrase at 1/16 is 32 steps */
-    uint32_t fill;               /* bit i: step i is fill-only (SF_FILL): it plays while FILL is on (GLO + A4) */
+    uint32_t fill;               /* bit i: step i is fill-only (the FILL condition, core.h COND_FILL): it plays while FILL
+                                  * is on (GLO + A4) */
     uint8_t a[32];               /* notes (MEL) or hits (DRUM) */
     uint8_t b[32];               /* flags (MEL) or accents (DRUM) */
 } edda_pat_t;
@@ -234,7 +235,7 @@ static void edda_pat_fill(track_t *t, uint32_t n)
             s->acc = (uint8_t)(p->b[i] & p->a[i]);
             s->vel = p->vel;
             if ((p->fill >> i) & 1u)
-                s->flags = SF_FILL;
+                s->probability = (uint8_t)(COND_FIRST + COND_FILL - 1u);   /* (a fill step: the FILL condition) */
         } else {
             uint32_t fl = p->b[i];
             if (fl & ED_T) {
@@ -253,7 +254,7 @@ static void edda_pat_fill(track_t *t, uint32_t n)
             }
             s->flags = (uint8_t)(fl & (SF_ACCENT | SF_SLIDE));
             if ((p->fill >> i) & 1u)
-                s->flags |= SF_FILL;
+                s->probability = (uint8_t)(COND_FIRST + COND_FILL - 1u);
             s->vel = p->vel;
         }
     }

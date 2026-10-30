@@ -12,6 +12,7 @@
 #include <stdio.h>
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
+#include "old_pack.h"                 /* (FUN9 images: EDDA OS 1.1.5's projects) */
 
 static int bad;
 static void ck(const char *what, int ok)
@@ -28,7 +29,6 @@ static void reset(void)
     song.g[G_BPM] = 120;                              /* a beat 22050 samples, a bar 88200 */
     mo_w = mo_r = 0;
 }
-static void blocks(uint32_t n) { while (n--) events_block(CTL); }
 static void to_next_bar(void)                         /* run until the sequencer passes the one */
 {
     uint32_t b = edda.bar, n = 0;
@@ -74,6 +74,11 @@ static long load_file(const char *path, void *dst, long max)
     n = (long)fread(dst, 1, (size_t)max, f);
     fclose(f);
     return n;
+}
+static int host_slots_usr4_fits(void)               /* the USR4 kit inside 72 KiB, the 80 KiB kit not */
+{
+    const smp_user_hdr_t *h0 = (const smp_user_hdr_t *)host_slots, *h3 = (const smp_user_hdr_t *)((const uint8_t *)host_slots + 3u * SMP_USER_SIZE);
+    return h3->data_len <= smp_user_size(3) - SMP_USER_DATA && h0->data_len > smp_user_size(3) - SMP_USER_DATA;
 }
 static int kit_load(const char *prefix, uint32_t slot)   /* the built kit (.hdr / .bin) into user slot k, scanned */
 {
@@ -566,20 +571,25 @@ int main(int argc, char **argv)
         int ok;
         uint32_t period;
         reset();
-        pat_load(&trk[3], NPATTERNS);                     /* 3STEP: steps 14..16 are fill-only (toms, a snare pickup) */
-        ok = (trk[3].step[13].flags & SF_FILL) && (trk[3].step[14].flags & SF_FILL) && (trk[3].step[15].flags & SF_FILL) &&
-             !(trk[3].step[12].flags & SF_FILL) && (trk[3].step[15].hit & 2u) && (trk[3].step[15].hit & 32u);
+        pat_load(&trk[3], NPATTERNS);                     /* 3STEP: steps 14..16 are FILL steps (toms, a snare pickup) */
+        ok = step_cond(&trk[3].step[13]) == COND_FILL && step_cond(&trk[3].step[14]) == COND_FILL &&
+             step_cond(&trk[3].step[15]) == COND_FILL && !step_cond(&trk[3].step[12]) &&
+             (trk[3].step[15].hit & 2u) && (trk[3].step[15].hit & 32u);
         period = div_samples((uint32_t)trk[3].p[P_SDIV]);
         trk[3].seq_idx = 14;
-        seq_step(&trk[3], &trk[3].step[14], period, 0);
+        seq_step(&trk[3], &trk[3].step[14], 14, period, 0);
         ok &= trk[3].seq_n == 0;                          /* FILL off: the step rests */
-        edda.fill = 1;
-        seq_step(&trk[3], &trk[3].step[14], period, 0);
+        edda.fill = 1;                                    /* EDDA's latch (A4 tapped) */
+        seq_step(&trk[3], &trk[3].step[14], 14, period, 0);
         ok &= has_note(&trk[3], 45);                      /* FILL on: the tom plays */
         edda.fill = 0;
-        seq_step(&trk[3], &trk[3].step[12], period, 0);
+        seq_fill = 1;                                     /* Felucca's (A4 held) */
+        seq_step(&trk[3], &trk[3].step[13], 13, period, 0);
+        ok &= trk[3].seq_n > 0;
+        seq_fill = 0;
+        seq_step(&trk[3], &trk[3].step[12], 12, period, 0);
         ok &= has_note(&trk[3], 36) && has_note(&trk[3], 37);   /* a plain step plays either way */
-        ck("fill-only steps rest until FILL; the bank's grids carry fills on their last steps", ok);
+        ck("FILL steps (the FILL condition) rest until FILL, held or latched; the bank's grids carry fills on their last steps", ok);
         reset(); pat_load(&trk[3], NPATTERNS); seq_start(); beats(2);
         m0 = mo_w;
         edda_fill_request();
@@ -587,9 +597,20 @@ int main(int argc, char **argv)
         to_next_bar(); ok &= edda.fill;                   /* the rest of this bar and the next */
         to_next_bar(); ok &= !edda.fill && cues_cc(m0, ED_CUE_CC_FILL, &k) == 2u && k == 0u;
         edda_fill_request(); edda_fill_request(); ok &= !edda.fill;   /* pressed twice: off at once */
-        lay_combo(B_GLO, white(9)); blocks(1); ok &= edda.fill;   /* (the UI's actions: run by the next block) */
-        key_up(white(9)); btn_up(B_GLO); frame();
-        ck("A4 FILL: on through the end of the next bar, the cue; again: off; the GLO key sets it", ok);
+        lay_combo(B_GLO, white(9));                       /* A4 down: FILL while held (Felucca 1.5.5's) */
+        ok &= seq_fill == 1u && !edda.fill;
+        key_up(white(9)); frame(); blocks(1);             /* let go at once: a tap, EDDA's latch (the next block) */
+        ok &= !seq_fill && edda.fill;
+        lay_combo(B_GLO, white(9)); frame(); blocks(1);   /* pressed while latched: off */
+        ok &= !edda.fill && !seq_fill;
+        key_up(white(9)); frame(); blocks(1);
+        ok &= !edda.fill;
+        lay_combo(B_GLO, white(9)); frames(400);          /* held 0.4 s: FILL while held, no latch after */
+        ok &= seq_fill == 1u;
+        key_up(white(9)); frame(); blocks(1);
+        ok &= !seq_fill && !edda.fill;
+        btn_up(B_GLO); frame();
+        ck("A4 FILL: a tap latches it through the end of the next bar, the cue; a press while latched ends it; held: while held", ok);
     }
     /* ------------------------------------------------------------- MUTATE */
     {
@@ -836,11 +857,11 @@ int main(int argc, char **argv)
             for (i = 2048; i < 4096u; i++) pk = abs(x1[i]) > pk ? abs(x1[i]) : pk;
             ok &= pk > 7000;
         }
-        {   /* the page: FILTER in the FX family after SLICER, its one knob the track's FILT; the knob steps it */
+        {   /* the page: DJ FILTER in the FX family after INSERT 2 (the chain's order), its one knob the track's FILT */
             uint32_t pi;
-            for (pi = 0; pi < NPAGES && !str_eq(PAGES[pi].title, "FILTER"); pi++) ;
+            for (pi = 0; pi < NPAGES && !str_eq(PAGES[pi].title, "DJ FILTER"); pi++) ;
             ok &= pi < NPAGES && PAGES[pi].fam == FAM_FX && PAGES[pi].id[0] == P_ED_FX && PAGES[pi].id[1] == 0xFFu &&
-                  str_eq(PAGES[pi - 1u].title, "SLICER") && PAGES[pi].graph == GR_FILT;
+                  str_eq(PAGES[pi - 1u].title, "INSERT 2") && PAGES[pi].graph == GR_FILT;
             ui_power_on();
             ui.home = 0; ui.page = (uint8_t)pi; page_entered(); frame();
             t = TSEL;
@@ -851,10 +872,10 @@ int main(int argc, char **argv)
             ok &= t->p[P_ED_FX] == 7;
             t->p[P_ED_FX] = 0;
         }
-        ck("FILT (the track's one-knob filter): 0 bit for bit, -64 a 100 Hz low-pass, +63 a 7.8 kHz high-pass, the FILTER page after SLICER", ok);
+        ck("FILT (the track's one-knob filter): 0 bit for bit, -64 a 100 Hz low-pass, +63 a 7.8 kHz high-pass, the DJ FILTER page after INSERT 2", ok);
     }
     /* ------------------------------------------------------ micro timing */
-    {
+    {   /* Felucca's NUDGE (1.2: -8..+7 sixteenths of the step, played with the track's QUANTIZE OFF) on EDDA OS's exact grid */
         static const int8_t N0[4] = {0, 0, 0, 0}, NL[4] = {0, 2, 0, 0}, NE[4] = {0, 0, -3, 0}, S3[4] = {3, 0, 0, 0},
                             SE[4] = {-2, 0, 0, 0};
         static int32_t base[4][4];
@@ -863,67 +884,59 @@ int main(int argc, char **argv)
         uint32_t lp, s;
         int32_t d;
         reset(); mt_quiet();
-        ok &= step_nudge(&t->step[0]) == 0 && SF_EARLY == 4u && !(SF_EDDA & (SF_ACCENT | SF_SLIDE | SF_RATCH));
-        {   /* the nudge's bits round trip, clamped to -3..3, the step's other flags kept */
-            step_t st = {{60, 0, 0, 0}, 1, ST_NOTE, SF_ACCENT | SF_SLIDE | SF_FILL, 96, 0, 0};
-            step_set_ratchet(&st, 3);
-            for (d = -5; d <= 5; d++) {
-                step_set_nudge(&st, d);
-                ok &= step_nudge(&st) == (d < -3 ? -3 : d > 3 ? 3 : d) && step_ratchet(&st) == 3u &&
-                      (st.flags & (SF_ACCENT | SF_SLIDE | SF_FILL)) == (SF_ACCENT | SF_SLIDE | SF_FILL);
-            }
-            step_set_nudge(&st, 0);
-            ok &= !(st.flags & (SF_EARLY | SF_NUDGE));
-        }
-        mt_track(t, 60, N0); seq_start(); mt_run(t, 2800); seq_stop();
+        mt_track(t, 60, N0); t->p[P_SQNT] = 0; seq_start(); mt_run(t, 2800); seq_stop();
         for (lp = 0; lp < 4u; lp++)
             for (s = 0; s < 4u; s++)
                 base[lp][s] = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp);
         ok &= base[0][0] == 0 && base[1][0] > 0 && base[3][3] > 0;
-        ck("micro timing: a step's nudge is -3..+3 sixteenths of the step (SF_EARLY, SF_NUDGE), its other flags kept", ok);
+        reset(); mt_quiet(); mt_track(t, 60, NL); seq_start(); mt_run(t, 2800); seq_stop();   /* QUANTIZE ON (the default) */
+        for (lp = 0; lp < 4u; lp++)
+            for (s = 0; s < 4u; s++)
+                ok &= mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp) == base[lp][s];
+        ck("NUDGE on the exact grid: QUANTIZE ON (the default) plays every step on its start, nudged or not", ok);
 
-        reset(); mt_quiet(); mt_track(t, 60, NL); seq_start(); mt_run(t, 2800); seq_stop();
+        reset(); mt_quiet(); mt_track(t, 60, NL); t->p[P_SQNT] = 0; seq_start(); mt_run(t, 2800); seq_stop();
         ok = 1;
         for (lp = 0; lp < 4u; lp++)
             for (s = 0; s < 4u; s++) {
                 d = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp) - base[lp][s];
-                ok &= s == 1u ? d >= 21 && d <= 22 : d == 0;  /* +2/16 of 5512 samples: 688, 21.5 blocks */
+                ok &= s == 1u ? d >= 21 && d <= 22 : d == 0;  /* +2/16 of 5512 samples: 689, 21.5 blocks */
             }
-        reset(); mt_quiet(); mt_track(t, 60, NE); seq_start(); mt_run(t, 2800); seq_stop();
+        reset(); mt_quiet(); mt_track(t, 60, NE); t->p[P_SQNT] = 0; seq_start(); mt_run(t, 2800); seq_stop();
         for (lp = 0; lp < 4u; lp++)
             for (s = 0; s < 4u; s++) {
                 d = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp) - base[lp][s];
-                ok &= s == 2u ? d >= -33 && d <= -32 : d == 0;   /* -3/16: 1032 samples early */
+                ok &= s == 2u ? d >= -33 && d <= -32 : d == 0;   /* -3/16: 1033 samples early */
             }
-        ck("NUDGE +2 starts the step 688 samples late, -3 1032 early; every other step on the grid, four bars on", ok);
+        ck("QUANTIZE OFF: NUDGE +2 starts the step 2/16 of it late, -3 3/16 early; every other step on the grid, four bars on", ok);
 
-        reset(); mt_quiet(); mt_track(t, 60, S3); seq_start(); mt_run(t, 2800); seq_stop();
+        reset(); mt_quiet(); mt_track(t, 60, S3); t->p[P_SQNT] = 0; seq_start(); mt_run(t, 2800); seq_stop();
         ok = 1;
         for (lp = 0; lp < 4u; lp++)
             for (s = 0; s < 4u; s++) {
                 d = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp) - base[lp][s];
                 ok &= s == 0u ? d >= 32 && d <= 33 : d == 0;
             }
-        reset(); mt_quiet(); mt_track(t, 60, SE); seq_start(); mt_run(t, 2800); seq_stop();
+        reset(); mt_quiet(); mt_track(t, 60, SE); t->p[P_SQNT] = 0; seq_start(); mt_run(t, 2800); seq_stop();
         for (lp = 0; lp < 4u; lp++)
             for (s = 0; s < 4u; s++) {
                 d = mt_at(60u + (uint32_t[]){0, 2, 4, 5}[s], lp) - base[lp][s];
                 ok &= s == 0u ? (lp == 0u ? d == 0 : d >= -22 && d <= -21) : d == 0;   /* (never before PLAY) */
             }
-        ck("step 1 nudged at PLAY: late waits for its nudge, early starts at once; the grid never drifts", ok);
+        ck("step 1 nudged at PLAY: late waits for its nudge, early plays on its start (then a loop early); the grid never drifts", ok);
 
-        {   /* the song chain: slot A's step 1 early (-2): slot B starts on the grid, not 688 samples early */
+        {   /* the song chain: slot A's step 1 early (-2): slot B starts on the grid */
             int32_t b70[2];
             uint32_t pass;
             for (pass = 0; pass < 2u; pass++) {
                 reset(); mt_quiet();
-                mt_track(t, 60, pass ? SE : N0);
+                mt_track(t, 60, pass ? SE : N0); t->p[P_SQNT] = 0;
                 project_save(0);
-                mt_track(t, 70, N0);
+                mt_track(t, 70, N0); t->p[P_SQNT] = 0;
                 project_save(1);
                 chain_config.count = 2;
-                chain_config.row[0] = (chain_row_t){0, 1};
-                chain_config.row[1] = (chain_row_t){1, 1};
+                chain_config.row[0] = chain_row_of(0, 1);
+                chain_config.row[1] = chain_row_of(1, 1);
                 ok = chain_prepare() == 0u;
                 mt_run(t, 1400);
                 b70[pass] = mt_at(70, 0);
@@ -932,62 +945,58 @@ int main(int argc, char **argv)
                 chain_config.count = 0;
             }
             ok &= b70[0] > 600 && b70[1] - b70[0] >= -1 && b70[1] - b70[0] <= 1;
-            ck("a song chain: slot A's step 1 nudged early, slot B still starts on the grid (the carry from the plain boundary)", ok);
+            ck("a song chain: slot A's step 1 nudged early, slot B still starts on the grid", ok);
         }
 
-        {   /* the CHANCE page: KNOB 4 NUDGE of the cursor's step */
-            reset(); mt_quiet(); mt_track(t, 60, N0);
-            song.sel = 0;
-            go_page(GR_CHANCE); frame();
-            ui.cursor = 1;
-            turn(EN_K4, 2); frame();
-            ok = step_nudge(&t->step[1]) == 2;
-            turn(EN_K4, -7); frame();
-            ok &= step_nudge(&t->step[1]) == -3 && (t->step[1].flags & SF_EARLY);
-            turn(EN_K4, 3); frame();
-            ok &= step_nudge(&t->step[1]) == 0 && !(t->step[1].flags & (SF_EARLY | SF_NUDGE)) && step_nudge(&t->step[0]) == 0;
-            ck("SEQ > CHANCE: KNOB 4 NUDGE moves the cursor's step -3..+3 (clamped), 0 clears it", ok);
-        }
-
-        {   /* projects keep the nudges and the fills; a project without them is written as Felucca writes it */
+        {   /* EDDA OS 1.1.5's projects (FUN9 with its extras) come over: the nudges (notes' top bits: 2, 3 the size, 1 the
+             * sign), the fills (the EDD1 tail -> the FILL condition), its kits 9..13 (-> 12..16), its dotted TIMEs (1/4D
+             * 1/8D 1/16D at 10..12 -> Felucca's 12 10 11), the song (byte 65); Felucca's FUN9 as before */
             static project_t pa, pb;
-            static project_store_t ps;
-            uint32_t pos = 68u + NTRK * (P_COUNT + 2u + NSTEP * 9u) + (uint32_t)sizeof(chain_config_t) +
-                           (uint32_t)sizeof(motion_store_t), zero = 1, top = 0, i;
-            reset(); mt_quiet(); mt_track(t, 60, NE);
-            step_set_nudge(&t->step[3], 1);
-            t->step[1].flags |= SF_FILL;
-            trk[2].step[40].flags |= SF_FILL;
+            static uint8_t img[3648];
+            uint32_t n9, pos, tail, i, sum;
+            reset(); mt_quiet(); mt_track(t, 60, N0);
+            trk[3].eng_req = trk[3].engine = (uint8_t)ENGI_DRUM;
+            trk[3].p[P_E0] = 9;                           /* (as 1.1.5 stored USR1) */
             project_capture(&pa);
-            ok = proj_pack(&ps, &pa) && proj_import(&pb, &ps, sizeof ps);
-            ok &= step_nudge(&pb.t[0].step[2]) == -3 && step_nudge(&pb.t[0].step[3]) == 1 && step_nudge(&pb.t[0].step[0]) == 0 &&
-                  (pb.t[0].step[1].flags & SF_FILL) && (pb.t[2].step[40].flags & SF_FILL) && !(pb.t[0].step[2].flags & SF_FILL) &&
-                  pb.t[0].step[2].note[0] == 64 && pb.t[0].step[3].note[0] == 65 && !memcmp(ps.raw + pos, "EDD1", 4);
+            pa.t[3].engine = (uint8_t)ENGI_DRUM;
+            pa.t[3].p[P_E0] = 9;
+            pa.g[G_DTIME] = 10;                           /* (1.1.5's 1/4D) */
+            pa.arv = 0;
+            n9 = old_pack(img, &pa, OLD_FUN9, 99u);
+            ok = n9 == 3648u;
+            pos = 68u + 0u * (99u + 2u + NSTEP * 9u) + 99u + 2u;   /* track 1, its steps */
+            img[pos + 2u * 9u + 1u] |= 128u;              /* step 3: early .. */
+            img[pos + 2u * 9u + 2u] |= 128u;              /* .. by 1 + 2 = 3 sixteenths */
+            img[pos + 2u * 9u + 3u] |= 128u;
+            img[pos + 1u * 9u + 3u] |= 128u;              /* step 2: late by 2 */
+            img[65] = 4;                                  /* the music came from THE ARRIVAL's song 4 */
+            tail = 68u + NTRK * (99u + 2u + NSTEP * 9u) + 36u + 260u;   /* the EDD1 tail: after the chain and the motion */
+            memcpy(img + tail, "EDD1", 4);
+            img[tail + 4u + 0u * 8u + 0u] = 1u << 3;      /* track 1, step 4 */
+            img[tail + 4u + 2u * 8u + 5u] = 1u << 0;      /* track 3, step 41 */
+            sum = proj_hash(img, 3648u - 4u);
+            memcpy(img + 3648u - 4u, &sum, 4);
+            ok &= proj_import(&pb, img, (int)n9) != 0;
+            ok &= step_nudge(&pb.t[0].step[2]) == -3 && step_nudge(&pb.t[0].step[1]) == 2 && step_nudge(&pb.t[0].step[0]) == 0 &&
+                  pb.t[0].step[2].note[0] == 64 && pb.t[0].step[1].note[0] == 62;
+            ok &= step_cond(&pb.t[0].step[3]) == COND_FILL && step_cond(&pb.t[2].step[40]) == COND_FILL && !step_cond(&pb.t[0].step[2]);
+            ok &= pb.t[3].p[P_E0] == DK_USR1 && pb.g[G_DTIME] == 12 && pb.arv == 4u;
+            img[pos + 2u * 9u + 0u] |= 128u;              /* note 1's top bit: never written by anyone: refused */
+            sum = proj_hash(img, 3648u - 4u);
+            memcpy(img + 3648u - 4u, &sum, 4);
+            ok &= !proj_import(&pb, img, (int)n9);
+            n9 = old_pack(img, &pa, OLD_FUN9, 99u);       /* plain (Felucca 1.1.5's): nothing moved but the kit's past 8 */
+            ok &= proj_import(&pb, img, (int)n9) != 0 && step_nudge(&pb.t[0].step[2]) == 0 && !step_cond(&pb.t[0].step[3]);
             for (i = 0; i < NSTEP; i++)
-                t->step[i].flags &= (uint8_t)~SF_EDDA;
-            trk[2].step[40].flags &= (uint8_t)~SF_FILL;
-            project_capture(&pa);
-            ok &= proj_pack(&ps, &pa) != 0;
-            for (i = pos; i < PROJ_FM6_OFF; i++)
-                zero &= ps.raw[i] == 0u;
-            for (i = 0; i < NSTEP; i++)
-                top |= ps.raw[68u + P_COUNT + 2u + i * 9u + 1u] | ps.raw[68u + P_COUNT + 2u + i * 9u + 2u] |
-                       ps.raw[68u + P_COUNT + 2u + i * 9u + 3u];
-            ok &= zero && !(top & 128u);
-            ps.raw[68u + P_COUNT + 2u] |= 128u;          /* a note's top bit proj_pack never sets: refused */
-            {
-                uint32_t sum = proj_hash(ps.raw, PROJ_STORE_SIZE - 4u);
-                memcpy(ps.raw + PROJ_STORE_SIZE - 4u, &sum, 4);
-            }
-            ok &= !proj_import(&pb, &ps, sizeof ps);
-            ck("projects: the nudges in the notes' top bits, the fills in the tail (EDD1); none: the tail and those bits zero; junk refused", ok);
+                ok &= !step_cond(&pb.t[2].step[i]);
+            ck("EDDA OS 1.1.5's projects: nudges, fills (FILL), kits 9..13 -> 12..16, 1/4D -> 12, its song; a stray bit refused", ok);
         }
-        {   /* a user preset never reads SF_EARLY as its tie (editor_test: STEP_SET keeps the nudge) */
+        {   /* a user preset never reads a nudge's sign bit (4) as its tie */
             static up_rec_t r;
             reset(); mt_quiet(); mt_track(t, 60, SE);
             up_pat_from(&r, t->step);
             ok = r.note[0] == 60 && !(r.flags[0] & 4u) && r.note[1] == 62;
-            ck("a user preset keeps an early-nudged step a note (SF_EARLY is not its tie)", ok);
+            ck("a user preset keeps an early-nudged step a note (the nudge's bit 4 is not its tie)", ok);
         }
     }
     /* ------------------------------------------------------ the exact grid */
@@ -1048,24 +1057,21 @@ int main(int argc, char **argv)
         ck("the ARP at 1/16, 128 BPM: 256 steps in the exact grid's time from its key (the remainder kept)", ok);
     }
     /* ------------------------------------------------------ dotted echoes */
-    {
+    {   /* EDDA OS 1.1.5's dotted echoes are Felucca 1.5.1's now: 1/8D 1/16D 1/4D at 10..12 (THE ARRIVAL: DT_*) */
         uint32_t q;
         int ok;
         reset();
         song.g[G_BPM] = 120;
         q = beat_samples();
-        ok = GP[G_DTIME].names == N_DLYDIV && GP[G_DTIME].max == 12 && str_eq(N_DLYDIV[10], "1/4D") &&
-             str_eq(N_DLYDIV[11], "1/8D") && str_eq(N_DLYDIV[12], "1/16D") && str_eq(N_DLYDIV[9], "4BAR") &&
-             NELEM(N_DIV) == 10u;                        /* (SEQ DIV and ARP RATE as before) */
-        ok &= div_samples(10) == q * 3u / 2u && div_samples(11) == q * 3u / 4u && div_samples(12) == q * 3u / 8u &&
-              div_samples(0) == q && div_samples(1) == q / 2u;
-        song.g[G_DTIME] = 11;
+        ok = GP[G_DTIME].names == N_DTIME && GP[G_DTIME].max == 12 && str_eq(N_DTIME[10], "1/8D") &&
+             str_eq(N_DTIME[11], "1/16D") && str_eq(N_DTIME[12], "1/4D") && NELEM(N_DIV) == 10u;
+        song.g[G_DTIME] = 10;
         ok &= delay_samples() == q * 3u / 4u;
+        song.g[G_DTIME] = 12;
+        ok &= delay_samples() == q * 3u / 2u;
         song.g[G_DTIME] = 1;
-        ok &= delay_samples() == q / 2u;
-        ok &= param_turn(&GP[G_DTIME], 1, 1) == 12 && param_turn(&GP[G_DTIME], 12, 1) == 4 &&   /* 1/8 -> 1/16D -> 8T */
-              param_turn(&GP[G_DTIME], 0, -1) == 10 && param_turn(&GP[G_DTIME], 10, -1) == 6;   /* 1/4 -> 1/4D -> 1/2 */
-        ck("dotted echoes: DLY TIME 1/4D 1/8D 1/16D (3/2 of the plain ones, values 10..12), between their neighbours on the knob", ok);
+        ok &= delay_samples() == q / 2u && div_samples(0) == q && div_samples(1) == q / 2u;
+        ck("dotted echoes: Felucca's DLY TIME 1/8D 1/16D 1/4D (10..12, 3/2 of the plain ones)", ok);
     }
     /* ------------------------------------------------------ SEQ OUT */
     {
@@ -1330,39 +1336,52 @@ int main(int argc, char **argv)
             uint8_t keep = edda_prefs;
             memset(&p, 0, sizeof p);
             settings_export(&p);
-            ok &= p.favorites.factory[15][26] == keep;
+            ok &= p.favorites.factory[13][31] == keep && p.favorites.factory[15][26] == ui_home_view;   /* (EDDA OS 1.7: the
+                                                         * last of SLICE's favourites row; HOME's byte its own) */
             edda_defaults();
             ok &= !edda.seq_out && !edda.cues && !edda.run_len && !edda.reveal;
             edda_prefs_apply(edda_prefs);
             ok &= edda.seq_out == 2u && edda.cues && edda.run_len && edda.reveal;
             menu_put(MI_SEQOUT, 0);
             ok &= edda_prefs == (1u | 1u << 3 | 1u << 4);
-            p.favorites.factory[15][26] = (uint8_t)(6u | 1u | 0x80u);                    /* SEQ OUT 3; a future bit */
-            ok &= settings_import(&p, sizeof p) && p.favorites.factory[15][26] == (1u | 0x80u);
+            p.favorites.factory[13][31] = (uint8_t)(6u | 1u | 0x80u);                    /* SEQ OUT 3; a future bit */
+            ok &= settings_import(&p, sizeof p) && p.favorites.factory[13][31] == (1u | 0x80u);
             edda_prefs_apply(edda_prefs);
             ok &= !edda.seq_out && edda.cues && !edda.run_len && !edda.reveal;
             menu_put(MI_REVEAL, 1);
             ok &= edda_prefs == (1u | 1u << 4 | 0x80u);                                  /* (the future bit kept) */
         }
-        ck("SHOW CUES, SEQ OUT, RUN, REVEAL kept with the settings (one byte); applied at power-on; SEQ OUT 3 reads OFF", ok);
+        ck("SHOW CUES, SEQ OUT, RUN, REVEAL kept with the settings (one byte, [13][31]); applied at power-on; SEQ OUT 3 reads OFF", ok);
         reset();
     }
     /* ------------------------------------------------------ the user kits */
     {
-        int ok = ENG_DRUM.edit[0].max == DK_COUNT - 1 && DK_COUNT == 14u && str_eq(N_DRUM_KIT[DK_USR1], "USR1") &&
-                 str_eq(N_DRUM_KIT[DK_USR4], "USR4") && drum_kit_plays(DK_USR4) == DK_USR4 && DK_USR == 9u &&
-                 str_eq(N_DRUM_KIT[DK_EDDA], "EDDA") && DK_EDDA == 13u && drum_kit_plays(DK_EDDA) == DK_EDDA;
+        int ok = ENG_DRUM.edit[0].max == DK_COUNT - 1 && DK_COUNT == 17u && str_eq(N_DRUM_KIT[DK_USR1], "USR1") &&
+                 str_eq(N_DRUM_KIT[DK_USR4], "USR4") && drum_kit_plays(DK_USR4) == DK_USR4 && DK_USR == 12u &&
+                 str_eq(N_DRUM_KIT[DK_PERC], "PERC") && DK_PERC == 11u &&
+                 str_eq(N_DRUM_KIT[DK_EDDA], "EDDA") && DK_EDDA == 16u && drum_kit_plays(DK_EDDA) == DK_EDDA;
         int16_t pp[P_COUNT];
         memset(pp, 0, sizeof pp);
         pp[P_E0] = DK_USR2;
-        ok &= drum_user_kit(pp) == 1u && smp_user_addr(3) == 0xE7000u && smp_user_addr(2) == 0xC8000u &&
+        ok &= drum_user_kit(pp) == 1u && smp_user_addr(3) == 0xEA000u && smp_user_addr(2) == 0xC8000u &&
+              smp_user_size(3) == 0x12000u && smp_user_size(2) == 0x14000u && smp_user_addr(3) + smp_user_size(3) == 0xFC000u &&
               SMP_USER_SLOTS == 4u && str_eq(SMP_ALL_NAMES[SMP_XBASE - 1u], "USR4") && SMP_XBASE == 9u;
         pp[P_E0] = DK_EDDA;
         ok &= drum_user_kit(pp) == SMP_USER_SLOTS && drum_smp_kit(pp) == KIT_SRC_EDDA;
-#ifdef FL_STORE_OK
-        ok &= FL_STORE_OK(0xE7000u, 0x14000u) && !FL_STORE_OK(0xFB000u, 0x1000u) && !FL_STORE_OK(0xE6000u, 0x2000u);
+        pp[P_E0] = DK_DEEP;                             /* (Felucca 1.5.6's kits: synth kits, no samples) */
+        ok &= drum_user_kit(pp) == SMP_USER_SLOTS && drum_smp_kit(pp) == KIT_SRC_NONE;
+        pp[P_E0] = 9; drum_kit_v115(pp, 99u);           /* EDDA OS 1.1.5's USR1 in a record of before 1.2 */
+        ok &= pp[P_E0] == DK_USR1;
+        pp[P_E0] = 13; drum_kit_v115(pp, 99u);
+        ok &= pp[P_E0] == DK_EDDA;
+        pp[P_E0] = 9; drum_kit_v115(pp, 111u);          /* (a record of 1.2 on: DEEP stays DEEP) */
+        ok &= pp[P_E0] == DK_DEEP;
+#ifdef ST_SMP4_LO
+        ok &= ST_OK(0xEA000u, 0x12000u) && !ST_OK(0xFC000u - 0x1000u, 0x2000u) && ST_OK(0xE7000u, 0x1000u) &&
+              !ST_OK(0xE6000u, 0x3000u) && ST_SMP4_HI == FL_XDATA1_HI &&
+              !ST_OK(0xE8000u, 0x1000u) && !ST_OK(0xE9000u, 0x1000u) && !ST_OK(0xE7000u, 0x2000u);   /* (the unit's RF, BT) */
 #endif
-        ck("DRUM KIT: USR1..USR4 after the synth kits (values 9..12), EDDA 13; USR4 is the slot at 0xE7000 (in the flash guard)", ok);
+        ck("DRUM KIT: USR1..USR4 after Felucca's kits (12..15), EDDA 16, 1.1.5's 9..13 moved; USR4 the 72 KiB at 0xEA000 (in the flash guard; never the unit's RF calibration 0xE8000 or BT address 0xE9000)", ok);
         {   /* the track with a user kit: the synth kit's lane names, no model swaps */
             track_t *t = &trk[0];
             reset();
@@ -1379,7 +1398,9 @@ int main(int argc, char **argv)
         uint32_t pk, nb[2];
         voice_t *v;
         reset();
-        ok = kit_load(kit, 0) && kit_load(kit, 3);
+        char kit4[512];
+        snprintf(kit4, sizeof kit4, "%s_usr4", kit);      /* (EDDA OS 1.7: USR4 is 72 KiB, tests/edda_kit.py fits it) */
+        ok = kit_load(kit, 0) && kit_load(kit4, 3) && host_slots_usr4_fits();
         for (i = 0; ok && i < 16u; i++)
             ok &= usr_zone[0][i].lo == KIT_PAD_NOTES[i] && usr_zone[0][i].hi == KIT_PAD_NOTES[i] &&
                   usr_zone[0][i].root16 == KIT_PAD_NOTES[i] * 16 && !usr_zone[0][i].looped &&
@@ -1633,38 +1654,38 @@ int main(int argc, char **argv)
         blocks(2);
         frame();
         ok = chain.running && chain.row == 0u && chain.remaining == 2u && song.grid == 3u &&
-             str_eq(arv_sec_name(2), "DROP") && chain_config.row[3].slot == 2u;
-        for (nb = 0; nb < 27u; nb++)                    /* (seq.c KB_SECTION_KEYS: the first four white keys) */
-            ok &= ((KB_SECTION_KEYS >> nb) & 1u) == (uint32_t)(!key_black(nb) && key_place(nb) < 4u);
-        key_down(white(2)); blocks(1); frame();        /* A3: C, the DROP */
-        ok &= kb_note[white(2)] == KB_SILENT;
-        key_up(white(2)); blocks(1); frame();
+             str_eq(arv_sec_name(2), "DROP") && chain_config.row[3].slot[0] == 2u && chain_config.row[3].slot[3] == 2u;
+        for (nb = 0; nb < 27u; nb++)                    /* (seq.c SONG_KEYS: Felucca's A3 B3 C4 D4, the sections) */
+            ok &= ((SONG_KEYS >> nb) & 1u) == (uint32_t)(song_key(nb) >= 0);
+        key_down(white(4)); blocks(1); frame();        /* C4: C, the DROP */
+        ok &= kb_note[white(4)] == KB_SILENT;
+        key_up(white(4)); blocks(1); frame();
         ok &= chain.cue == 3u && msg_is("NEXT DROP") && chain.row == 0u;
-        key_down(white(2)); blocks(1); frame(); key_up(white(2)); blocks(1); frame();
+        key_down(white(4)); blocks(1); frame(); key_up(white(4)); blocks(1); frame();
         ok &= !chain.cue && msg_is("CUE OFF DROP");
-        key_down(white(2)); blocks(1); frame(); key_up(white(2)); blocks(1); frame();
+        key_down(white(4)); blocks(1); frame(); key_up(white(4)); blocks(1); frame();
         ok &= chain.cue == 3u;
         for (nb = 0; chain.row == 0u && nb < 20u * FS / CTL; nb++)
             blocks(1);
-        ok &= chain.row == 3u && chain.slot == 2u && chain.remaining == 4u && !chain.cue &&
+        ok &= chain.row == 3u && chain_row_slot(&chain.config.row[chain.row]) == 2u && chain.remaining == 4u && !chain.cue &&
               nb > 7u * FS / CTL && nb < 9u * FS / CTL;   /* (one pass of INTRO: 4 bars at 116, 8.3 s, not two) */
         ck("SONG playing: a section's key cues it (silent), NEXT; again: CUE OFF; this pass ends, the song goes on from "
            "the cued section's next row", ok);
         frame();
-        key_down(white(2)); blocks(1); frame(); key_up(white(2)); blocks(1); frame();   /* the DROP playing: once more */
+        key_down(white(4)); blocks(1); frame(); key_up(white(4)); blocks(1); frame();   /* the DROP playing: once more */
         ok2 = chain.remaining == 5u && !chain.cue && msg_is("ONE MORE DROP") && chain.row == 3u;
         ck("SONG playing: the section playing's key: one more pass of it", ok2);
         chain.row = (uint8_t)(chain_config.count - 1u);   /* the last row's last pass */
         chain.remaining = 1u;
         row0 = chain.row;
-        key_down(white(1)); blocks(1); frame(); key_up(white(1)); blocks(1); frame();   /* G3: B, the GROOVE */
+        key_down(white(3)); blocks(1); frame(); key_up(white(3)); blocks(1); frame();   /* B3: B, the GROOVE */
         for (nb = 0; chain.row == row0 && chain.running && nb < 20u * FS / CTL; nb++)
             blocks(1);
-        ok3 = chain.running && chain.row == 1u && chain.slot == 1u && song.playing;
+        ok3 = chain.running && chain.row == 1u && chain_row_slot(&chain.config.row[chain.row]) == 1u && song.playing;
         press(B_PLAY);
         blocks(2);
         frame();
-        ok3 &= !chain.running && song.grid == 0u;     /* (stopped: the keys play again) */
+        ok3 &= !chain.running && song.grid == 3u;     /* (stopped: the same keys set the cells, Felucca's SONG) */
         ck("SONG playing: a cue on the song's last pass plays on (round to its first row of that section)", ok3);
     }
     {   /* SHOW CUES (channel 16): CC 27 the song loaded (and CC 24 its key), each section as it starts: CC 26 its

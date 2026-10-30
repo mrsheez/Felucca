@@ -55,7 +55,8 @@ typedef struct {
     /* REVEAL (MENU > EDDA): the entrainment / novelty arrangement: every 8th bar the kick rests (the hole), bars
      * 17..24 of every 32 the backbeat moves from SNARE to RIM (the reveal) */
     uint8_t reveal;
-    uint8_t fill;                /* FILL on: the fill-only steps (SF_FILL) play, through the end of the next bar */
+    uint8_t fill;                /* FILL latched (A4 tapped): the FILL steps play (core.h COND_FILL; seq.c seq_cond_miss),
+                                  * through the end of the next bar */
     uint32_t fill_until;         /* .. the bar count at which it goes off */
     uint8_t mutate;              /* MUTATE asked for: the bell lane re-rolls on the next one */
     uint32_t seed;               /* the mutations' own random state */

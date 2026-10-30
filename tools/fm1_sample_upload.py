@@ -13,13 +13,14 @@
 
 A kit's pads are, in order, KICK SNARE CLAP HAT CL HAT OP TOM RIM BELL (the DRUM grid's lanes), then LO TOM
 HI TOM MID TOM CONGA CRASH HI CONGA RIDE RIDE BELL (sampleio.KIT_PAD_NOTES): each plays on its own note as it
-is, one-shot. Tails are trimmed, a pad holds up to 4 s; when the kit does not fit the slot's 80 KiB the longest
-pads drop to 11025 Hz. Any WAV (8..32 bit, float, any rate, any channel count).
+is, one-shot. Tails are trimmed, a pad holds up to 4 s; when the kit does not fit the slot (80 KiB; USR4 72 KiB)
+the longest pads drop to 11025 Hz. Any WAV (8..32 bit, float, any rate, any channel count).
 
 Each file becomes one zone: mono, 22050 Hz, IMA ADPCM (sampleio.py, the same encoder
 as the built-in sets and the web editor). ROOT is a MIDI note (default: from the file
 name, C4 = 60, else 60); without LO-HI the zones split the keyboard between their roots.
-A slot holds 80 KiB (about 7 s at 22050 Hz). Protocol: web/EDITOR_PROTOCOL.md, cmds 11..15.
+A slot holds 80 KiB (about 7 s at 22050 Hz; EDDA OS's USR4 72 KiB, 6.6 s). Protocol: web/EDITOR_PROTOCOL.md,
+cmds 11..15.
 Needs mido (and a backend such as python-rtmidi) for the device commands.
 """
 import sys
@@ -39,7 +40,8 @@ def printable(b):
 
 
 def slot_info(r):
-    """the SMP_INFO reply -> one line per slot; ValueError when it is malformed"""
+    """the SMP_INFO reply -> one line per slot; ValueError when it is malformed. EDDA OS 1.7 adds each slot's own
+    KiB after the entries (USR4: 72)"""
     try:
         n, i, out = r[0], 2, []
         for k in range(n):
@@ -47,7 +49,8 @@ def slot_info(r):
             j = r.index(0, i + 1)
             out.append(f"USR{k + 1}: {'empty' if not nz else f'{nz} zones, {printable(r[i + 1:j])}, {r[j + 1]} KiB'}")
             i = j + 2
-        return out
+        cap = r[i:i + n] if len(r) >= i + n else [r[1]] * n
+        return [f"{s} (of {c} KiB)" for s, c in zip(out, cap)]
     except (IndexError, ValueError):
         raise ValueError("malformed SMP_INFO reply from the device") from None
 
@@ -95,7 +98,7 @@ class Link:
         raise TimeoutError(f"no reply to cmd {cmd}")
 
 
-def build(name, specs):
+def build(name, specs, max_data=sio.SLOT_MAX_DATA):
     """specs: "file.wav[:ROOT[:LO-HI]]" -> (header, ADPCM data) for SMP_END / SMP_WRITE"""
     zones = []
     for spec in specs:
@@ -108,10 +111,10 @@ def build(name, specs):
         if not x:
             raise ValueError(f"{path}: no audio")
         zones.append((sio.to_int16(x), root, lo, hi))
-    return sio.user_slot(name, zones)
+    return sio.user_slot(name, zones, max_data)
 
 
-def build_kit(name, specs):
+def build_kit(name, specs, max_data=sio.SLOT_MAX_DATA):
     """specs: up to 16 WAV paths in pad order ("-": an empty pad) -> (header, ADPCM data) of the kit slot"""
     pads = []
     for spec in specs[:sio.SLOT_ZONES]:
@@ -120,7 +123,7 @@ def build_kit(name, specs):
             continue
         sr, x = sio.read_any_wav(Path(spec))
         pads.append((sr, x))
-    return sio.kit_slot(name, pads)
+    return sio.kit_slot(name, pads, max_data=max_data)
 
 
 def main():
@@ -130,11 +133,13 @@ def main():
     if cmd in ("load", "build", "kit", "kitbuild"):
         if len(sys.argv) < 5:
             sys.exit(__doc__)
+        room = sio.slot_max_data(int(sys.argv[2]) - 1) if cmd in ("load", "kit") and sys.argv[2] in ("1", "2", "3", "4") \
+            else sio.SLOT_MAX_DATA                 # (a bad SLOT is refused below)
         try:
             if cmd in ("kit", "kitbuild"):
-                hdr, data = build_kit(sys.argv[3] if cmd == "kit" else sys.argv[2], sys.argv[4:])
+                hdr, data = build_kit(sys.argv[3] if cmd == "kit" else sys.argv[2], sys.argv[4:], room)
             else:
-                hdr, data = build(sys.argv[3] if cmd == "load" else sys.argv[2], sys.argv[4:])
+                hdr, data = build(sys.argv[3] if cmd == "load" else sys.argv[2], sys.argv[4:], room)
         except (OSError, ValueError) as e:
             sys.exit(f"cannot build the slot: {e}")
         if cmd in ("build", "kitbuild"):

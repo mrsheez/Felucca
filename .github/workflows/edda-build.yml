@@ -23,13 +23,15 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EDDA_VERSION: 1.1.5-EDDA          # --release: one digit each (X.Y.Z-suffix); the splash shows v1.1.5-edda
+  EDDA_VERSION: 1.7.0-EDDA          # --release: one digit each (X.Y.Z-suffix); the splash shows v1.7.0-edda
 
 jobs:
   build:
     runs-on: ubuntu-24.04              # (pinned: ubuntu-latest moves to 26.04 from 19 Oct 2026; JieLi's toolchain is known to run here)
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive          # (Felucca 1.7: firmware/bsp felucca-bsp, firmware/engines Felucca-Engines)
 
       - uses: actions/setup-python@v5
         with:
@@ -82,6 +84,15 @@ jobs:
           grep -h "image .* B; RAM" build-*.log | tail -1 | sed 's/^/size: /' | tee build-size.txt
           cp "build/felucca-$EDDA_VERSION.fwsc" build/felucca.fwsc
           ls -la build/*.fwsc
+
+      - name: Size report (the largest symbols, onto the ci-out branch)
+        if: always()
+        shell: bash
+        run: |
+          if [ -f build/felucca.elf ]; then
+            "$JIELI_TOOLCHAIN/common/bin/objdump" -t build/felucca.elf | python3 tools/size_report.py 200 > build-syms.txt
+            head -8 build-syms.txt
+          fi
 
       - name: Package artifact (download it from the run's page)
         uses: actions/upload-artifact@v4
@@ -156,7 +167,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           rm -rf ci-out && mkdir -p ci-out
-          cp build-*.log build-size.txt ci-out/ 2>/dev/null || true
+          cp build-*.log build-size.txt build-syms.txt ci-out/ 2>/dev/null || true
           cp build/felucca-*.fwsc build/tests.log ci-out/ 2>/dev/null || true
           { echo "run ${{ github.run_id }} ${{ github.sha }} $(date -u +%FT%TZ)"; echo "build: ${{ steps.build.outcome }}"
             echo "tests: ${{ steps.tests.outcome }}"; echo "sdk: ${{ steps.sdk.outputs.sdk }}"; ls -la ci-out; } > ci-out/RUN.txt
