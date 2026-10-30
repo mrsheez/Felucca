@@ -10,7 +10,7 @@ name: EDDA OS
 
 on:
   push:
-    branches: [edda, main, master]
+    branches: [edda, main, master, "edda-*"]   # (edda-*: a release branch builds and tests, no site)
   workflow_dispatch:
 
 permissions:
