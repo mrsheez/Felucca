@@ -983,6 +983,7 @@ int main(int argc, char **argv)
                   pb.t[0].step[2].note[0] == 64 && pb.t[0].step[1].note[0] == 62;
             ok &= step_cond(&pb.t[0].step[3]) == COND_FILL && step_cond(&pb.t[2].step[40]) == COND_FILL && !step_cond(&pb.t[0].step[2]);
             ok &= pb.t[3].p[P_E0] == DK_USR1 && pb.g[G_DTIME] == 12 && pb.arv == 4u;
+            ok &= pb.t[0].p[P_SQNT] == 0 && pb.t[1].p[P_SQNT] == 1 && pb.t[2].p[P_SQNT] == 1;   /* (the nudged track plays them) */
             img[pos + 2u * 9u + 0u] |= 128u;              /* note 1's top bit: never written by anyone: refused */
             sum = proj_hash(img, 3648u - 4u);
             memcpy(img + 3648u - 4u, &sum, 4);
@@ -991,7 +992,7 @@ int main(int argc, char **argv)
             ok &= proj_import(&pb, img, (int)n9) != 0 && step_nudge(&pb.t[0].step[2]) == 0 && !step_cond(&pb.t[0].step[3]);
             for (i = 0; i < NSTEP; i++)
                 ok &= !step_cond(&pb.t[2].step[i]);
-            ck("EDDA OS 1.1.5's projects: nudges, fills (FILL), kits 9..13 -> 12..16, 1/4D -> 12, its song; a stray bit refused", ok);
+            ck("EDDA OS 1.1.5's projects: nudges (their track QUANTIZE OFF: they play), fills (FILL), kits 9..13 -> 12..16, 1/4D -> 12, its song; a stray bit refused", ok);
         }
         {   /* a user preset never reads a nudge's sign bit (4) as its tie */
             static up_rec_t r;

@@ -354,6 +354,9 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "UI: sounds keep steps, undo, recording, MIDI overflow, pending saves, panel recovery, drum grid, song chain, GREY gray, MONO neutral" "$OUT/ui_test"
     $CC -w -DFELUCCA_CPU2=0 -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test_c1" tests/ui_test.c -lm
     run "UI, a FELUCCA_CPU2=0 build: MENU > SYSTEM without 2ND CORE, the rest as the default build" "$OUT/ui_test_c1"
+    # EDDA OS 1.7: the device's build has no visualisers (felucca.c EDDA_VIZ 0): the UI without them too
+    $CC -w -DEDDA_VIZ=0 -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test_noviz" tests/ui_test.c -lm
+    run "UI, an EDDA_VIZ=0 build (the device's): GLO + G5 says so, G5 dark, the rest as the default build" "$OUT/ui_test_noviz"
     $CC -DPREEMPT -g -fwrapv -fsanitize=address,undefined -fno-sanitize=shift -fno-sanitize-recover=all -w \
         -Ibuild/gen -Ifirmware/src -o "$OUT/drumfuzz" tests/drumfuzz_test.c -lm
     run "DRUM grid stress (#211, ASan / UBSan): random grid editing, locks, undo, engines over a playing synth, the ISR anywhere" \
@@ -567,6 +570,10 @@ run "installer CLI (fm1_install.py) against a simulated FM-1" python3 tests/inst
 if command -v node >/dev/null 2>&1; then
     run "web pages: editor protocol + samples, package builder, update protocol" node web/test_web.mjs
     run "web backup: capture, validation before writes, restore order" node web/test_backup.mjs
+    # EDDA OS: the one-file installer made from this package, installed onto a simulated FM-1 (stock -> loader -> it)
+    python3 web/make_site.py --onefile build/felucca.fwsc "${EDDA_VERSION:-dev}" "$OUT/edda-installer.html" >/dev/null
+    run "EDDA OS one-file installer: the package inside the page, no fetch, Install writes it byte for byte" \
+        node web/test_onefile.mjs "$OUT/edda-installer.html"
 else
     echo "== skip web tests (no node)"
 fi

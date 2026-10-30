@@ -17,10 +17,19 @@
 #define FELUCCA_OTA_DRYRUN 0     /* 1 = stage, ask "success", then undo: no record, no reset */
 #endif
 #ifndef FELUCCA_CDC
-#define FELUCCA_CDC 1            /* USB CDC-ACM serial console */
+#define FELUCCA_CDC 0            /* USB CDC-ACM serial console (EDDA OS 1.7: out, 7 KB: a developer's read-only console;
+                                  * the app slot is full. FELUCCA_CDC=1 builds it) */
 #endif
 #ifndef FELUCCA_UAC
 #define FELUCCA_UAC 1            /* USB audio input: the master output, 16-bit stereo 44.1 kHz (usb.c) */
+#endif
+#ifndef FELUCCA_UAC_48K
+#define FELUCCA_UAC_48K 0        /* EDDA OS 1.7: the USB audio input at 44.1 kHz only (bsp/chip/usb.c: 1 offers 48 kHz too,
+                                  * resampled: 8 KB of FIR and code the app slot has no room for; a computer takes 44.1) */
+#endif
+#ifndef EDDA_VIZ
+#define EDDA_VIZ 0               /* EDDA OS 1.7: the visualisers out (11.6 KB; ui_draw.c): EDDA_VIZ=1 builds them, the
+                                  * browser emulator has them */
 #endif
 #ifndef FELUCCA_UAC_AS_FIRST
 #define FELUCCA_UAC_AS_FIRST 1   /* bsp/chip/usb.c (off there by default): the audio streaming interface first in the AC

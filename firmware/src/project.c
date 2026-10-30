@@ -742,6 +742,7 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
         params_by_count(q->t[t].p, values, np, def);
         if (q->t[t].engine == ENGI_DRUM)
             drum_kit_v115(q->t[t].p, np);               /* (EDDA OS 1.1.5's kits 9..13: today's 12..16, eng_drum.c) */
+        uint32_t nudged = 0;                            /* (EDDA OS 1.1.5's nudges in this track: they always played) */
         for (i = 0; i < NSTEP; i++) {
             step_t *s = &q->t[t].step[i]; uint32_t meta, nd = 0, top = 0;
             for (uint32_t j = 0; j < 4u; j++) {         /* (FUN10: bit 7 of note j is bit j of the nudge) */
@@ -756,6 +757,7 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
                 uint32_t a = (top >> 2) & 3u;
                 if ((top & 1u) || (!a && (top & 2u)) || !st9_edda) return 0;
                 nd = (uint32_t)((top & 2u) ? -(int32_t)a : (int32_t)a) & 15u;
+                nudged |= nd != 0u;
             }
             meta = b[pos++];
             s->n = meta & 7u; s->time = (meta >> 3) & 3u; s->flags = (meta >> 5) & 3u;
@@ -767,6 +769,8 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
             step_set_ratchet(s, (meta >> 8) + 1u);
             step_set_nudge(s, (int32_t)(nd ^ 8u) - 8);
         }
+        if (nudged)
+            q->t[t].p[P_SQNT] = 0;                      /* (QUANTIZE OFF: Felucca plays a nudge only so; 1.1.5 always did) */
     }
     if (v10)                                            /* (FUN10: sections, a slot per track; before: rows) */
         memcpy(&q->chain, b + pos, sizeof q->chain);

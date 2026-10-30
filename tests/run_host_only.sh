@@ -347,6 +347,9 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "UI: sounds keep steps, undo, recording, MIDI overflow, pending saves, panel recovery, drum grid, song chain, GREY gray, MONO neutral" "$OUT/ui_test"
     $CC -w -DFELUCCA_CPU2=0 -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test_c1" tests/ui_test.c -lm
     run "UI, a FELUCCA_CPU2=0 build: MENU > SYSTEM without 2ND CORE, the rest as the default build" "$OUT/ui_test_c1"
+    # EDDA OS 1.7: the device's build has no visualisers (felucca.c EDDA_VIZ 0): the UI without them too
+    $CC -w -DEDDA_VIZ=0 -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test_noviz" tests/ui_test.c -lm
+    run "UI, an EDDA_VIZ=0 build (the device's): GLO + G5 says so, G5 dark, the rest as the default build" "$OUT/ui_test_noviz"
     $CC -DPREEMPT -g -fwrapv -fsanitize=address,undefined -fno-sanitize=shift -fno-sanitize-recover=all -w \
         -Ibuild/gen -Ifirmware/src -o "$OUT/drumfuzz" tests/drumfuzz_test.c -lm
     run "DRUM grid stress (#211, ASan / UBSan): random grid editing, locks, undo, engines over a playing synth, the ISR anywhere" \

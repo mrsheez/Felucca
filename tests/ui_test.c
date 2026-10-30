@@ -3967,8 +3967,9 @@ static int test_quick_layers(void)
     a = leds_at(0); b2 = leds_at(250);
     ok &= ((a & b2) >> black(0)) & 1u && !(((a | b2) >> black(1)) & 1u);           /* T1 sounding lit, T2 muted dark */
     ok &= ((a ^ b2) >> white(0)) & 1u && ((a ^ b2) >> white(7)) & 1u && ((a ^ b2) >> white(5)) & 1u &&
-          ((a ^ b2) >> white(14)) & 1u && ((a ^ b2) >> white(15)) & 1u &&   /* (EDDA OS: D4..G5 breathe: RUN STOP TAP ACT
-                                                                           * FILL MUTATE KEY, F5 LEARN, G5 VIZ) */
+          ((a ^ b2) >> white(14)) & 1u && ((((a ^ b2) >> white(15)) & 1u) == EDDA_VIZ) &&   /* (EDDA OS: D4..G5 breathe: RUN
+                                                                           * STOP TAP ACT FILL MUTATE KEY, F5 LEARN, G5 VIZ:
+                                                                           * an EDDA_VIZ=0 build's G5 dark) */
           !(((a | b2) >> black(4)) & 1u) &&                                /* (D#4: none) */
           ((a ^ b2) >> black(6)) & 1u && ((a ^ b2) >> black(7)) & 1u;       /* (EDDA OS 1.7: G#4 A#4 TEMPO BEND) */
     key_up(black(1)); btn_up(B_GLO); frame();
@@ -5814,6 +5815,20 @@ static uint32_t px_count(uint16_t c, uint32_t y0, uint32_t y1)   /* pixels of co
             n += host_screen[y * 240u + x] == swap16(c);
     return n;
 }
+#if !EDDA_VIZ
+static int test_viz(void)                             /* an EDDA_VIZ=0 build (the device's, 1.7): G5 says so, nothing opens */
+{
+    int ok;
+    ui_power_on();
+    viz_glo();
+    ok = ui.home && !ui.viz;
+    btn_down(B_GLO); frames(100);
+    key_down(white(15)); frame();
+    ok &= str_eq(ui.msg, "NO VIZ IN THIS BUILD") && !ui.viz;
+    key_up(white(15)); frame(); btn_up(B_GLO); frames(48);
+    return check("VIZ (EDDA_VIZ=0): GLO + G5 says NO VIZ IN THIS BUILD, nothing opens, HOME stays", ok);
+}
+#else
 static int test_viz(void)
 {
     int bad = 0, ok;
@@ -5958,6 +5973,7 @@ static int test_viz(void)
     ui_power_on();
     return bad;
 }
+#endif
 /* EDDA OS: MENU > CONTROL > SELECT ALL (Felucca's SELECT, its 5th value): the SELECT knob turns every page, HOME at either
  * end (ui.c page_turn_all); GLO + SELECT the tempo */
 static int test_select_all(void)

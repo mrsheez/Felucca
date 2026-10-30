@@ -69,19 +69,12 @@ jobs:
         id: build
         shell: bash
         run: |
-          # the whole of EDDA OS first; if the image does not fit the FM-1's app slot or the pool's headroom
-          # (tools/build.py says so), the same build without the visualisers (EDDA_VIZ=0: ~17 KB less code, 3.5 KB
-          # less pool): the run's summary says which shipped
-          if ./build.sh --release "$EDDA_VERSION" 2>&1 | tee build-full.log; then
-            echo "variant=full" >> "$GITHUB_OUTPUT"
-          elif grep -qE "exceeds the app slot|pool headroom|will not fit in region|overflowed by" build-full.log; then
-            EDDA_VIZ=0 ./build.sh --release "$EDDA_VERSION" 2>&1 | tee build-noviz.log
-            test "${PIPESTATUS[0]}" -eq 0
-            echo "variant=without the visualisers (the full build did not fit the app slot or the pool)" >> "$GITHUB_OUTPUT"
-          else
-            exit 1
-          fi
-          grep -h "image .* B; RAM" build-*.log | tail -1 | sed 's/^/size: /' | tee build-size.txt
+          # EDDA OS 1.7's build (firmware/src/felucca.c): no visualisers, no serial console, USB audio at 44.1 kHz:
+          # what fits the FM-1's app slot beside Felucca 1.7. A build that does not fit: the size matrix below
+          ./build.sh --release "$EDDA_VERSION" 2>&1 | tee build-full.log
+          test "${PIPESTATUS[0]}" -eq 0
+          echo "variant=EDDA OS 1.7 (EDDA_VIZ 0, FELUCCA_CDC 0, FELUCCA_UAC_48K 0)" >> "$GITHUB_OUTPUT"
+          grep -h "image .* B; RAM" build-full.log | tail -1 | sed 's/^/size: /' | tee build-size.txt
           cp "build/felucca-$EDDA_VERSION.fwsc" build/felucca.fwsc
           ls -la build/*.fwsc
 

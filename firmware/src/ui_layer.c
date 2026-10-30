@@ -901,7 +901,7 @@ static uint32_t layer_leds(uint32_t *br)
                : p == 5u ? edda.phase != ED_IDLE || edda.armed : p == 6u ? edda.stopped
                : p == 9u ? (seq_fill | edda.fill) != 0u : p == 14u ? ui.ml.on : p == 15u ? ui.viz : 0u;
             can = b ? (p == 6u || p == 7u) && !song.g[G_CLOCK]   /* (EDDA OS: G#4 / A#4 BEND, the own clock) */
-                : (p < NTRK || p == 4u || (p == 7u && !song.g[G_CLOCK]) || (p >= 5u && p <= 15u && p != 7u));
+                : (p < NTRK || p == 4u || (p == 7u && !song.g[G_CLOCK]) || (p >= 5u && p <= 14u + EDDA_VIZ && p != 7u));
         } else if (l == LAYER_SCL) {                    /* the root lit, the scale's notes breathe */
             e = (k + 5u + 12u - root) % 12u;
             on = e == 0u;
