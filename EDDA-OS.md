@@ -499,7 +499,7 @@ px of their places.
 The screen is dark from power-on until it fades in, as soon as the FM-1 has started (the audio, USB, the last
 session restored), over 0.4 s (MENU > ANIM OFF: at once). It stays until a key or a button is pressed, however long
 that takes (1.7.4; 1.7.2 and 1.7.3 went on after 1.5 s). 1.5 s after it began, **Press any key to continue** fades in
-under it, in the UI's small type at "Powered by"'s strength, and then breathes down to half and back every 2.4 s
+under it, in the UI's small type at "Powered by"'s strength, and then breathes gently, to 70 % and back every 2.4 s
 (MENU > ANIM OFF: whole and still). The press ends it at once and does nothing else: a key stays silent until it is
 pressed again, as under Felucca's splash; a button's tap or hold does not act (the UI waits for it to be let go, as
 after the screen's wake from MENU > SCREEN OFF); knob turns made while it shows are dropped. A key or button already

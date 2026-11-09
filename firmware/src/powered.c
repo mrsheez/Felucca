@@ -16,7 +16,8 @@
 
 #define PW_FADE_MS 400u        /* it fades in over this (MENU > ANIM OFF: whole at once) */
 #define PW_PROMPT_MS 1500u     /* "Press any key to continue" from this long after it began, faded in the same way .. */
-#define PW_BREATH_MS 2400u     /* .. then breathing, 100 % to 50 % of its own and back in this (ANIM OFF: still) */
+#define PW_BREATH_MS 2400u     /* .. then breathing, 100 % to 70 % of its own and back in this (ANIM OFF: still; at 50 %
+                                * its ink is under 2:1 against the dark palettes' BG, hard to read on the FM-1's LCD) */
 #define PW_PROMPT_Y 194u       /* its line's top (AF_S), between the lockup and the screen's foot */
 #define PW_N (240u * PW_H)     /* the band's pixels: composed once, kept in the canvas's other half (CV_MAX: two) */
 #if PW_N * 2u > CV_MAX
@@ -181,7 +182,7 @@ static uint32_t powered_alpha(uint32_t t)
 }
 
 /* the prompt's strength t ms after the lockup began, in % of white at 42 % ("Powered by"'s): none before PW_PROMPT_MS,
- * then eased in as the lockup was, then breathing down to half and back */
+ * then eased in as the lockup was, then breathing down to 70 % and back */
 static uint32_t powered_prompt(uint32_t t)
 {
     uint32_t u;
@@ -194,7 +195,7 @@ static uint32_t powered_prompt(uint32_t t)
         return powered_alpha(t) * 100u >> 8;
     u = (t - PW_FADE_MS) % PW_BREATH_MS;
     u = u < PW_BREATH_MS / 2u ? u : PW_BREATH_MS - u;
-    return 100u - u * 100u / PW_BREATH_MS;
+    return 100u - u * 60u / PW_BREATH_MS;
 }
 
 /* "Press any key to continue" at pct % (the UI's small face, centred; on a light palette in TEXT's ink) */
