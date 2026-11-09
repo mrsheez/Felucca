@@ -3,8 +3,8 @@
 // The browser build (build/emu/felucca.wasm, web/emu/felucca_web.c) in Node, as the worklet runs it. After X0X's
 // tests/host/emu_test.mjs (charlesvestal/fm1-x0x, GPL-3.0).
 //   node web/emu/emu_test.mjs build/emu/felucca.wasm [NATIVE.f32]
-// Checks: it boots (splash, Powered by COSMIC YOU, then HOME on the screen, the HOME LED; the power-on LED sweep under
-// the splash, over by 1 s; a key during Powered by ends it, silent), a held key sounds and lights its LED, PLAY
+// Checks: it boots (no splash: Powered by COSMIC YOU from the start, then HOME on the screen, the HOME LED; the
+// power-on LED sweep under it, over by 1 s; a key during Powered by ends it, silent), a held key sounds and lights its LED, PLAY
 // starts the sequencer (PLAY's green LED), a user preset saved from the panel (SAVE, OCT+, OCT+) reaches the flash,
 // and the flash sectors kept as the page keeps them bring it back in a fresh instance; the same gestures twice
 // give the same audio (deterministic), with NATIVE.f32 (web/emu/native_check.c) the native build's, bit for bit.
@@ -55,7 +55,9 @@ const colours = (fb) => new Set(fb).size;
 // ---- boot, keys, screen, LEDs
 const a = await device(null);
 a.render(200);
-const splash = colours(a.screen());
+const early = colours(a.screen());                            // EDDA OS: no Felucca splash (main.c)
+check(`no splash: Powered by COSMIC YOU from the start, fading in at 0.2 s (${early} colours)`,
+      a.ex.web_powered() === 1 && early > 1);
 { // the power-on LED sweep (bsp/boards/fm1/fm1_led_anim.h) under the splash: at 200 ms its head on the middle of the keyboard, the
   // keys it passed glowing (DIM HI), the ones ahead dark, the buttons not yet; the UI's LEDs untouched until it ends
   const p = a.ex.web_anim_levels(), lv = p ? Array.from(new Uint8Array(a.mem.buffer, p, 41)) : [];
@@ -67,14 +69,14 @@ const splash = colours(a.screen());
 }
 a.render(800);
 check("  over by 1 s (~0.70 s)", a.ex.web_anim_levels() === 0);
-const pw = a.screen();                                        // EDDA OS: "Powered by COSMIC YOU" after the splash (powered.c)
-check(`then Powered by COSMIC YOU (${colours(pw)} colours), the UI not yet (HOME's LED off)`,
+const pw = a.screen();                                        // EDDA OS: "Powered by COSMIC YOU" (powered.c)
+check(`at 1 s Powered by COSMIC YOU (${colours(pw)} colours), the UI not yet (HOME's LED off)`,
       a.ex.web_powered() === 1 && colours(pw) > 8 && pw.some((v, i) => v !== pw[0]) &&
       (a.ex.web_lit_buttons() >> B.HOME & 1) === 0);
 a.render(1100);
 const home = a.screen();
-check(`boots: the splash, then HOME (${colours(home)} colours) at 2.1 s, the HOME LED lit`,
-      splash > 1 && a.ex.web_powered() === 2 && colours(home) > 4 && home.some((v, i) => v !== pw[i]) &&
+check(`boots: Powered by COSMIC YOU, then HOME (${colours(home)} colours) at 2.1 s, the HOME LED lit`,
+      a.ex.web_powered() === 2 && colours(home) > 4 && home.some((v, i) => v !== pw[i]) &&
       (a.ex.web_lit_buttons() >> B.HOME & 1) === 1);
 check("silent at rest", a.peak === 0);
 a.ex.web_keys(1 << 7);                                        // C4

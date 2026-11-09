@@ -272,7 +272,11 @@ static void web_power_on(void)
     settings_init();
     usb_serial_apply();
     lcd_init();
+#if EDDA_POWERED
+    lcd_fill(0, 0, 240, 240, T_BG);       /* main.c (EDDA OS): no splash, dark until Powered by COSMIC YOU */
+#else
     draw_splash();                        /* main.c: the splash (ui_draw.c) */
+#endif
     memset(&felucca_dbg, 0, sizeof felucca_dbg);
     felucca_dbg.magic = DBG_MAGIC;
     fm1_input_init();
@@ -285,6 +289,10 @@ static void web_power_on(void)
     boot_leds();                          /* main.c: the power-on LED sweep, from the scan's start */
     autosave_boot(boot_clean);            /* main.c: the last session's music (1.2, project.c) */
     web_boot_ms = fm1_ms + 430u;         /* main.c: 30 + 400 ms before the first frame */
+#if EDDA_POWERED
+    if (boot_clean)
+        web_boot_ms = fm1_ms + 30u;       /* main.c (EDDA OS): Powered by COSMIC YOU in the splash's place, after 30 ms */
+#endif
     web_booted = 1;
 #if EDDA_POWERED
     web_pw = 0;                           /* (then "Powered by COSMIC YOU": web_ms) */

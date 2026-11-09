@@ -100,6 +100,32 @@ static void boot_leds(void)
         fm1_led_anim_start(settings_leds == LEDS_DIM || settings_leds == LEDS_DIM_LO);
 }
 
+#if EDDA_POWERED
+/* EDDA OS: "Powered by COSMIC YOU" (powered.c) in the splash's place (the pot followed, the keys silent, MIDI IN
+ * playing): it fades in, stays, and goes PW_MS after it began, or at once on a key or a button pressed (one held from
+ * before: let go and pressed again) */
+static void powered_boot(void)
+{
+    uint32_t t0 = fm1_ms, held_b = fm1_in.buttons, held_n = fm1_in.notes, a = 0, na, ms;
+    draw_powered(0, 1);
+    while ((ms = fm1_ms - t0) < PW_MS) {
+        if ((na = powered_alpha(ms)) != a)
+            draw_powered(a = na, 0);
+        held_b &= fm1_in.buttons;
+        held_n &= fm1_in.notes;
+        if ((fm1_in.buttons & ~held_b) || (fm1_in.notes & ~held_n)) {
+            (void)fm1_input_edges(0);             /* the press that ended it does nothing else: a key is silent until */
+            (void)fm1_input_note_edges();         /* pressed again (seq.c, kb_boot_hold), once the audio has seen it */
+            fm1_delay_ms(5);                      /* (3 blocks) */
+            return;
+        }
+        fm1_wdt_feed();                           /* (armed at 8 s in fm1_cstart: far off, fed all the same) */
+        fm1_delay_ms(10);
+        master_poll();
+    }
+}
+#endif
+
 static void fm1_main(void)
 {
     uint32_t ms;
@@ -114,7 +140,11 @@ static void fm1_main(void)
     settings_init();
     usb_serial_apply();                                 /* (#67: the saved USB SERIAL before usb_start) */
     lcd_init();
+#if EDDA_POWERED
+    lcd_fill(0, 0, 240, 240, T_BG);                     /* EDDA OS: no splash, the screen dark until Powered by COSMIC YOU */
+#else
     draw_splash();                                      /* ui_draw.c (1.1.5) */
+#endif
     if (felucca_dbg.magic != DBG_MAGIC) {
         memset(&felucca_dbg, 0, sizeof felucca_dbg);
         felucca_dbg.magic = DBG_MAGIC;
@@ -158,34 +188,15 @@ static void fm1_main(void)
         settings_save();
     }
     autosave_boot(boot_clean);                /* (1.2) the last session's music, under the splash */
+#if EDDA_POWERED
+    if (boot_clean)                           /* EDDA OS: Powered by COSMIC YOU instead; not after a crash, a hang or */
+        powered_boot();                       /* a failed boot: the screen dark as long as the splash, as the LED sweep */
+    else
+#endif
     for (ms = 0; ms < 400u; ms += 10u) {      /* the splash; the pot followed (MIDI IN plays under it) */
         fm1_delay_ms(10);
         master_poll();
     }
-#if EDDA_POWERED
-    if (boot_clean) {   /* EDDA OS: "Powered by COSMIC YOU" (powered.c), as the splash (the pot followed, the keys silent,
-                         * MIDI IN playing): it fades in, stays, and goes PW_MS after it began, or at once on a key or a
-                         * button pressed (one held from before: let go and pressed again). Not after a crash, a hang or
-                         * a failed boot (boot_clean): straight to the UI, as the LED sweep */
-        uint32_t t0 = fm1_ms, held_b = fm1_in.buttons, held_n = fm1_in.notes, a = 0, na;
-        draw_powered(0, 1);
-        while ((ms = fm1_ms - t0) < PW_MS) {
-            if ((na = powered_alpha(ms)) != a)
-                draw_powered(a = na, 0);
-            held_b &= fm1_in.buttons;
-            held_n &= fm1_in.notes;
-            if ((fm1_in.buttons & ~held_b) || (fm1_in.notes & ~held_n)) {
-                (void)fm1_input_edges(0);         /* the press that ended it does nothing else: a key is silent until */
-                (void)fm1_input_note_edges();     /* pressed again (seq.c, kb_boot_hold), once the audio has seen it */
-                fm1_delay_ms(5);                  /* (3 blocks) */
-                break;
-            }
-            fm1_wdt_feed();                       /* (armed at 8 s in fm1_cstart: far off, fed all the same) */
-            fm1_delay_ms(10);
-            master_poll();
-        }
-    }
-#endif
     kb_boot_hold = 0;
     lcd_fill(0, 0, 240, 240, T_BG);
     scrn.idle = fm1_ms;                        /* (MENU > SCREEN OFF: from here) */
