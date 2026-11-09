@@ -1059,6 +1059,11 @@ int main(int argc, char **argv)
         }
         ck("the ARP at 1/16, 128 BPM: 256 steps in the exact grid's time from its key (the remainder kept)", ok);
     }
+    /* ------------------------------------------------------ the flash parts (EDDA OS 1.7.1, Felucca #320) */
+    ck("FLASH: Puya's P25Q80H (85 60 14) and the newer units' UC25HQ80 (B3 60 14) store and update; no part, another "
+       "size or another maker: RAM only",
+       FL_JEDEC_OK(0x856014u) && FL_JEDEC_OK(0xB36014u) && !FL_JEDEC_OK(0u) && !FL_JEDEC_OK(0xFFFFFFu) &&
+       !FL_JEDEC_OK(0xB36015u) && !FL_JEDEC_OK(0x856013u) && !FL_JEDEC_OK(0xEF4014u) && !FL_JEDEC_OK(0x0B3601u));
     /* ------------------------------------------------------ the true tempo, TEMPO BEND (EDDA OS 1.7) */
     {
         uint16_t f = 0;

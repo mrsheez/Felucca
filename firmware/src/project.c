@@ -1196,13 +1196,19 @@ static uint8_t persist_pending;                 /* 1 requested, 2 waiting after 
 static uint32_t persist_retry_ms;
 #endif
 
+/* the FM-1's flash parts: 1 MiB SPI NOR, the same commands (06 20 02 05 0B 9F): Puya's P25Q80H (85 60 14) and, in
+ * units sold from about autumn 2026, UCUN's UC25HQ80 (B3 60 14). Any other id: RAM only. (Felucca #320, 1.8.2: a
+ * newer unit kept every save in RAM, and with flash_ok 0 main.c never starts an update session, so the web installer
+ * could not update it either) */
+#define FL_JEDEC_OK(id) ((id) == 0x856014u || (id) == 0xB36014u)
+
 static void persist_boot(void)                    /* before settings_init / panel_init */
 {
 #if FELUCCA_FLASH
     persist_t p;
     uint32_t f = irq_save();
     uint32_t flash_id = FL_FAR(fl_jedec_ram)();
-    flash_ok = flash_id == 0x856014u || flash_id == 0xB36014u; /* known 1 MiB parts, else RAM-only */
+    flash_ok = FL_JEDEC_OK(flash_id);               /* known 1 MiB parts, else RAM-only */
     irq_restore(f);
     if (!flash_ok)
         return;

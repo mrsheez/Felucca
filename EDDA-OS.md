@@ -9,15 +9,34 @@ documentation says unless a section below says otherwise.
 
 | | |
 | --- | --- |
-| Version | 1.7.0-EDDA (the splash says `v1.7.0-edda`; the package identity FM-1_917) |
-| Base | Felucca 1.7.0 (hugelton/Felucca `main` at 65b21d3, merged), felucca-bsp (MPL-2.0) and Felucca-Engines (MIT) as submodules; EDDA OS's commits on top |
+| Version | 1.7.1-EDDA (the splash says `v1.7.1-edda`; the package identity FM-1_917) |
+| Base | Felucca 1.7.0 (hugelton/Felucca `main` at 65b21d3, merged) with Felucca 1.8's flash and FM6 fixes, felucca-bsp (MPL-2.0) and Felucca-Engines (MIT) as submodules; EDDA OS's commits on top |
 | Licence | GPL-3.0-only, as Felucca |
 | Verified | every host suite passes: 7,728 checks in `tests/run_host_only.sh`, 7,860 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
 | Built | with JieLi's compiler on GitHub: 576,616 of the 581,564-byte app slot (4,948 spare), RAM 61,268 of 73,728 bytes, the pool 329,448 of 368,640 |
 | Not yet | flashed onto an FM-1 (section 7) |
 | Install | one HTML file, Chrome or Edge, the FM-1 on USB (section 1.1) |
 
-## 0. What 1.7.0-EDDA changes
+## 0. What 1.7.1-EDDA fixes
+
+- **Newer FM-1s.** Units sold from about autumn 2026 carry a UCUN UC25HQ80 flash (JEDEC ID B3 60 14) instead of Puya's
+  P25Q80H (85 60 14): both 1 MiB, the same commands. Felucca up to 1.8.1, and so EDDA OS 1.7.0, trusted only the Puya
+  part: on a newer unit every save stayed in RAM (projects, settings, presets, kits gone at power-off) and the
+  firmware never started an update session, so the web installer could not update it either. 1.7.1 takes both
+  (Felucca 1.8.2-beta's fix, issue #320; the same in OberVave, SLOOP, Dinghy and FM1-GM). It has not yet been tried on
+  a unit with the new part by anyone: if a save says FLASH ERROR on yours, tell me.
+- **FM6 bank voices with AMS.** An operator with AMS above 0 went silent or to full scale, even with AMD at 0
+  (Felucca 1.8.0, #304). EDDA's own patches have AMS 0; DX7 banks loaded into B1–B32 often do not.
+- **V16 units.** M-VAVE's V16 (21 October 2026) has a new boot area and a bigger app area. Installing EDDA OS over it
+  is expected to work: the update loader writes only the app area [0x4000, 0x93000), so V16's boot area stays (a
+  Felucca-based firmware went V16 → it → V16 on hardware on 8 November). Installing over V16 overwrites its patterns,
+  presets and settings: export its banks first (V16's BANK EXPORT) if you want them. Going back to stock on a V16
+  unit is not possible from EDDA OS yet: its update path takes Felucca's loader and V15's, so Return to official V15
+  refuses a V16 unit before writing anything, and V16's own package is refused the same way (Felucca has the same
+  limit, kmplngj/Felucca #619). FM1-GM's installer added a pinned V16 return on 8 November (tested on hardware); ask
+  me before trying a way back.
+
+## 0.1 What 1.7.0-EDDA changes
 
 **Felucca 1.7.0 underneath** (EDDA OS 1.1.5 had Felucca 1.1.5.1): step conditions (1:2 … 4:4, FILL, !FILL) and
 SEQ > DETAIL (each step's CHANCE, RATCH, NUDGE, VEL on the knobs); NUDGE (a step up to half a step early or 7/16 late,
@@ -57,7 +76,7 @@ and the kit uploads happen on the laptop (Windows, macOS or Linux).
 
 ### 1.1 The one-file installer (recommended)
 
-`EDDA-OS-Installer-1.7.0.html` is the whole installer with the package inside it: no site, no download, no
+`EDDA-OS-Installer-1.7.1.html` is the whole installer with the package inside it: no site, no download, no
 account.
 
 1. Connect the FM-1 to the laptop with a USB **data** cable and switch it on. Close every app that uses MIDI
@@ -66,7 +85,9 @@ account.
 3. Allow MIDI (with SysEx) when the browser asks, and press **Install**. The page takes the FM-1 into its
    update mode, writes EDDA OS and restarts it: a few minutes, the bar to 100 % and the page says **Done**.
    Do not unplug meanwhile. If anything stops it, press Install again: the update mode resumes where it was.
-4. The FM-1 starts EDDA OS (`v1.7.0-edda` on the splash). SAVE → turn to **ARRIVAL** for the songs.
+4. The FM-1 starts EDDA OS (`v1.7.1-edda` on the splash). SAVE → turn to **ARRIVAL** for the songs.
+5. Check that it stores: MENU, change one setting (say LEDS), switch off, switch on: the setting stayed. If a save
+   says FLASH ERROR, stop and tell me (section 0: the newer flash part).
 
 The installer writes only the FM-1's app area. It never writes the flash that holds your projects, samples and
 presets, or the unit's own radio calibration and Bluetooth address.
@@ -100,7 +121,7 @@ files of the first delivery: `edda-os.bundle` (the git history), or `edda-os-for
 
 Every later push to `edda` rebuilds and republishes. The package is also kept with each run under
 **Artifacts → edda-os-fwsc** for the command-line installer (1.4), and `python3 web/make_site.py --onefile
-felucca-1.7.0-EDDA.fwsc 1.7.0-EDDA EDDA-OS-Installer-1.7.0.html` makes the one-file installer from it.
+felucca-1.7.1-EDDA.fwsc 1.7.1-EDDA EDDA-OS-Installer-1.7.1.html` makes the one-file installer from it.
 
 ### 1.3 Route B — build on the Windows laptop (WSL2)
 
@@ -112,8 +133,8 @@ WSL2 runs Ubuntu inside Windows 10/11, and JieLi's toolchain runs there natively
    ```
    sudo apt update && sudo apt install -y git python3-pil python3-fonttools python3-numpy curl xz-utils
    git clone --recurse-submodules -b edda https://github.com/mrsheez/Felucca edda-os
-   cd edda-os && sh edda-build.sh --release 1.7.0-EDDA   # -> build/felucca-1.7.0-EDDA.fwsc
-   python3 web/make_site.py build/felucca-1.7.0-EDDA.fwsc 1.7.0-EDDA /tmp/edda-site
+   cd edda-os && sh edda-build.sh --release 1.7.1-EDDA   # -> build/felucca-1.7.1-EDDA.fwsc
+   python3 web/make_site.py build/felucca-1.7.1-EDDA.fwsc 1.7.1-EDDA /tmp/edda-site
    cd /tmp/edda-site && python3 -m http.server 8000
    ```
 
@@ -128,7 +149,7 @@ For a package from Route A's artifact or Route B: install Python 3 from python.o
 
 ```
 py -m pip install mido python-rtmidi
-py tools\fm1_install.py felucca-1.7.0-EDDA.fwsc
+py tools\fm1_install.py felucca-1.7.1-EDDA.fwsc
 ```
 
 Close every other app that uses MIDI first (DAWs, the editor tab).
@@ -155,13 +176,13 @@ turn Pages on: **Settings → Pages → Build and deployment → Source: GitHub 
 Run workflow** (branch `main`), and the installer is at `https://mrsheez.github.io/Felucca/webapp/installer/`.
 
 Without Pages, the latest run's package is at
-`https://github.com/mrsheez/Felucca/raw/ci-out/felucca-1.7.0-EDDA.fwsc` (its SHA-256 in the run's summary). Install
+`https://github.com/mrsheez/Felucca/raw/ci-out/felucca-1.7.1-EDDA.fwsc` (its SHA-256 in the run's summary). Install
 it with the one-file installer, the command-line installer (1.4), or serve the installer page from the laptop: with
 Python 3 on Windows, download the repository (**Code → Download ZIP**, branch `edda`), put the package in its folder,
 and run there
 
 ```
-py web\make_site.py felucca-1.7.0-EDDA.fwsc 1.7.0-EDDA site
+py web\make_site.py felucca-1.7.1-EDDA.fwsc 1.7.1-EDDA site
 cd site
 py -m http.server 8000
 ```
@@ -521,7 +542,7 @@ West African pattern bank, the voice bank; and Felucca 1.7.0's step conditions, 
 
 ```
 git submodule update --init         # firmware/bsp (felucca-bsp), firmware/engines (Felucca-Engines)
-sh edda-build.sh --release 1.7.0-EDDA   # Linux x86-64 (or WSL2): the toolchain, the SDK files -> build/felucca-1.7.0-EDDA.fwsc
+sh edda-build.sh --release 1.7.1-EDDA   # Linux x86-64 (or WSL2): the toolchain, the SDK files -> build/felucca-1.7.1-EDDA.fwsc
 SANITIZE=1 sh tests/run_tests.sh    # every suite against build/felucca.fwsc; tests/run_host_only.sh without a package
 ```
 
@@ -564,7 +585,8 @@ SHA-256s, so it is put together exactly as Felucca's are. On the same runner the
 
 **Not yet:** a flash onto an FM-1, and listening on its own outputs (the songs have been heard as host renders: the
 same code, the same numbers, a computer's DAC). On the device, three checks are worth a minute: the splash says
-`v1.7.0-edda`; SAVE > ARRIVAL, a song, OCT+, PLAY sounds; and the true tempo: at 120 BPM against a metronome app or a
+`v1.7.1-edda`; a setting survives a power cycle (the flash part, section 0); SAVE > ARRIVAL, a song, OCT+, PLAY
+sounds; and the true tempo: at 120 BPM against a metronome app or a
 DAW at 120.00, the FM-1 should hold the click for ten minutes (Felucca's count gains 0.24 s in that time, half a
 beat). `tests/target_budget.py`, a static count of the audio code's loop instructions from JieLi's disassembly,
 reports the functions EDDA OS works in beyond Felucca's figures (`drum_render` +400 %: the user kits' sample voice inside it, its per-sample loop with no divides; `perf_begin` +29 %: the exact grid's 1/16 clock. The audio interrupt is within its budget (+4 %) and `slicer_track` under it (−13 %)); the host CPU check, which times the
