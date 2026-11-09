@@ -23,13 +23,14 @@ documentation says unless a section below says otherwise.
   P25Q80H (85 60 14): both 1 MiB, the same commands. Felucca up to 1.8.1, and so EDDA OS 1.7.0, trusted only the Puya
   part: on a newer unit every save stayed in RAM (projects, settings, presets, kits gone at power-off) and the
   firmware never started an update session, so the web installer could not update it either. 1.7.1 takes both
-  (Felucca 1.8.2-beta's fix, issue #320; the same in OberVave, SLOOP, Dinghy and FM1-GM). It has not yet been tried on
+  (Felucca 1.8.2-beta's fix, issue #320; the same in OberVave 3.3.1, sloopDX, Dinghy and FM1-GM). It has not yet been tried on
   a unit with the new part by anyone: if a save says FLASH ERROR on yours, tell me.
 - **FM6 bank voices with AMS.** An operator with AMS above 0 went silent or to full scale, even with AMD at 0
   (Felucca 1.8.0, #304). EDDA's own patches have AMS 0; DX7 banks loaded into B1–B32 often do not.
 - **V16 units.** M-VAVE's V16 (21 October 2026) has a new boot area and a bigger app area. Installing EDDA OS over it
-  is expected to work: the update loader writes only the app area [0x4000, 0x93000), so V16's boot area stays (a
-  Felucca-based firmware went V16 → it → V16 on hardware on 8 November). Installing over V16 overwrites its patterns,
+  is expected to work: the update loader writes only the app area [0x4000, 0x93000), so V16's boot area stays
+  (FM1-GM, whose loader writes the same area only, went V16 → FM1-GM → V16 on hardware on 8 November; no Felucca
+  install over V16 has been reported yet, good or bad). Installing over V16 overwrites its patterns,
   presets and settings: export its banks first (V16's BANK EXPORT) if you want them. Going back to stock on a V16
   unit is not possible from EDDA OS yet: its update path takes Felucca's loader and V15's, so Return to official V15
   refuses a V16 unit before writing anything, and V16's own package is refused the same way (Felucca has the same
