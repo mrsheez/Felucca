@@ -3,8 +3,8 @@
 // The browser build (build/emu/felucca.wasm, web/emu/felucca_web.c) in Node, as the worklet runs it. After X0X's
 // tests/host/emu_test.mjs (charlesvestal/fm1-x0x, GPL-3.0).
 //   node web/emu/emu_test.mjs build/emu/felucca.wasm [NATIVE.f32]
-// Checks: it boots (splash, then HOME on the screen, the HOME LED; the power-on LED sweep under the splash, over by
-// 1 s), a held key sounds and lights its LED, PLAY
+// Checks: it boots (splash, Powered by COSMIC YOU, then HOME on the screen, the HOME LED; the power-on LED sweep under
+// the splash, over by 1 s; a key during Powered by ends it, silent), a held key sounds and lights its LED, PLAY
 // starts the sequencer (PLAY's green LED), a user preset saved from the panel (SAVE, OCT+, OCT+) reaches the flash,
 // and the flash sectors kept as the page keeps them bring it back in a fresh instance; the same gestures twice
 // give the same audio (deterministic), with NATIVE.f32 (web/emu/native_check.c) the native build's, bit for bit.
@@ -67,9 +67,15 @@ const splash = colours(a.screen());
 }
 a.render(800);
 check("  over by 1 s (~0.70 s)", a.ex.web_anim_levels() === 0);
+const pw = a.screen();                                        // EDDA OS: "Powered by COSMIC YOU" after the splash (powered.c)
+check(`then Powered by COSMIC YOU (${colours(pw)} colours), the UI not yet (HOME's LED off)`,
+      a.ex.web_powered() === 1 && colours(pw) > 8 && pw.some((v, i) => v !== pw[0]) &&
+      (a.ex.web_lit_buttons() >> B.HOME & 1) === 0);
+a.render(1100);
 const home = a.screen();
-check(`boots: the splash, then HOME (${colours(home)} colours), the HOME LED lit`,
-      splash > 1 && colours(home) > 4 && (a.ex.web_lit_buttons() >> B.HOME & 1) === 1);
+check(`boots: the splash, then HOME (${colours(home)} colours) at 2.1 s, the HOME LED lit`,
+      splash > 1 && a.ex.web_powered() === 2 && colours(home) > 4 && home.some((v, i) => v !== pw[i]) &&
+      (a.ex.web_lit_buttons() >> B.HOME & 1) === 1);
 check("silent at rest", a.peak === 0);
 a.ex.web_keys(1 << 7);                                        // C4
 a.render(300);
@@ -119,6 +125,25 @@ check("FX held: its button and the effects' keys breathe, none lit; let go: noth
         Math.abs(got[3] - lo) <= 0.06);
 }
 
+{ // a key during Powered by COSMIC YOU ends it at once and sounds nothing until pressed again (main.c)
+  const k = await device(null);
+  k.render(1000);
+  const on = k.ex.web_powered();
+  k.ex.web_keys(1 << 7);                                      // C4
+  k.render(20);
+  const over = k.ex.web_powered();
+  k.peak = 0;
+  k.render(300);
+  const held = k.peak;
+  k.ex.web_keys(0);
+  k.render(100);
+  k.ex.web_keys(1 << 7);
+  k.render(300);
+  k.ex.web_keys(0);
+  check(`a key during Powered by COSMIC YOU ends it, silent (peak ${held.toFixed(3)}); pressed again it sounds (${k.peak.toFixed(3)})`,
+        on === 1 && over === 2 && held === 0 && k.peak > 0.01);
+}
+
 // ---- a user preset saved from the panel, kept across a fresh instance
 const w0 = a.ex.web_flash_writes_count();
 a.tap(B.SAVE);
@@ -151,8 +176,8 @@ check("a fresh instance with the kept sectors has it; one without does not",
         ["bin", "twos", "sign"].every((m) => k(MASTER_CC, 0, m).master === 0 && k(MASTER_CC, 127, m).master === 1023) &&
         k(20, 65, "bin").role === EN.SELECT && k(26, 65, "bin").role === EN.K4 && k(19, 65, "bin") === null);
   const t = await device(null), u = await device(null);             // u: left alone
-  t.render(1200);
-  u.render(1200);
+  t.render(2400);                                             // (the UI up: after Powered by COSMIC YOU)
+  u.render(2400);
   t.render(40);
   t.turn(EN.PRESETS, 3);
   t.render(300);
@@ -160,7 +185,7 @@ check("a fresh instance with the kept sectors has it; one without does not",
   const ts = t.screen(), us = u.screen();
   for (const [mode, vs] of [["abs", [64, 65, 66, 67]], ["bin", [65, 65, 65]], ["twos", [1, 1, 1]], ["sign", [1, 1, 1]]]) {
     const m = await device(null), knob = [];                   // a controller's knob: three detents
-    m.render(1200);
+    m.render(2400);
     for (const v of vs) {
       const r = midiKnob(knob, cc, v, mode);
       if (r.n) m.ex.web_enc(r.role, r.n);
@@ -177,7 +202,7 @@ check("a fresh instance with the kept sectors has it; one without does not",
 // ---- deterministic: the same gestures, the same samples
 async function song() {
   const d = await device(null);
-  d.render(500);
+  d.render(2100);                                             // (the UI up: after Powered by COSMIC YOU)
   d.ex.web_test_heavy();
   d.tap(B.PLAY);
   d.rec = true;

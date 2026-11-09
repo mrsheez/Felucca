@@ -368,6 +368,10 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "UI renders: layout lint (every screen and palette, every page, engine and column value), GREY gray, MONO neutral, alignment by ink (1 px fails), draw cost, LARGE one value size per knob (#251)" \
         "$OUT/ui_render" build/ui_new build/ui_slot
     if python3 -c "import PIL" 2>/dev/null; then python3 tests/ui_render.py build/ui_new build/ui_slot; fi
+    if python3 -c "import PIL, numpy" 2>/dev/null; then   # EDDA OS: the start-up's lockup against Chrome's (powered.c)
+        run "Powered by COSMIC YOU (powered.c) against Chrome's drawing of Cosmic You's CSS: every pixel within one RGB565 step" \
+            python3 tests/powered_check.py build/ui_new/ppm/NIGHT_powered.ppm tests/powered_ref.png
+    fi
     $CC -w -DFELUCCA_FM4=1 -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test_fm4" tests/ui_test.c -lm
     run "UI built with FELUCCA_FM4=1 (DIGITAL, kept in the tree): its OP pages, EDIT cycle, algorithm charts" "$OUT/ui_test_fm4"
     $CC -w -DFELUCCA_ADPCM=1 -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test_adpcm" tests/ui_test.c -lm

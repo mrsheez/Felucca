@@ -1373,6 +1373,7 @@ static void draw_splash(void)
                 "splash maker's baseline SPL_PAD from the bottom");
     lcd_sync();
 }
+#include "powered.c"                                /* EDDA OS: "Powered by COSMIC YOU", after the splash (main.c) */
 
 /* UPDATE MODE countdown (main.c: OCT- + OCT+ held): over everything, the menu and the dialogs too */
 static void draw_uboot(void)

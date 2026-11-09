@@ -775,7 +775,7 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_MESSAGE_NOFILE, S_PRESET
        S_MENU_MIDI_TRACK, S_MENU_MIDI_TCH_UNUSED, S_MENU_MIDI_AUTO, S_HOME_TRACKS_MIDI, S_MIXER_MIDI, S_EDIT_PHASE_FOLD,
        S_DJ_FILTER_LP, S_DJ_FILTER_HP, S_MENU_EDDA,   /* EDDA OS's */
        S_VIZ_SCOPE, S_VIZ_SPECTRUM, S_VIZ_WATERFALL, S_VIZ_ORBIT, S_VIZ_TUNNEL, S_VIZ_PULSE, S_VIZ_STARS, S_VIZ_GRID,
-       S_VIZ_RAIN, S_VIZ_WHEEL, S_VIZ_BULBS, S_VIZ_CLOCK, S_VIZ_NOTE, S_ARRIVAL, S_ARRIVAL_PLAYING, S_SONG_ARRIVAL, S_COUNT };
+       S_VIZ_RAIN, S_VIZ_WHEEL, S_VIZ_BULBS, S_VIZ_CLOCK, S_VIZ_NOTE, S_ARRIVAL, S_ARRIVAL_PLAYING, S_SONG_ARRIVAL, S_POWERED, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "message_key", "message_nofile", "presets", "presets_nofav", "user",
     "phrases", "project", "tools", "song_empty", "song", "step", "auto_steps", "auto_add_chance", "automation", "drum",
     "drum_hand", "drum_cym", "mixer", "mixer_from_home", "mixer_pan", "env", "env_dest", "lfo", "mod", "fx", "slicer", "dly", "scl", "chord", "chord_wide", "chord_off", "chord_kit", "arp",
@@ -809,7 +809,7 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "menu_midi_track", "menu_midi_channels_unused", "menu_midi_auto_select", "home_tracks_midi", "mixer_midi", "edit_phase_fold",
     "dj_filter_lp", "dj_filter_hp", "menu_edda",
     "viz_scope", "viz_spectrum", "viz_waterfall", "viz_orbit", "viz_tunnel", "viz_pulse", "viz_stars", "viz_grid",
-    "viz_rain", "viz_wheel", "viz_bulbs", "viz_clock", "viz_note", "arrival", "arrival_playing", "song_arrival"};
+    "viz_rain", "viz_wheel", "viz_bulbs", "viz_clock", "viz_note", "arrival", "arrival_playing", "song_arrival", "powered"};
 
 /* the STEP page's piano roll (ui_graph.c graph_roll) on track 1, stopped unless said: an empty pattern; ACID in
  * A minor; POLY chords (Am7 F C G, tied); a line with ties, slides and accents in C major; LEN 32 on its second
@@ -1775,6 +1775,63 @@ static void draw(int s)
         } else {
             static uint8_t said;
             if (!said++) printf("ui_render: the splash shows the version " FELUCCA_VERSION " (FELUCCA_VERSION) and its lines\n");
+        }
+        return;
+    }
+    if (s == S_POWERED) {                         /* EDDA OS: "Powered by COSMIC YOU" after the splash (main.c, powered.c),
+                                                   * whole. Its layers read back as tools/gen_powered.py wrote them (their
+                                                   * hashes); COSMIC YOU's letters (#5AA9FF where opaque) centred across
+                                                   * and in the band; nothing outside the band but BG. The drawing against
+                                                   * Chrome's: tests/powered_check.py (NIGHT's ppm) */
+        static const uint8_t *const RAW[2] = {PW_G1, PW_G2};
+        static const uint32_t RAW_N[2] = {PW_G1_W * PW_G1_H, PW_G2_W * PW_G2_H}, RAW_H[2] = {PW_HASH_G1, PW_HASH_G2};
+        uint8_t row[PW_T_W];
+        pw_rd_t tr = {PW_T, 0, 0, 0}, pr = {PW_P, 0, 0, 0};
+        uint32_t h, i, k, x, y, bad = 0, x0 = 240, x1 = 0, y0 = 240, y1 = 0;
+        const int gray = ux.mono || ux.bw;               /* (GREY, MONO: its luma, as ux_gray) */
+        const uint16_t blue = gray ? swap16(ux_gray(((pw_col(0x5AA9FFu, 1) >> 16) * 31u * 257u + 32768u) >> 16))
+                                   : swap16(RGB(90, 169, 255)), bg = swap16(T_BG);
+        draw_powered(256u, 1);
+        for (k = 0; k < 2u; k++) {
+            for (h = 0x811C9DC5u, i = 0; i < RAW_N[k]; i++)
+                h = (h ^ pw_nib(RAW[k], i)) * 0x01000193u;
+            bad |= (h != RAW_H[k]) << k;
+        }
+        for (h = 0x811C9DC5u, y = 0; y < PW_P_H; y++) {     /* the packets: every coverage, to the last byte */
+            pw_row(&pr, row, PW_P_W);
+            for (i = 0; i < PW_P_W; i++)
+                h = (h ^ row[i]) * 0x01000193u;
+        }
+        bad |= (h != PW_HASH_P || pr.p != PW_P + sizeof PW_P || pr.z || pr.n) << 2;
+        for (h = 0x811C9DC5u, y = 0; y < PW_T_H; y++) {
+            pw_row(&tr, row, PW_T_W);
+            for (i = 0; i < PW_T_W; i++)
+                h = (h ^ row[i]) * 0x01000193u;
+        }
+        bad |= (h != PW_HASH_T || tr.p != PW_T + sizeof PW_T || tr.z || tr.n) << 3;
+        for (y = 0; y < 240u; y++)
+            for (x = 0; x < 240u; x++) {
+                uint16_t v = host_screen[y * 240u + x];
+                if (v == blue) {
+                    if (x < x0) x0 = x;
+                    if (x > x1) x1 = x;
+                    if (y < y0) y0 = y;
+                    if (y > y1) y1 = y;
+                }
+                if ((y < PW_Y0 || y >= PW_Y0 + PW_H) && v != bg)
+                    bad |= 16u;
+            }
+        if (bad || x1 < x0 || (int32_t)(x0 + x1 + 1u) / 2 < 119 || (x0 + x1 + 1u) / 2u > 121u || y0 < PW_Y0 + PW_T_Y ||
+            y1 >= PW_Y0 + PW_T_Y + PW_T_H) {
+            if (rep) fprintf(rep, "FIND %-26s Powered by COSMIC YOU: layers read back %s, the word's opaque ink x %u..%u y %u..%u, "
+                             "outside the band %s\n", cur_name, bad & 15u ? "WRONG" : "ok", (unsigned)x0, (unsigned)x1,
+                             (unsigned)y0, (unsigned)y1, bad & 16u ? "NOT BG" : "BG");
+            nfind++;
+        } else {
+            static uint8_t said;
+            if (!said++) printf("ui_render: Powered by COSMIC YOU: its four layers read back as written, COSMIC YOU's ink "
+                                "x %u..%u (centre %u), rows %u..%u, BG outside its band\n", (unsigned)x0, (unsigned)x1,
+                                (unsigned)((x0 + x1 + 1u) / 2u), (unsigned)y0, (unsigned)y1);
         }
         return;
     }
