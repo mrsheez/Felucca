@@ -12,8 +12,8 @@ documentation says unless a section below says otherwise.
 | Version | 1.7.4-EDDA (at power-on Powered by COSMIC YOU and "Press any key to continue", no splash; MENU > SYSTEM > INFO shows `v1.7.4-EDDA`; the package identity FM-1_917) |
 | Base | Felucca 1.7.0 (hugelton/Felucca `main` at 65b21d3, merged) with Felucca 1.8's flash and FM6 fixes, felucca-bsp (MPL-2.0) and Felucca-Engines (MIT) as submodules; EDDA OS's commits on top |
 | Licence | GPL-3.0-only, as Felucca |
-| Verified | every host suite passes: 7,732 checks in `tests/run_host_only.sh`, 7,867 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
-| Built | with JieLi's compiler on GitHub: 579,920 of the 581,564-byte app slot (1,644 spare), RAM 61,268 of 73,728 bytes, the pool 329,448 of 368,640 |
+| Verified | every host suite passes: 7,732 checks in `tests/run_host_only.sh`, 7,871 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
+| Built | with JieLi's compiler on GitHub: 580,228 of the 581,564-byte app slot (1,336 spare), RAM 61,284 of 73,728 bytes, the pool 329,448 of 368,640 |
 | On the FM-1 | 1.7.1 installed on Obi's FM-1 on 9 November 2026: it starts, the EDDA palette shows, SAVE > ARRIVAL lists and plays the songs (section 7) |
 | Install | one HTML file, Chrome or Edge, the FM-1 on USB (section 1.1) |
 
@@ -603,7 +603,7 @@ is Route A's build.
 ## 7. What is verified, and what is not
 
 **Verified on the host** (gcc, Felucca's own harness with the real sequencer, UI, MIDI and audio code, under
-ASan/UBSan): 7,732 checks pass in `tests/run_host_only.sh`, 7,867 in `tests/run_tests.sh` against the package. Felucca 1.7.0's suites run against EDDA OS as they are, except where EDDA changes what
+ASan/UBSan): 7,732 checks pass in `tests/run_host_only.sh`, 7,871 in `tests/run_tests.sh` against the package. Felucca 1.7.0's suites run against EDDA OS as they are, except where EDDA changes what
 they check (FILL on A4, MIDI LEARN on F5, the kits after PERC, FM6's EDDA presets before the bank, SELECT's ALL, the
 DJ FILTER page, USR4's 72 KiB, the exact grid's step starts): those checks test EDDA's behaviour instead. They keep
 Felucca's nominal tempo (`-DEDDA_TRUE_TEMPO=0`), so their timings stay Felucca's, bit for bit; Felucca's 104 golden
@@ -622,10 +622,10 @@ the load, SAVE > ARRIVAL, the live cues and their show cues; then every song is 
 included), the kit builder, the backup and the one-file installer (onto a simulated FM-1: stock → update loader →
 EDDA OS, every byte it asks for checked) pass.
 
-**Built with JieLi's compiler** (GitHub Actions, run 42652109091, commit 532f895): the image is 579,920 bytes of the 581,564-byte app slot (1,644 spare; Powered by COSMIC YOU took 3,416 and dropping the splash gave back 132), RAM (.data + .bss) 61,268 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). The package, `felucca-1.7.4-EDDA.fwsc`, is 610,286 bytes, SHA-256
-`b797f3105cc3c7c23886b0fd8f08f6e855d960c7822eb97321f90fa6c7105d1d`. Register access in `hal/` and the BSP only. The
+**Built with JieLi's compiler** (GitHub Actions, run 42695798719, commit 0fa2008): the image is 580,228 bytes of the 581,564-byte app slot (1,336 spare; Powered by COSMIC YOU took 3,416, dropping the splash gave back 132, and the prompt with the wait for a key took 308), RAM (.data + .bss) 61,284 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). The package, `felucca-1.7.4-EDDA.fwsc`, is 610,286 bytes, SHA-256
+`353bb8ad5d478865bb1ac03443d75d64321c497e9819983097898730d4f9c33a`. Register access in `hal/` and the BSP only. The
 package carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s
-SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_917, every byte it asks for checked), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (2.1 % of real time for a heavy song). The one exception is the static cost check below.
+SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_917, every byte it asks for checked), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (1.3 % of real time for a heavy song). The one exception is the static cost check below.
 
 **On the FM-1:** 1.7.1 went onto Obi's FM-1 on 9 November 2026 with the one-file installer: it starts, MENU > DISPLAY >
 COLOR takes EDDA, SAVE > ARRIVAL lists the thirteen songs and plays them. The start-up screen (1.7.2 to 1.7.4) has been seen in
