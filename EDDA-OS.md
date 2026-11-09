@@ -12,8 +12,8 @@ documentation says unless a section below says otherwise.
 | Version | 1.7.1-EDDA (the splash says `v1.7.1-edda`; the package identity FM-1_917) |
 | Base | Felucca 1.7.0 (hugelton/Felucca `main` at 65b21d3, merged) with Felucca 1.8's flash and FM6 fixes, felucca-bsp (MPL-2.0) and Felucca-Engines (MIT) as submodules; EDDA OS's commits on top |
 | Licence | GPL-3.0-only, as Felucca |
-| Verified | every host suite passes: 7,728 checks in `tests/run_host_only.sh`, 7,860 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
-| Built | with JieLi's compiler on GitHub: 576,616 of the 581,564-byte app slot (4,948 spare), RAM 61,268 of 73,728 bytes, the pool 329,448 of 368,640 |
+| Verified | every host suite passes: 7,731 checks in `tests/run_host_only.sh`, 7,863 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
+| Built | with JieLi's compiler on GitHub: 576,636 of the 581,564-byte app slot (4,928 spare), RAM 61,268 of 73,728 bytes, the pool 329,448 of 368,640 |
 | Not yet | flashed onto an FM-1 (section 7) |
 | Install | one HTML file, Chrome or Edge, the FM-1 on USB (section 1.1) |
 
@@ -561,7 +561,7 @@ is Route A's build.
 ## 7. What is verified, and what is not
 
 **Verified on the host** (gcc, Felucca's own harness with the real sequencer, UI, MIDI and audio code, under
-ASan/UBSan): 7,728 checks pass in `tests/run_host_only.sh`, 7,860 in `tests/run_tests.sh` against the package. Felucca 1.7.0's suites run against EDDA OS as they are, except where EDDA changes what
+ASan/UBSan): 7,731 checks pass in `tests/run_host_only.sh`, 7,863 in `tests/run_tests.sh` against the package. Felucca 1.7.0's suites run against EDDA OS as they are, except where EDDA changes what
 they check (FILL on A4, MIDI LEARN on F5, the kits after PERC, FM6's EDDA presets before the bank, SELECT's ALL, the
 DJ FILTER page, USR4's 72 KiB, the exact grid's step starts): those checks test EDDA's behaviour instead. They keep
 Felucca's nominal tempo (`-DEDDA_TRUE_TEMPO=0`), so their timings stay Felucca's, bit for bit; Felucca's 104 golden
@@ -580,9 +580,10 @@ the load, SAVE > ARRIVAL, the live cues and their show cues; then every song is 
 included), the kit builder, the backup and the one-file installer (onto a simulated FM-1: stock → update loader →
 EDDA OS, every byte it asks for checked) pass.
 
-**Built with JieLi's compiler** (GitHub Actions, run 41040776728, commit e4b7446): the image is 576,616 bytes of the 581,564-byte app slot (4,948 spare), RAM (.data + .bss) 61,268 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). Register access in `hal/` and the BSP only. The
+**Built with JieLi's compiler** (GitHub Actions, run 42625219131, commit b628638): the image is 576,636 bytes of the 581,564-byte app slot (4,928 spare), RAM (.data + .bss) 61,268 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). The package, `felucca-1.7.1-EDDA.fwsc`, is 610,286 bytes, SHA-256
+`d89335c71859e1c12a95f4c494ec85b95f4ff5d71d3f3e04f4d833229cf2ea96`. Register access in `hal/` and the BSP only. The
 package carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s
-SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_917, every byte it asks for checked), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (2.0 % of real time for a heavy song). The one exception is the static cost check below.
+SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_917, every byte it asks for checked), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (2.1 % of real time for a heavy song). The one exception is the static cost check below.
 
 **Not yet:** a flash onto an FM-1, and listening on its own outputs (the songs have been heard as host renders: the
 same code, the same numbers, a computer's DAC). On the device, three checks are worth a minute: the splash says
