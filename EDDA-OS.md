@@ -13,7 +13,7 @@ documentation says unless a section below says otherwise.
 | Base | Felucca 1.7.0 (hugelton/Felucca `main` at 65b21d3, merged) with Felucca 1.8's flash and FM6 fixes, felucca-bsp (MPL-2.0) and Felucca-Engines (MIT) as submodules; EDDA OS's commits on top |
 | Licence | GPL-3.0-only, as Felucca |
 | Verified | every host suite passes: 7,732 checks in `tests/run_host_only.sh`, 7,871 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
-| Built | with JieLi's compiler on GitHub: 580,228 of the 581,564-byte app slot (1,336 spare), RAM 61,284 of 73,728 bytes, the pool 329,448 of 368,640 |
+| Built | with JieLi's compiler on GitHub: 580,384 of the 581,564-byte app slot (1,180 spare), RAM 61,284 of 73,728 bytes, the pool 329,448 of 368,640 |
 | On the FM-1 | 1.7.1 installed on Obi's FM-1 on 9 November 2026: it starts, the EDDA palette shows, SAVE > ARRIVAL lists and plays the songs (section 7) |
 | Install | one HTML file, Chrome or Edge, the FM-1 on USB (section 1.1) |
 
@@ -645,10 +645,10 @@ the load, SAVE > ARRIVAL, the live cues and their show cues; then every song is 
 included), the kit builder, the backup and the one-file installer (onto a simulated FM-1: stock → update loader →
 EDDA OS, every byte it asks for checked) pass.
 
-**Built with JieLi's compiler** (GitHub Actions, run 42695798719, commit 0fa2008): the image is 580,228 bytes of the 581,564-byte app slot (1,336 spare; Powered by COSMIC YOU took 3,416, dropping the splash gave back 132, and the prompt with the wait for a key took 308), RAM (.data + .bss) 61,284 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). The package, `felucca-1.7.5-EDDA.fwsc`, is 610,286 bytes, SHA-256
-`353bb8ad5d478865bb1ac03443d75d64321c497e9819983097898730d4f9c33a`. Register access in `hal/` and the BSP only. The
+**Built with JieLi's compiler** (GitHub Actions, run 42708200086, commit d5a0a25): the image is 580,384 bytes of the 581,564-byte app slot (1,180 spare; Powered by COSMIC YOU took 3,416, dropping the splash gave back 132, the prompt with the wait for a key took 308, and OYA COME from its record 156), RAM (.data + .bss) 61,284 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). The package, `felucca-1.7.5-EDDA.fwsc`, is 610,286 bytes, SHA-256
+`292937cf199f8337d0710a715073576ff19abe5516e709a672ed6c14fa5a152c`. Register access in `hal/` and the BSP only. The
 package carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s
-SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_917, every byte it asks for checked), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (1.3 % of real time for a heavy song). The one exception is the static cost check below.
+SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_917, every byte it asks for checked), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (1.6 % of real time for a heavy song). The one exception is the static cost check below.
 
 **On the FM-1:** 1.7.1 went onto Obi's FM-1 on 9 November 2026 with the one-file installer: it starts, MENU > DISPLAY >
 COLOR takes EDDA, SAVE > ARRIVAL lists the thirteen songs and plays them. 1.7.4 went on the same day, its start-up
