@@ -183,7 +183,7 @@
 # THE ARRIVAL (EDDA OS; tests/edda_test.c, tests/arrival_render.c): the album's thirteen songs (firmware/src/arrival.c):
 #                   titles, tempi and Camelot keys, every section in range, the arrangements, the load (sounds in the
 #                   song's key, the EDDA kit, the log drum), SAVE > ARRIVAL's knob, LOAD and PLAY, a project keeping the
-#                   song, CLEAR SONG; then each song played through the firmware's audio: 3 to 4 minutes, sounding, no
+#                   song, CLEAR SONG; then each song played through the firmware's audio: 2 to 4 minutes, sounding, no
 #                   clipping, no held note cut by the voice budget, the master limiter at most 8 dB. WAVs and stems:
 #                   build/host/arrival_render build/arrival [SONG] [SECONDS] [STEMS]; the balance: tests/arrival_check.py.
 # ROBUST (tests/robust_test.c): damaged or crafted stored data and editor requests: a SLICE scan bounded by the slot,
@@ -338,7 +338,7 @@ if [ -f build/gen/felucca_tables.h ]; then
         "$OUT/edda_test" build/edda_demo/kit
     # EDDA OS: THE ARRIVAL's thirteen songs played through the firmware's audio (tests/arrival_render.c, no files written)
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/arrival_render" tests/arrival_render.c -lm
-    run "THE ARRIVAL: each song 3 to 4 minutes, sounding, no clipping, no held note cut, the limiter at most 8 dB" \
+    run "THE ARRIVAL: each song 2 to 4 minutes, sounding, no clipping, no held note cut, the limiter at most 8 dB" \
         env ARRIVAL_CHECK=1 "$OUT/arrival_render" -
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/theme_test" tests/theme_test.c -lm
     run "themes: contrast, text blending and font metrics" "$OUT/theme_test"

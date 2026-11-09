@@ -9,7 +9,7 @@
  * loudness (RMS, dBFS), the voices given up (the shared budget of 8: by track, the audible ones, the held notes
  * cut), the master limiter's work, the voices sounding. MASTER_Q12 (env): the MASTER (4096 full; 512 for
  * tests/arrival_check.py's stems, under the limiter). ARRIVAL_CHECK=1 (env, tests/run_tests.sh): each song must
- * play 3 to 4 minutes and sound, clip nowhere, cut no held note and ask the limiter for at most 8 dB; exit 1 if not. */
+ * play 2 to 4 minutes and sound, clip nowhere, cut no held note and ask the limiter for at most 8 dB; exit 1 if not. */
 #include <stdio.h>
 #include <stdint.h>
 /* which voices the shared budget gives up: per track, and how loud they still were (env_out, Q15) */
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
         if (check && !pass) {                           /* the song as the album needs it */
             double secs = frames / (double)FS - 2.0, gr = lim_max > LIM_T ? 20.0 * log10((double)lim_max / LIM_T) : 0.0;
             uint32_t held = kill_held[0] + kill_held[1] + kill_held[2] + kill_held[3];
-            int ok = secs >= 180.0 && secs <= 240.0 && peak > 8192 && !clipped && !held && gr <= 8.0;
+            int ok = secs >= 120.0 && secs <= 240.0 && peak > 8192 && !clipped && !held && gr <= 8.0;
             printf("arrival: %02u %-18s %5.1f s, peak %5.1f dBFS, limiter at most %.1f dB, %u held notes cut, %u clipped: %s\n",
                    n + 1u, arv_song(n)->name, secs, 20.0 * log10(peak / 32768.0), gr, held, clipped, ok ? "ok" : "FAIL");
             bad += !ok;

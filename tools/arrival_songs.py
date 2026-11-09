@@ -239,42 +239,71 @@ def we_outside():
 
 
 # ================================================================= 3 OYA COME === #
-# D minor, 113. The welcome. Dm - Bb - F - C (i VI III VII), warm. Skeletal piano stabs, a dusty ghostly pad (grains of
-# the flute), the log drum, the ogene's two bells calling everyone in. Opens on "Oya, come."
+# B minor, 114: rebuilt from the record (Oya Come 3, the LANDR master: 113.8 BPM, 2:15, 64 bars). One four-bar loop
+# from the first bar to the last, Gmaj7 - Gmaj7 - Bm9 - Amaj7, every change pushed an eighth early (the bass, the keys
+# and the voice move on the and of the bar's last beat). A four-on-the-floor kick, the snare on 3, 6, 10, 14 (the
+# 3-3-4-4-2 of afrobeats without its downbeat), the shaker on the ands; a sustained bass on the roots, G1 B1 A1, eased
+# under every beat as the record's kick ducks it; the keys' figure on every beat, the chord's 9th, 3rd and 7th on its
+# second, third and fourth sixteenths (A3 B4 F#5 on G, C#4 D5 A5 on Bm, B3 C#5 G#5 on A); the voice: "Oya, come" in
+# eighths on B3 for two bars, then D4, then C#4, the record's hook. The verse is its first four bars as sung (bars
+# 16..19); the break drops the kick and the bass for its last two bars (bars 46..47), and closes the song (the record's
+# last bars: B4, D5, C#5 held over the loop). Opens on "Oya, come." (The album's first version, D minor at 113 with
+# the log drum, piano stabs and a flute-grain pad, was written before the record.)
 def oya_come():
-    D, K = 2, (2, MIN)
-    log = log_bars(["D2", "Bb1", "F1", "C2"], [(0, 0, 3, "A"), (4, 0, 2), (7, 4, 2), (10, 0, 2), (13, 7, 2, "S"),
-                                               (15, 4, 1)], K)
-    run = silence_last_beat(log_bars(["D2", "C2"], [(0, 0, 3, "A"), (4, 0, 2), (6, 4, 2, "S"), (9, 3, 2), (12, 0, 2)],
-                                     K, vel=118))
-    ch = ["D4 F4 A4", "D4 F4 Bb4", "C4 F4 A4", "C4 E4 G4"]
-    pno = stabs(ch, "..x. .x.. x.x. ..x.", held=1, vel=92)
-    pno_drop = stabs(ch, "x.x. .x.x ..x. .xx.", held=1, vel=98)
-    pad = mel(64, [(0, "D3 A3", 16), (16, "Bb2 F3", 16), (32, "F3 C4", 16), (48, "C3 G3", 16)], vel=100)
-    intro = drum(16, {"H": SH_A, "B": "x..x ..x. ..x. ....", "A": ".... .... .... x.x."})
-    groove = drum(16, {"K": K_AMAP, "H": SH_A, "C": ".... x... .... x...", "R": "..x. ...x .x.. ....",
-                       "B": "x..x ..x. ..x. ...."})
-    drop = drum(16, {"K": "x... ..x. x... ....", "H": SH_A, "C": ".... x... .... x...", "R": "..x. ...x .x.. ..x.",
-                     "B": "x..x ..x. ..x. ....", "A": ".... .... .... x.x.", "T": ".x.. .... ...x ...."})
-    drop4 = drum(16, {"K": "x... ..x. x... ....", "H": SH_A, "C": ".... x... .... x...", "R": "..x. ...x .x.. ....",
-                      "B": "x..x ..x. ..x. ....", "A": ".... .... .... x.x.", "T": ".x.. .... .x.x .x.x"})
-    run_k = drum(32, {"K": "x... ..x. x... .... x... ..x. .... ...."})
+    B = 11
+    ch = {"G": ("A3", "B4", "F#5"), "Bm": ("C#4", "D5", "A5"), "A": ("B3", "C#5", "G#5")}   # 9th, 3rd, 7th
+
+    def figure(bars):
+        """the keys: each bar (chord, next): 9th 3rd 7th on every beat's 2nd .. 4th sixteenth; with a next chord, the
+        last beat's 3rd and 7th are already the next chord's (the push)"""
+        ev = []
+        for b, (c, nxt) in enumerate(bars):
+            for beat in range(4):
+                s = b * 16 + beat * 4
+                hi = ch[nxt] if nxt and beat == 3 else ch[c]
+                ev += [(s + 1, ch[c][0], 1, "v84"), (s + 2, hi[1], 1, "v104"), (s + 3, hi[2], 1, "v88")]
+        return mel(16 * len(bars), ev)
+
+    keys = figure([("G", None), ("G", "Bm"), ("Bm", "A"), ("A", "G")])
+    bass = mel(64, [(0, "G1", 30), (30, "B1", 16), (46, "A1", 16), (62, "G1", 2)], vel=110)
+    bass_brk = mel(64, [(0, "G1", 30)], vel=110)               # (out with the Bm: bars 46..47)
+    chant = []                                                 # "Oya, come": eighths, each change on the and of 4
+    for b, (note, nxt) in enumerate([("B3", "B3"), ("B3", "D4"), ("D4", "C#4"), ("C#4", "B3")]):
+        chant += [(b * 16 + s, nxt if s == 14 else note, 2, "A" if s in (0, 8) else "") for s in range(0, 16, 2)]
+    hook_v = mel(64, chant, vel=100)
+    verse_v = mel(64, [(1, "B3", 2), (8, "B3", 2), (10, "E4", 2), (12, "D4", 2), (14, "C#4", 2),
+                       (16, "B3", 3), (24, "F#4", 2), (26, "E4", 3), (29, "D4", 5),
+                       (44, "E4", 1), (45, "D4", 3),
+                       (48, "C#4", 2), (50, "B3", 2), (52, "C#4", 3), (55, "C#4", 2), (57, "E4", 3), (60, "F#4", 1),
+                       (61, "E4", 1), (62, "D4", 1), (63, "C#4", 1)], vel=96)
+    high_v = mel(64, [(3, "B4", 27), (35, "D5", 11), (46, "C#5", 16), (62, "B4", 2)], vel=92)
+    K4 = "x... x... x... x..."
+    intro = drum(16, {"K": K4, "H": "...o ...o ...o ...o", "T": "..o. ..o. ..o. ...."})
+    hook = drum(16, {"K": K4, "S": "...x ..x. ..x. ..x.", "H": "x.x. ..x. ..x. ..x.", "L": "...o .... .... ...."})
+    verse = drum(16, {"K": K4, "S": "...x ..x. ..x. ..x.", "H": SH_AND, "O": ".... .... ...x ....",
+                      "T": "..x. .x.. ..x. .x.x"})
+    claps = drum(32, {"C": "..x. .... ..x. x.x. x.x. x... ..x. ..X."})
     return dict(
-        name="OYA COME", mix=[89, 76, 75, 87], chant="UZO", line="OYA, COME.", bpm=113, cam="7A",
-        tracks=[log_drum(D, drv=16),
-                piano(D, level=100),
-                sound("GRAIN", "CLOUD PAD", role="pad", E0=SET_FLUTE, ATK=60, REL=70, LEVEL=96, PAN=0, CHOR=30, REV=50,
-                      ROOT=D, SCALE=MIN, QUANT=1, SGATE=127),
-                kit(shaker=76, bell=62, clap=92)],
-        globals=dict(DTIME=DT_8D, DFDBK=40, DCOLOR=60, DMIX=56, RSIZE=90, RDAMP=60, RTYPE=0),
+        name="OYA COME", mix=[98, 90, 71, 85], chant="UZO", line="OYA, COME.", bpm=114, cam="10A",
+        tracks=[sound("ANALOG", "SUB BASS", role="bass", E0=1, E1=0, E2=0, E3=0, E4=26, E5=0, E6=20, E7=64, ATK=0,
+                      DEC=127, SUS=127, REL=24, VOICE=V_MONO, GLIDE=0, DIST=10, CHOR=0, DLY=0, REV=0, ROOT=B, SCALE=MIN,
+                      QUANT=1, SLCR=SL_GATE, SLPAT=13, SLRATE=0, SLDEPTH=44),
+                rhodes(B, level=100, pan=8, rev=26, dly=14, cho=24, dist=18, SGATE=72),
+                sound("VOICE", "VOX LEAD", role="lead", E0=95, E1=0, E2=18, E3=0, E4=84, E5=14, E6=72, E7=0, ATK=4,
+                      DEC=70, SUS=112, REL=30, VOICE=V_MONO, GLIDE=0, PAN=0, CHOR=12, DLY=22, REV=40, ROOT=B,
+                      SCALE=MIN, QUANT=1, SGATE=40),
+                kit(shaker=74, conga=80, snare=90, clap=94, rev=12)],
+        globals=dict(DTIME=DT_8D, DFDBK=32, DCOLOR=60, DMIX=46, RSIZE=84, RDAMP=60, RTYPE=0),
         sections=[
-            ("INTRO", dict(tracks=[[], pno, pad, rep(intro, 4)], motion=[(1, 0, "ED_FX", -28)])),
-            ("GROOVE", dict(tracks=[log, pno, pad, rep(groove, 4)])),
-            ("DROP", dict(tracks=[log, pno_drop, pad, cat(drop, drop, drop, drop4)])),
-            ("RUN", dict(tracks=[run, [], [], run_k])),
+            ("INTRO", dict(tracks=[bass, keys, hook_v, rep(intro, 4)])),
+            ("VERSE", dict(tracks=[bass, keys, verse_v, rep(verse, 4)],
+                           motion=[(2, 0, "E0", 32), (2, 0, "E1", 95), (2, 0, "E2", 40)])),
+            ("HOOK", dict(tracks=[bass, keys, hook_v, rep(hook, 4)])),
+            ("BREAK", dict(tracks=[bass_brk, keys, high_v, cat(hook, hook, claps)],
+                           motion=[(2, 0, "E0", 95), (2, 0, "E1", 127), (2, 0, "E2", 60)])),
         ],
-        arrangement=[("INTRO", 2), ("GROOVE", 4), ("RUN", 1), ("DROP", 4), ("INTRO", 2), ("GROOVE", 2), ("RUN", 1),
-                     ("DROP", 4), ("GROOVE", 2), ("DROP", 2), ("INTRO", 2)],
+        arrangement=[("INTRO", 2), ("VERSE", 4), ("HOOK", 2), ("VERSE", 2), ("HOOK", 1), ("BREAK", 1), ("HOOK", 3),
+                     ("BREAK", 1)],
     )
 
 

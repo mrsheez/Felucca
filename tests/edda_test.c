@@ -1609,9 +1609,9 @@ int main(int argc, char **argv)
     }
     /* ------------------------------------------------------ THE ARRIVAL */
     {   /* the songs (arrival.c, tools/arrival_songs.py): the album as written, each one decoding in range, its
-         * arrangement naming sections it has, three to four minutes long played through the sequencer */
+         * arrangement naming sections it has, two to four minutes long played through the sequencer */
         static const struct { const char *name, *key; uint8_t bpm; } ALBUM[13] = {
-            {"UP NEPA", "8A", 116}, {"WE OUTSIDE", "6A", 115}, {"OYA COME", "7A", 113}, {"WHERE YOU SLEEP", "1A", 112},
+            {"UP NEPA", "8A", 116}, {"WE OUTSIDE", "6A", 115}, {"OYA COME", "10A", 114}, {"WHERE YOU SLEEP", "1A", 112},
             {"E GO BE", "5A", 116}, {"I DEY WAKA", "3A", 139}, {"BODY KNOW", "6A", 112}, {"DO AM AGAIN", "10B", 125},
             {"YOU DEY WHINE ME", "9A", 124}, {"TURN AM UP", "12B", 126}, {"ENJOYMENT ONLY", "5A", 114},
             {"RING ME", "7A", 116}, {"JAPA AND COME BACK", "1A", 115}};
@@ -1650,7 +1650,7 @@ int main(int argc, char **argv)
                     keyed &= t->p[P_ROOT] == (int16_t)edda_cam_root(sg->cam) &&
                              t->p[P_SCALE] == (int16_t)edda_cam_scale(sg->cam) && t->p[P_QUANT] != QN_OFF;
             }
-            kits &= n == 5u ? ENGINES[trk[0].eng_req] == &ENG_ANALOG
+            kits &= n == 5u || n == 2u ? ENGINES[trk[0].eng_req] == &ENG_ANALOG
                             : trk[0].eng_req == ENGI_SAMPLE && trk[0].p[P_E0] == (int16_t)SMP_XSET_LOG + SMP_XBASE;
             {   /* played through: the sequencer's own clock from the chain's start to its end */
                 uint32_t nb = 0, sec10;
@@ -1669,10 +1669,10 @@ int main(int argc, char **argv)
         ck("THE ARRIVAL: every section decodes in range (LEN, at most 4 notes C0..C8, ties, chances), named", dec);
         ck("THE ARRIVAL: every arrangement row names a section of its song, 1..16 repeats", arr);
         ck("THE ARRIVAL: loaded, the synth tracks in the song's key (ROOT SCALE, quantised), the key lock on it", keyed);
-        ck("THE ARRIVAL: T4 the EDDA kit, T1 the log drum (SAMPLE SET LOG; I DEY WAKA: the 808 on ANALOG)", kits);
+        ck("THE ARRIVAL: T4 the EDDA kit, T1 the log drum (SAMPLE SET LOG; I DEY WAKA the 808, OYA COME the bass: ANALOG)", kits);
         printf("edda: THE ARRIVAL played through: %u.%u .. %u.%u s\n", shortest / 10u, shortest % 10u, longest / 10u,
                longest % 10u);
-        ck("THE ARRIVAL: each song plays 3 to 4 minutes, then stops", shortest >= 1800u && longest <= 2400u);
+        ck("THE ARRIVAL: each song plays 2 to 4 minutes, then stops", shortest >= 1200u && longest <= 2400u);
     }
     {   /* SAVE > ARRIVAL: KNOB 1 picks, OCT+ loads (the sounds, section A, the rows, the tempo, the key, the name),
          * PLAY plays the arrangement; the SONG page's rows are the song's sections; a project keeps it; CLEAR SONG ends it */
