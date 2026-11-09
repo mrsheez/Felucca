@@ -28,7 +28,11 @@ int main(int argc, char **argv)
         return 2;
     web_nor_erase();
     web_boot();
-    render(2100);                                 /* (the UI up: after Powered by COSMIC YOU, as emu_test.mjs) */
+    render(2100);                                 /* Powered by COSMIC YOU, "Press any key to continue" .. */
+    web_buttons(1u << B_HOME);                    /* .. HOME tapped: the UI (as emu_test.mjs) */
+    render(60);
+    web_buttons(0);
+    render(60);
     web_test_heavy();
     web_buttons(1u << B_PLAY);
     render(60);

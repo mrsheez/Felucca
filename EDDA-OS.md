@@ -9,7 +9,7 @@ documentation says unless a section below says otherwise.
 
 | | |
 | --- | --- |
-| Version | 1.7.3-EDDA (at power-on Powered by COSMIC YOU, no splash; MENU > SYSTEM > INFO shows `v1.7.3-EDDA`; the package identity FM-1_917) |
+| Version | 1.7.4-EDDA (at power-on Powered by COSMIC YOU and "Press any key to continue", no splash; MENU > SYSTEM > INFO shows `v1.7.4-EDDA`; the package identity FM-1_917) |
 | Base | Felucca 1.7.0 (hugelton/Felucca `main` at 65b21d3, merged) with Felucca 1.8's flash and FM6 fixes, felucca-bsp (MPL-2.0) and Felucca-Engines (MIT) as submodules; EDDA OS's commits on top |
 | Licence | GPL-3.0-only, as Felucca |
 | Verified | every host suite passes: 7,732 checks in `tests/run_host_only.sh`, 7,867 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
@@ -17,15 +17,20 @@ documentation says unless a section below says otherwise.
 | On the FM-1 | 1.7.1 installed on Obi's FM-1 on 9 November 2026: it starts, the EDDA palette shows, SAVE > ARRIVAL lists and plays the songs (section 7) |
 | Install | one HTML file, Chrome or Edge, the FM-1 on USB (section 1.1) |
 
-## 0. What 1.7.2 and 1.7.3 add
+## 0. What 1.7.2 to 1.7.4 add
 
-- **Powered by COSMIC YOU at power-on** (2.24). After the splash, Cosmic You's own lockup: "Powered by", COSMIC YOU in
-  Cinzel Black with its blue glow, and the orange rule under it, as cosmicyou.me's pages and the playlist cards set
-  it. The firmware draws it from Chrome's rendering of that CSS, and the host tests hold the two within one step of
-  the screen's colour depth. It fades in, stays for 1.5 seconds, and any key or button ends it.
+- **Powered by COSMIC YOU at power-on** (2.24). Cosmic You's own lockup: "Powered by", COSMIC YOU in Cinzel Black
+  with its blue glow, and the orange rule under it, as cosmicyou.me's pages and the playlist cards set it. The
+  firmware draws it from Chrome's rendering of that CSS, and the host tests hold the two within one step of the
+  screen's colour depth.
 - **No Felucca splash** (1.7.3). From power-on the screen is dark until Powered by COSMIC YOU fades in, in the
-  splash's place, so the UI comes 1.5 seconds after it began instead of after both. Felucca's credit, the version and
-  the licence stay in MENU > SYSTEM > ABOUT, the version in MENU > SYSTEM > INFO too.
+  splash's place. Felucca's credit, the version and the licence stay in MENU > SYSTEM > ABOUT, the version in
+  MENU > SYSTEM > INFO too.
+- **Press any key to continue** (1.7.4). Powered by COSMIC YOU stays on the screen until a key or a button is pressed
+  (1.7.2 and 1.7.3 went to the UI after 1.5 seconds). 1.5 seconds after it began, "Press any key to continue" fades in
+  under it and breathes slowly. The press that ends it does nothing else: a key stays silent until it is pressed
+  again, a button's tap or hold does not act (HOME does not go to MIXER or open the menu, SAVE does not open its
+  page), and knob turns made while it shows are dropped. USB MIDI, the web editor and the installer work meanwhile.
 
 ## 0.1 What 1.7.1-EDDA fixes
 
@@ -87,7 +92,7 @@ and the kit uploads happen on the laptop (Windows, macOS or Linux).
 
 ### 1.1 The one-file installer (recommended)
 
-`EDDA-OS-Installer-1.7.3.html` is the whole installer with the package inside it: no site, no download, no
+`EDDA-OS-Installer-1.7.4.html` is the whole installer with the package inside it: no site, no download, no
 account.
 
 1. Connect the FM-1 to the laptop with a USB **data** cable and switch it on. Close every app that uses MIDI
@@ -96,8 +101,8 @@ account.
 3. Allow MIDI (with SysEx) when the browser asks, and press **Install**. The page takes the FM-1 into its
    update mode, writes EDDA OS and restarts it: a few minutes, the bar to 100 % and the page says **Done**.
    Do not unplug meanwhile. If anything stops it, press Install again: the update mode resumes where it was.
-4. The FM-1 starts EDDA OS: Powered by COSMIC YOU, then HOME (MENU > SYSTEM > INFO shows `v1.7.3-EDDA`). SAVE → turn
-   to **ARRIVAL** for the songs.
+4. The FM-1 starts EDDA OS: Powered by COSMIC YOU and "Press any key to continue"; press one, and HOME comes (MENU >
+   SYSTEM > INFO shows `v1.7.4-EDDA`). SAVE → turn to **ARRIVAL** for the songs.
 5. Check that it stores: MENU, change one setting (say LEDS), switch off, switch on: the setting stayed. If a save
    says FLASH ERROR, stop and tell me (section 0.1: the newer flash part).
 
@@ -133,7 +138,7 @@ files of the first delivery: `edda-os.bundle` (the git history), or `edda-os-for
 
 Every later push to `edda` rebuilds and republishes. The package is also kept with each run under
 **Artifacts → edda-os-fwsc** for the command-line installer (1.4), and `python3 web/make_site.py --onefile
-felucca-1.7.3-EDDA.fwsc 1.7.3-EDDA EDDA-OS-Installer-1.7.3.html` makes the one-file installer from it.
+felucca-1.7.4-EDDA.fwsc 1.7.4-EDDA EDDA-OS-Installer-1.7.4.html` makes the one-file installer from it.
 
 ### 1.3 Route B — build on the Windows laptop (WSL2)
 
@@ -145,8 +150,8 @@ WSL2 runs Ubuntu inside Windows 10/11, and JieLi's toolchain runs there natively
    ```
    sudo apt update && sudo apt install -y git python3-pil python3-fonttools python3-numpy curl xz-utils
    git clone --recurse-submodules -b edda https://github.com/mrsheez/Felucca edda-os
-   cd edda-os && sh edda-build.sh --release 1.7.3-EDDA   # -> build/felucca-1.7.3-EDDA.fwsc
-   python3 web/make_site.py build/felucca-1.7.3-EDDA.fwsc 1.7.3-EDDA /tmp/edda-site
+   cd edda-os && sh edda-build.sh --release 1.7.4-EDDA   # -> build/felucca-1.7.4-EDDA.fwsc
+   python3 web/make_site.py build/felucca-1.7.4-EDDA.fwsc 1.7.4-EDDA /tmp/edda-site
    cd /tmp/edda-site && python3 -m http.server 8000
    ```
 
@@ -161,7 +166,7 @@ For a package from Route A's artifact or Route B: install Python 3 from python.o
 
 ```
 py -m pip install mido python-rtmidi
-py tools\fm1_install.py felucca-1.7.3-EDDA.fwsc
+py tools\fm1_install.py felucca-1.7.4-EDDA.fwsc
 ```
 
 Close every other app that uses MIDI first (DAWs, the editor tab).
@@ -188,13 +193,13 @@ turn Pages on: **Settings → Pages → Build and deployment → Source: GitHub 
 Run workflow** (branch `main`), and the installer is at `https://mrsheez.github.io/Felucca/webapp/installer/`.
 
 Without Pages, the latest run's package is at
-`https://github.com/mrsheez/Felucca/raw/ci-out/felucca-1.7.3-EDDA.fwsc` (its SHA-256 in the run's summary). Install
+`https://github.com/mrsheez/Felucca/raw/ci-out/felucca-1.7.4-EDDA.fwsc` (its SHA-256 in the run's summary). Install
 it with the one-file installer, the command-line installer (1.4), or serve the installer page from the laptop: with
 Python 3 on Windows, download the repository (**Code → Download ZIP**, branch `edda`), put the package in its folder,
 and run there
 
 ```
-py web\make_site.py felucca-1.7.3-EDDA.fwsc 1.7.3-EDDA site
+py web\make_site.py felucca-1.7.4-EDDA.fwsc 1.7.4-EDDA site
 cd site
 py -m http.server 8000
 ```
@@ -492,12 +497,19 @@ against the Afro House 2026 card, the letters match within a pixel and "Powered 
 px of their places.
 
 The screen is dark from power-on until it fades in, as soon as the FM-1 has started (the audio, USB, the last
-session restored), over 0.4 s (MENU > ANIM OFF: at once); it stays 1.5 s from its start, and then the UI comes. Any key or button ends it at once. That press does nothing else: a
-key stays silent until it is pressed again, as under Felucca's splash. The keys sound nothing while it shows, MIDI IN
-plays and MASTER follows the pot. It shows in every palette in its own colours over the palette's background, and in
-GREY and MONO in grays without the glow (in 32 grays it bands into a smudge). After a crash, a hang or a failed start
-it is left out (as the LED sweep is): the screen stays dark for the splash's 0.4 s, then the UI. Felucca's credit, the
-version and the licence are in MENU > SYSTEM > ABOUT (1.7.2 showed Felucca's splash first).
+session restored), over 0.4 s (MENU > ANIM OFF: at once). It stays until a key or a button is pressed, however long
+that takes (1.7.4; 1.7.2 and 1.7.3 went on after 1.5 s). 1.5 s after it began, **Press any key to continue** fades in
+under it, in the UI's small type at "Powered by"'s strength, and then breathes down to half and back every 2.4 s
+(MENU > ANIM OFF: whole and still). The press ends it at once and does nothing else: a key stays silent until it is
+pressed again, as under Felucca's splash; a button's tap or hold does not act (the UI waits for it to be let go, as
+after the screen's wake from MENU > SCREEN OFF); knob turns made while it shows are dropped. A key or button already
+held at power-on counts once it is let go and pressed again. The keys sound nothing while it shows; MIDI IN plays,
+MASTER follows the pot, and USB, the web editor and the installer work (an update takes the screen over). Holding
+OCT- and OCT+ from power-on ends it when UBOOT's countdown starts, so the countdown shows. It shows in every palette in
+its own colours over the palette's background, and in GREY and MONO in grays without the glow (in 32 grays it bands
+into a smudge). After a crash, a hang or a failed start it is left out (as the LED sweep is): the screen stays dark
+for the splash's 0.4 s, then the UI. Felucca's credit, the version and the licence are in MENU > SYSTEM > ABOUT (1.7.2
+showed Felucca's splash first).
 
 ---
 
@@ -573,7 +585,7 @@ West African pattern bank, the voice bank; and Felucca 1.7.0's step conditions, 
 
 ```
 git submodule update --init         # firmware/bsp (felucca-bsp), firmware/engines (Felucca-Engines)
-sh edda-build.sh --release 1.7.3-EDDA   # Linux x86-64 (or WSL2): the toolchain, the SDK files -> build/felucca-1.7.3-EDDA.fwsc
+sh edda-build.sh --release 1.7.4-EDDA   # Linux x86-64 (or WSL2): the toolchain, the SDK files -> build/felucca-1.7.4-EDDA.fwsc
 SANITIZE=1 sh tests/run_tests.sh    # every suite against build/felucca.fwsc; tests/run_host_only.sh without a package
 ```
 
@@ -610,16 +622,16 @@ the load, SAVE > ARRIVAL, the live cues and their show cues; then every song is 
 included), the kit builder, the backup and the one-file installer (onto a simulated FM-1: stock → update loader →
 EDDA OS, every byte it asks for checked) pass.
 
-**Built with JieLi's compiler** (GitHub Actions, run 42652109091, commit 532f895): the image is 579,920 bytes of the 581,564-byte app slot (1,644 spare; Powered by COSMIC YOU took 3,416 and dropping the splash gave back 132), RAM (.data + .bss) 61,268 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). The package, `felucca-1.7.3-EDDA.fwsc`, is 610,286 bytes, SHA-256
+**Built with JieLi's compiler** (GitHub Actions, run 42652109091, commit 532f895): the image is 579,920 bytes of the 581,564-byte app slot (1,644 spare; Powered by COSMIC YOU took 3,416 and dropping the splash gave back 132), RAM (.data + .bss) 61,268 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). The package, `felucca-1.7.4-EDDA.fwsc`, is 610,286 bytes, SHA-256
 `b797f3105cc3c7c23886b0fd8f08f6e855d960c7822eb97321f90fa6c7105d1d`. Register access in `hal/` and the BSP only. The
 package carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s
 SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_917, every byte it asks for checked), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (2.1 % of real time for a heavy song). The one exception is the static cost check below.
 
 **On the FM-1:** 1.7.1 went onto Obi's FM-1 on 9 November 2026 with the one-file installer: it starts, MENU > DISPLAY >
-COLOR takes EDDA, SAVE > ARRIVAL lists the thirteen songs and plays them. The start-up screen (1.7.2, 1.7.3) has been seen in
+COLOR takes EDDA, SAVE > ARRIVAL lists the thirteen songs and plays them. The start-up screen (1.7.2 to 1.7.4) has been seen in
 the browser emulator and the host renders only. **Not yet:** a measured check on the device of the rest. These
-are worth a minute: the splash says
-Powered by COSMIC YOU at power-on and MENU > SYSTEM > INFO's `v1.7.3-EDDA`; a setting survives a power cycle (the flash part, section 0.1); SAVE > ARRIVAL, a song, OCT+, PLAY
+are worth a minute: at power-on Powered by COSMIC YOU, "Press any key to continue" under it 1.5 s later, HOME after a
+press (and HOME's page, not MIXER, when that press was HOME); MENU > SYSTEM > INFO's `v1.7.4-EDDA`; a setting survives a power cycle (the flash part, section 0.1); SAVE > ARRIVAL, a song, OCT+, PLAY
 sounds; and the true tempo: at 120 BPM against a metronome app or a
 DAW at 120.00, the FM-1 should hold the click for ten minutes (Felucca's count gains 0.24 s in that time, half a
 beat). `tests/target_budget.py`, a static count of the audio code's loop instructions from JieLi's disassembly,

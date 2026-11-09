@@ -100,32 +100,6 @@ static void boot_leds(void)
         fm1_led_anim_start(settings_leds == LEDS_DIM || settings_leds == LEDS_DIM_LO);
 }
 
-#if EDDA_POWERED
-/* EDDA OS: "Powered by COSMIC YOU" (powered.c) in the splash's place (the pot followed, the keys silent, MIDI IN
- * playing): it fades in, stays, and goes PW_MS after it began, or at once on a key or a button pressed (one held from
- * before: let go and pressed again) */
-static void powered_boot(void)
-{
-    uint32_t t0 = fm1_ms, held_b = fm1_in.buttons, held_n = fm1_in.notes, a = 0, na, ms;
-    draw_powered(0, 1);
-    while ((ms = fm1_ms - t0) < PW_MS) {
-        if ((na = powered_alpha(ms)) != a)
-            draw_powered(a = na, 0);
-        held_b &= fm1_in.buttons;
-        held_n &= fm1_in.notes;
-        if ((fm1_in.buttons & ~held_b) || (fm1_in.notes & ~held_n)) {
-            (void)fm1_input_edges(0);             /* the press that ended it does nothing else: a key is silent until */
-            (void)fm1_input_note_edges();         /* pressed again (seq.c, kb_boot_hold), once the audio has seen it */
-            fm1_delay_ms(5);                      /* (3 blocks) */
-            return;
-        }
-        fm1_wdt_feed();                           /* (armed at 8 s in fm1_cstart: far off, fed all the same) */
-        fm1_delay_ms(10);
-        master_poll();
-    }
-}
-#endif
-
 static void fm1_main(void)
 {
     uint32_t ms;
@@ -189,16 +163,21 @@ static void fm1_main(void)
     }
     autosave_boot(boot_clean);                /* (1.2) the last session's music, under the splash */
 #if EDDA_POWERED
-    if (boot_clean)                           /* EDDA OS: Powered by COSMIC YOU instead; not after a crash, a hang or */
-        powered_boot();                       /* a failed boot: the screen dark as long as the splash, as the LED sweep */
-    else
+    if (boot_clean)                           /* EDDA OS: Powered by COSMIC YOU instead, until a key or a button (the */
+        powered_begin();                      /* loop below); not after a crash, a hang or a failed boot: the screen */
+    else                                      /* dark as long as the splash, as the LED sweep */
 #endif
     for (ms = 0; ms < 400u; ms += 10u) {      /* the splash; the pot followed (MIDI IN plays under it) */
         fm1_delay_ms(10);
         master_poll();
     }
-    kb_boot_hold = 0;
-    lcd_fill(0, 0, 240, 240, T_BG);
+#if EDDA_POWERED
+    if (!pw_state)
+#endif
+    {
+        kb_boot_hold = 0;
+        lcd_fill(0, 0, 240, 240, T_BG);
+    }
     scrn.idle = fm1_ms;                        /* (MENU > SCREEN OFF: from here) */
 
     for (;;) {
@@ -260,6 +239,10 @@ static void fm1_main(void)
         ota_service();                                  /* M-UPGRADE handshake */
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
             usb.ota_req = 0;
+#if EDDA_POWERED
+            pw_state = 0;                               /* (an update takes over from Powered by COSMIC YOU) */
+            kb_boot_hold = 0;
+#endif
             panic_req = (1u << NTRK) - 1u;               /* every track (bit per track) */
             scr_wake_now();                             /* (its progress on the screen) */
             if (flash_ok)
@@ -281,6 +264,20 @@ static void fm1_main(void)
         }
 #if FELUCCA_CDC
         cdc_task();
+#endif
+#if EDDA_POWERED
+        if (pw_state) {                                 /* Powered by COSMIC YOU (powered.c) until a key or a button: */
+            if (!powered_frame()) {                     /* no UI meanwhile (its input would take the presses) */
+                while (fm1_ms - m < 15u) {
+#if FELUCCA_OTA
+                    ed_service();
+#endif
+                }
+                continue;
+            }
+            scrn.idle = fm1_ms;
+            ui.force = 1;
+        }
 #endif
         felucca_dbg.ui_frames++;
         felucca_dbg.page = ui.page;

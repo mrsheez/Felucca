@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* EDDA OS: "Powered by COSMIC YOU" at power-on, a screen of its own after the splash (main.c; web/emu felucca_web.c).
- * Cosmic You's lockup as its pages and its playlist cards set it: "Powered by" (Inter 500, white at 42 %), COSMIC YOU
+/* EDDA OS: "Powered by COSMIC YOU" at power-on, in the place of Felucca's splash, until a key or a button is pressed
+ * (main.c's loop runs under it; web/emu felucca_web.c the same): "Press any key to continue" comes under it 1.5 s
+ * after it began. Cosmic You's lockup as its pages and its playlist cards set it: "Powered by" (Inter 500, white at 42 %), COSMIC YOU
  * (Cinzel 900, 0.22 em apart, #5AA9FF, glowing 0 0 8px rgba(90,169,255,.45) over 0 0 18px rgba(0,240,255,.18)) and
  * an orange rule under it (transparent, #F97316, transparent), as Chrome draws them at 1.3 device pixels a CSS pixel
  * (tools/gen_powered.py: powered_data.h; tests/powered_check.py holds this drawing to Chrome's). A pixel is
@@ -13,8 +14,10 @@
 #if EDDA_POWERED
 #include "powered_data.h"
 
-#define PW_FADE_MS 400u        /* it fades in over this (MENU > ANIM OFF: whole at once) .. */
-#define PW_MS 1500u            /* .. and goes this long after it began, or at once on a key or a button (main.c) */
+#define PW_FADE_MS 400u        /* it fades in over this (MENU > ANIM OFF: whole at once) */
+#define PW_PROMPT_MS 1500u     /* "Press any key to continue" from this long after it began, faded in the same way .. */
+#define PW_BREATH_MS 2400u     /* .. then breathing, 100 % to 50 % of its own and back in this (ANIM OFF: still) */
+#define PW_PROMPT_Y 194u       /* its line's top (AF_S), between the lockup and the screen's foot */
 #define PW_N (240u * PW_H)     /* the band's pixels: composed once, kept in the canvas's other half (CV_MAX: two) */
 #if PW_N * 2u > CV_MAX
 #error "powered_data.h: the band and its copy do not fit the canvas"
@@ -175,5 +178,79 @@ static uint32_t powered_alpha(uint32_t t)
         return 256u;
     u = t * 256u / PW_FADE_MS;
     return u * u * (768u - 2u * u) >> 16;
+}
+
+/* the prompt's strength t ms after the lockup began, in % of white at 42 % ("Powered by"'s): none before PW_PROMPT_MS,
+ * then eased in as the lockup was, then breathing down to half and back */
+static uint32_t powered_prompt(uint32_t t)
+{
+    uint32_t u;
+    if (t < PW_PROMPT_MS)
+        return 0;
+    t -= PW_PROMPT_MS;
+    if (ui_prefs & PREF_ANIM_OFF)
+        return 100u;
+    if (t < PW_FADE_MS)
+        return powered_alpha(t) * 100u >> 8;
+    u = (t - PW_FADE_MS) % PW_BREATH_MS;
+    u = u < PW_BREATH_MS / 2u ? u : PW_BREATH_MS - u;
+    return 100u - u * 100u / PW_BREATH_MS;
+}
+
+/* "Press any key to continue" at pct % (the UI's small face, centred; on a light palette in TEXT's ink) */
+static void draw_prompt(uint32_t pct)
+{
+    uint16_t ink = ux.light ? T_TEXT : 0xFFFFu, c;
+    int32_t p = (int32_t)(42u * pct / 100u);
+    if (ux.mono || ux.bw)                         /* (gray kept, as ux_gray) */
+        c = ux_gray((uint32_t)(((int32_t)(T_BG >> 11) * (100 - p) + (int32_t)(ink >> 11) * p + 50) / 100));
+    else
+        c = ux_mix(T_BG, ink, p);
+    draw_text_box(0, PW_PROMPT_Y, 240, &AF_S, "Press any key to continue", c, 1);
+}
+
+/* the screen's state: 0 not up (or over), 1 up, 2 ended by a press (the UI the frame after, so the audio has seen a
+ * key under kb_boot_hold first: silent until pressed again); pw_shown: it came up this power-on */
+static uint8_t pw_state, pw_shown;
+static uint32_t pw_t0, pw_held_b, pw_held_n, pw_a, pw_p;
+
+static void powered_begin(void)                   /* at power-on (main.c): dark until it fades in */
+{
+    pw_state = pw_shown = 1;
+    pw_t0 = fm1_ms;
+    pw_held_b = fm1_in.buttons;                   /* (held from before: a press once let go) */
+    pw_held_n = fm1_in.notes;
+    pw_a = pw_p = 0;
+    draw_powered(0, 1);
+}
+
+/* a frame of it (main.c's loop, every 15 ms; USB, the editor and the updater run on): 1 when the UI takes over, its
+ * screen cleared. The press that ends it does nothing else: the UI's input is swallowed until everything is let go
+ * and the knobs are at rest, as after the screen's wake (ui.c scr_input; the turns made under it go too), so no
+ * button's release taps (HOME: MIXER, SAVE: its page) or holds (HOME: the menu). OCT- + OCT+ held from power-on
+ * end it at UBOOT's countdown (main.c), which the UI shows */
+static int powered_frame(void)
+{
+    uint32_t t = fm1_ms - pw_t0, v;
+    if (pw_state == 2) {
+        pw_state = 0;
+        kb_boot_hold = 0;
+        scrn.eat = 1;
+        lcd_fill(0, 0, 240, 240, T_BG);
+        return 1;
+    }
+    pw_held_b &= fm1_in.buttons;
+    pw_held_n &= fm1_in.notes;
+    if ((fm1_in.buttons & ~pw_held_b) || (fm1_in.notes & ~pw_held_n) || ui.uboot) {
+        (void)fm1_input_edges(0);
+        (void)fm1_input_note_edges();
+        pw_state = 2;
+        return 0;
+    }
+    if ((v = powered_alpha(t)) != pw_a)
+        draw_powered(pw_a = v, 0);
+    if ((v = powered_prompt(t)) != pw_p)
+        draw_prompt(pw_p = v);
+    return 0;
 }
 #endif

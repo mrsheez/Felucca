@@ -260,10 +260,6 @@ static void cdc_task(void) {}
 
 /* --------------------------------------------------------- the device --- */
 static uint32_t web_booted, web_boot_ms, web_last_frame;
-#if EDDA_POWERED
-static uint32_t web_pw_t0, web_pw_a, web_pw_b, web_pw_n, web_pw_last;   /* main.c: "Powered by COSMIC YOU" (powered.c) */
-static uint8_t web_pw;                                                 /* 0 not yet, 1 shown, 3 ended by a press, 2 over */
-#endif
 
 /* main.c fm1_main's boot, up to the main loop (no USB, no UART, no panel setup) */
 static void web_power_on(void)
@@ -295,7 +291,7 @@ static void web_power_on(void)
 #endif
     web_booted = 1;
 #if EDDA_POWERED
-    web_pw = 0;                           /* (then "Powered by COSMIC YOU": web_ms) */
+    pw_state = pw_shown = 0;              /* (then "Powered by COSMIC YOU": web_ms) */
 #endif
 }
 
@@ -340,49 +336,35 @@ static void web_ms(void)
     if (!web_booted || (int32_t)(fm1_ms - web_boot_ms) < 0)
         return;
     if (web_boot_ms) {                                    /* main.c: the splash goes, the loop starts */
-#if EDDA_POWERED
-        if (!web_pw && boot_clean) {                      /* main.c: "Powered by COSMIC YOU" first (powered.c) */
-            web_pw = 1;
-            web_pw_t0 = web_pw_last = fm1_ms;
-            web_pw_a = 0;
-            web_pw_b = fm1_in.buttons;
-            web_pw_n = fm1_in.notes;
-            draw_powered(0, 1);
-        }
-        if (web_pw == 1) {                                /* main.c's loop: fades in, stays PW_MS, a press ends it */
-            uint32_t t = fm1_ms - web_pw_t0, na;
-            web_pw_b &= fm1_in.buttons;
-            web_pw_n &= fm1_in.notes;
-            if ((fm1_in.buttons & ~web_pw_b) || (fm1_in.notes & ~web_pw_n)) {
-                (void)fm1_input_edges(0);                 /* (that press does nothing else; a key: 5 ms more under */
-                (void)fm1_input_note_edges();             /* kb_boot_hold, the audio sees it first, as main.c) */
-                web_pw = 3;
-                web_pw_t0 = fm1_ms;
-                return;
-            } else if (t < PW_MS) {
-                if (fm1_ms - web_pw_last >= 10u && (na = powered_alpha(t)) != web_pw_a) {
-                    web_pw_last = fm1_ms;
-                    draw_powered(web_pw_a = na, 0);
-                }
-                return;
-            }
-            web_pw = 2;
-        }
-        if (web_pw == 3) {
-            if (fm1_ms - web_pw_t0 < 5u)
-                return;
-            web_pw = 2;
-        }
-#endif
         web_boot_ms = 0;
-        kb_boot_hold = 0;
-        lcd_fill(0, 0, 240, 240, T_BG);
+#if EDDA_POWERED
+        if (boot_clean)
+            powered_begin();                              /* main.c: Powered by COSMIC YOU until a press (powered.c) */
+        else
+#endif
+        {
+            kb_boot_hold = 0;
+            lcd_fill(0, 0, 240, 240, T_BG);
+        }
         web_last_frame = fm1_ms - 15u;
     }
     if (fm1_ms - web_last_frame >= 15u) {                /* main.c: a frame, then ui_input until 15 ms are over */
         web_last_frame = fm1_ms;
+#if EDDA_POWERED
+        if (pw_state) {                                   /* main.c: Powered by COSMIC YOU, no UI until a press */
+            master_poll();
+            if (!powered_frame())
+                return;
+            scrn.idle = fm1_ms;
+            ui.force = 1;
+        }
+#endif
         web_frame();
-    } else {
+    } else
+#if EDDA_POWERED
+    if (!pw_state)
+#endif
+    {
         ui_input();                                       /* main.c's wait loop */
     }
 }
@@ -545,6 +527,7 @@ EXPORT uint32_t web_screen_draws(void) { return web_draws; }
 EXPORT uint32_t web_now_ms(void) { return fm1_ms; }
 EXPORT uint32_t web_playing(void) { return song.playing; }
 #if EDDA_POWERED
-EXPORT uint32_t web_powered(void) { return web_pw; }   /* "Powered by COSMIC YOU": 0 not yet, 1 shown, 2 over */
+EXPORT uint32_t web_powered(void) { return pw_state ? 1u : pw_shown ? 2u : 0u; }   /* Powered by COSMIC YOU: 0 not yet, 1 up, 2 over */
+EXPORT uint32_t web_home(void) { return ui.home && !ui.menu && !ui.confirm; }   /* HOME's own page, nothing over it */
 #endif
 EXPORT uint32_t web_sample_rate(void) { return FS; }
