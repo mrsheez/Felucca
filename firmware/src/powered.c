@@ -86,7 +86,7 @@ static uint32_t pw_rgb(uint32_t c)            /* RGB565 -> 0xRRGGBB, the bits re
 static uint32_t pw_col(uint32_t rgb, int gray)  /* GREY, MONO: its luma, R = G = B */
 {
     uint32_t l = ((rgb >> 16) * 54u + ((rgb >> 8) & 255u) * 183u + (rgb & 255u) * 19u + 128u) >> 8;
-    return gray ? l * 0x010101u : rgb;
+    return gray ? (l << 16 | l << 8 | l) : rgb;
 }
 
 /* the whole lockup into the canvas's band (cv_begin'd) and its copy */

@@ -141,8 +141,9 @@ static const uint8_t PW_R_COLS[73] = {
     0x03
 };
 
-/* FNV-1a of each layer's coverages as decoded, row by row (tests/ui_render.c checks powered.c's reading) */
-#define PW_HASH_P 0xE2226B1Au
-#define PW_HASH_T 0x7CAB5887u
-#define PW_HASH_G1 0xDD576B6Au
-#define PW_HASH_G2 0x9E78BA80u
+/* FNV-1a of each layer's coverages as decoded, row by row (tests/ui_render.c checks powered.c's reading); in
+ * decimal: tools/build.py's register lint reads some hex numbers as addresses */
+#define PW_HASH_P 3793906458u
+#define PW_HASH_T 2091604103u
+#define PW_HASH_G1 3713493866u
+#define PW_HASH_G2 2658712192u

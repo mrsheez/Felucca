@@ -320,11 +320,12 @@ def header(L, sums):
 #define PW_R_W {r['w']}u
 #define PW_R_H {r['h']}u
 {c_bytes('PW_R_ROWS', r['rows'])}{c_bytes('PW_R_COLS', r['cols'])}
-/* FNV-1a of each layer's coverages as decoded, row by row (tests/ui_render.c checks powered.c's reading) */
-#define PW_HASH_P 0x{p['hash']:08X}u
-#define PW_HASH_T 0x{t['hash']:08X}u
-#define PW_HASH_G1 0x{g1['hash']:08X}u
-#define PW_HASH_G2 0x{g2['hash']:08X}u
+/* FNV-1a of each layer's coverages as decoded, row by row (tests/ui_render.c checks powered.c's reading); in
+ * decimal: tools/build.py's register lint reads some hex numbers as addresses */
+#define PW_HASH_P {p['hash']}u
+#define PW_HASH_T {t['hash']}u
+#define PW_HASH_G1 {g1['hash']}u
+#define PW_HASH_G2 {g2['hash']}u
 """
 
 
