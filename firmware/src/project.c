@@ -1256,8 +1256,11 @@ static uint32_t chain_prepare(void)
                 return 3u + s;
             used |= 1u << s;
         }
+    chain.cues = 0;
     if (arv_cur && arv_cur <= ARV_NSONGS) {             /* EDDA OS: the slots are THE ARRIVAL's song's sections */
         chain.config = chain_config;
+        if (arv_song(arv_cur - 1u)->cue)                /* (2.0: and its cues) */
+            chain.cues = &ARV_DATA[arv_song(arv_cur - 1u)->cue];
         for (i = 0; i < 4u; i++)
             if ((used >> i) & 1u) {
                 motion_store_t *m = &chain.source[i].motion;

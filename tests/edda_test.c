@@ -1712,10 +1712,10 @@ int main(int argc, char **argv)
         slots_clear();
         reset();
         arv_load(2);
-        ok = sg->pack && ncue >= 20u && !arv_pack_ok(sg) && trk[1].p[P_MUTE] && trk[2].p[P_MUTE] && !trk[0].p[P_MUTE] &&
+        ok = sg->pack && ncue >= 20u && !arv_pack_ok(sg) && trk[0].p[P_MUTE] && trk[1].p[P_MUTE] && trk[2].p[P_MUTE] &&
              !trk[3].p[P_MUTE] && trk[3].p[P_E0] == DK_EDDA && str_eq(ui.msg2, "ITS SOUNDS: NOT LOADED") &&
              msg_is("LOADED OYA COME");
-        ck("2.0: OYA COME without its sound pack: the chords and the voice rest, the kit is EDDA's, LOAD says so", ok);
+        ck("2.0: OYA COME without its sound pack: the bass, the chords and the voice rest, the kit is EDDA's, LOAD says so", ok);
         for (r = 0; r < chain_config.count; r++)
             lanes |= chain_config.row[r].slot[0] != chain_config.row[r].slot[3] || chain_config.row[r].slot[1] == CHAIN_SILENT;
         ck("2.0: its rows give each track its own section or its rest (the lanes); bars 40..47 are one row, twice",
@@ -1799,6 +1799,51 @@ int main(int argc, char **argv)
             transport_req = 2;
             blocks(2);
             voices_off();
+            {   /* ONE MORE (the SONG page, the key of the section playing) in the middle of a row with cues: the rest
+                 * of this pass's cues still play, the pass more is the row's first again (its cues, its steps that play
+                 * on a first pass only), and the song goes on from the next row. Row 6: the hook, a phrase a bar; its
+                 * bass's second half is first-pass-only */
+                uint32_t in_row[2] = {0}, bass[2] = {0}, more = 0, ps = 0, was = 0, next = 0;
+                reset();
+                arv_load(2);
+                memset(age, 0, sizeof age);
+                ok = chain_prepare() == 0u;
+                for (nb = 0; nb < 120u * FS / CTL && !next; nb++) {
+                    int32_t o[2 * CTL];
+                    uint32_t v;
+                    mix_block(o, CTL);
+                    if (chain.row == 6u && trk[2].seq_idx < was)
+                        ps++;                                   /* (the voice's track wrapped: the row's next pass) */
+                    was = chain.row == 6u ? trk[2].seq_idx : 0u;
+                    if (chain.row == 6u && !more && trk[2].seq_idx == 20u) {
+                        song_cue(chain_row_slot(&chain.config.row[chain.row]));
+                        more = chain.remaining;
+                    }
+                    next = chain.row == 7u;
+                    for (k = 0; k < 3u; k += 2u)
+                        for (v = 0; v < NVOICE; v++) {
+                            const voice_t *vc = &trk[k].v[v];
+                            if (!vc->active || vc->age == age[k][v])
+                                continue;
+                            age[k][v] = vc->age;
+                            if (chain.row == 6u && ps < 2u) {
+                                if (k == 2u)
+                                    in_row[ps]++;
+                                else if (trk[0].seq_idx >= 30u)
+                                    bass[ps]++;
+                            }
+                        }
+                }
+                printf("edda: OYA COME, ONE MORE on the hook's row: its phrases %u then %u, its bass after the G %u then %u\n",
+                       in_row[0], in_row[1], bass[0], bass[1]);
+                ck("2.0: ONE MORE in the middle of a row with cues: this pass's other cues still play, the pass more is "
+                   "the row's first again (cues, first-pass steps), then the next row", ok && more == 2u && next && ps == 1u &&
+                   in_row[0] == 4u && in_row[1] == 4u && bass[0] >= 4u && bass[1] == bass[0] && msg_is("ONE MORE HOOK"));
+                stop_transport();
+                transport_req = 2;
+                blocks(2);
+                voices_off();
+            }
         } else {
             printf("edda: no sound pack given (argv[2]): OYA COME's pack checks skipped\n");
         }

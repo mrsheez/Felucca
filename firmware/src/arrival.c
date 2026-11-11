@@ -24,9 +24,12 @@
  *   rows      each track plays its own section (the chain's lanes, song_chain.c): three bits a track (0..3 A..D, 4: it
  *             rests), the repeats - 1 above them. A song has four patterns a TRACK now, combined freely row by row
  *   cues      [n] then n x (row << 4 | pass, track << 6 | step, note, vel5 | kit << 5 | KIT << 7): a note of one row's
- *             one pass's one step, played beside the track's pattern (arv_cue, from seq_play): what happens once in a
- *             song and not every time its pattern comes round (a phrase of the record's voice, a fill). KIT: the
- *             track's DRUM KIT is set to USR1 + kit first: the slot of the sound pack the phrase is in
+ *             one pass's one step, played beside the track's pattern (seq.c seq_cue, from seq_play; chain_prepare
+ *             hands the list to the chain): what happens once in a song and not every time its pattern comes round
+ *             (a phrase of the record's voice, a fill). KIT: the track's DRUM KIT is set to USR1 + kit first: the
+ *             slot of the sound pack the phrase is in (a track no longer DRUM plays none). The pass is the track's
+ *             own (its pattern in that row is a pass long: gen_arrival.py checks), counted round the row's repeats
+ *             (seq.c seq_enter): a pass more of a row (the SONG page's ONE MORE) is its first again
  *   pack      [slots, mute, 7 x name]: the song plays a sound pack: user sample slots (bit k of slots: USR k + 1) named
  *             <name><k + 1> (tools/arrival_pack.py cuts it from the record; the installer page loads it). Without it
  *             (arv_pack_ok) the tracks of mute rest, a DRUM track left plays KIT EDDA, and LOAD says so */
@@ -219,26 +222,6 @@ static int arv_pack_ok(const arv_song_t *sg)
                     return 0;
         }
     return 1;
-}
-
-/* 2.0: the cues of the song playing for track t's step idx of this row's pass (seq.c seq_play, after the step's own
- * notes; the audio ISR, once a step). A track whose engine is no longer the song's plays none (a cue's note means its
- * sound); a muted one plays none (trk_note_on). A cue's note has no note-off: a kit's hit ends with its sound */
-static __attribute__((noinline)) void arv_cue(track_t *t, uint32_t idx)
-{
-    const arv_song_t *sg = &ARV_SONGS[(arv_cur - 1u) % ARV_NSONGS];
-    const uint8_t *c = &ARV_DATA[sg->cue];
-    uint32_t k = trk_index(t), n;
-    uint32_t key = (uint32_t)chain.row << 12 | (uint32_t)(chain.config.row[chain.row].repeat - chain.remaining) << 8 |
-                   k << 6 | idx;
-    if (!sg->cue || sg->snd[k].engine != t->eng_req)
-        return;
-    for (n = *c++; n; n--, c += 4)
-        if (((uint32_t)c[0] << 8 | c[1]) == key) {
-            if (c[3] & 0x80u)
-                t->p[P_E0] = (int16_t)(DK_USR1 + ((c[3] >> 5) & 3u));
-            trk_note_on(t, c[2], (c[3] & 31u) << 2 | 3u);
-        }
 }
 
 /* the globals a song sets (the sound of the room, the tempo); the others (the clock, MIDI, the tuning) are the

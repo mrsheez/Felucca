@@ -33,6 +33,9 @@ static struct {
     uint8_t clk;                             /* the track whose loop counts the section (chain_clock) */
     uint8_t rec;
     uint32_t carry;
+    const uint8_t *cues;         /* EDDA OS 2.0: the cues of the song playing, 0 none (THE ARRIVAL's, built from its
+                                  * record: [n] then n x 4 bytes, arrival.c; chain_prepare sets it, seq.c seq_cue
+                                  * plays them; its rows count their passes round, seq.c seq_enter) */
 } chain;
 /* a silent lane: its steps (empty: nothing plays) and its timing (a 4/4 bar of 1/16: the section's length when every
  * track is silent) */

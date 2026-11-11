@@ -188,7 +188,7 @@
 #                   clipping, no held note cut by the voice budget, the master limiter at most 8 dB. WAVs and stems:
 #                   build/host/arrival_render build/arrival [SONG] [SECONDS] [STEMS]; the balance: tests/arrival_check.py.
 #                   2.0, a song built from its record (OYA COME): its rows' lanes, its cues, its sound pack: without the
-#                   pack (the chords and the voice rest, the kit is EDDA's), with a stand-in of it in the slots (every
+#                   pack (the bass, the chords and the voice rest, the kit is EDDA's), with a stand-in of it in the slots (every
 #                   cue a voice on a pad of the pack, the row played twice, no phrase cut by the voice budget).
 # ROBUST (tests/robust_test.c): damaged or crafted stored data and editor requests: a SLICE scan bounded by the slot,
 #                   a slot that fails its check leaves no zone, engine numbers past the last refused, a retained older

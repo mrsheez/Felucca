@@ -20,8 +20,9 @@ Written here as music (note names, drum rows, chords), encoded compactly (arriva
 
 2.0 (a song built from its record, tools/arrival_pack.py): a row of the arrangement may give each track its own section
 ((bass, keys, lead, drums) names, None: it rests), `cues` are notes of one row's one step beside the patterns
-(row, pass, track, step, note, velocity, kit: the pack's slot 0..3 a DRUM track's KIT is set to, or None), `pack` the
-sound pack the song plays (name: 7 characters, slots: which user slots, mute: the tracks that rest without it).
+(row, pass, track, step, note, velocity, kit: the pack's slot 0..3 a DRUM track's KIT is set to, or None; the track's
+pattern in that row is as long as the row's pass, which is how the firmware knows the pass), `pack` the sound pack the
+song plays (name: 7 characters, slots: which user slots, mute: the tracks that rest without it).
 """
 import json
 import re
@@ -280,7 +281,7 @@ class Bank:
         return self.put(out)
 
     def cues(self, cues):
-        """(row, pass, track, step, note, velocity, kit or None) -> [n] n x 4 bytes (arrival.c arv_cue)"""
+        """(row, pass, track, step, note, velocity, kit or None) -> [n] n x 4 bytes (seq.c seq_cue)"""
         if not cues:
             return 0
         if len(cues) > 255:
@@ -355,6 +356,12 @@ def encode(songs, out_h, out_json=None):
         if any(not 1 <= r <= 16 for _, r in chain):
             raise ValueError(f"{sg['name']}: a repeat outside 1..16")
         glob = bank.params([(G["G_" + k], v) for k, v in sg.get("globals", {}).items()])
+        for row, ps, trk, st, *_c in sg.get("cues") or []:   # a cue's pass is its track's own count of the row's
+            lanes, rr = chain[row]                      # (seq.c seq_cue): the track's pattern there is a pass long
+            clk = next(k for k in range(4) if lanes[k] != 4)
+            if lanes[trk] == 4 or not ps < rr or not st < secs[lanes[trk]][2][trk] or \
+                    (secs[lanes[trk]][2][trk], secs[lanes[trk]][3][trk]) != (secs[lanes[clk]][2][clk], secs[lanes[clk]][3][clk]):
+                raise ValueError(f"{sg['name']}: the cue {(row, ps, trk, st)}: its track's pattern there is not the row's pass")
         cue = bank.cues(sg.get("cues") or [])
         pk = sg.get("pack")
         if pk and (len(pk["name"]) != 7 or not 0 < pk["slots"] < 16 or not 0 <= pk["mute"] < 16):

@@ -1312,8 +1312,26 @@ static __attribute__((noinline)) uint32_t seq_time(track_t *t, uint32_t idx, uin
     return mod_time(t, s->n ? s->note[0] : DRUM_LANE_NOTE[__builtin_ctz(s->hit) & (NLANE - 1u)], vel, period);
 }
 
-static uint8_t arv_cur;                             /* (ui.c, arrival.c: the song the music is, + 1) */
-static void arv_cue(track_t *t, uint32_t idx);      /* (arrival.c) */
+/* EDDA OS 2.0: the cues of the song playing (chain.cues: [n] then n x (row << 4 | pass, track << 6 | step, note,
+ * vel5 | kit << 5 | KIT << 7), arrival.c): this track's of this row's pass's step, played beside its pattern (from
+ * seq_play: once a step, not inlined). The pass is the track's own count (cond_loop: its pattern in a row with cues
+ * is a pass long, tools/gen_arrival.py checks; seq_enter counts it round the row's REPS). KIT: a pad of a sound pack:
+ * the track's DRUM KIT is set to USR1 + kit first, and a track that is no longer DRUM plays none. A muted track plays
+ * none (trk_note_on). A cue's note has no note-off: a kit's hit ends with its sound */
+static __attribute__((noinline)) void seq_cue(track_t *t, uint32_t idx)
+{
+    const uint8_t *c = chain.cues;
+    uint32_t key = (uint32_t)chain.row << 12 | (uint32_t)t->cond_loop << 8 | trk_index(t) << 6 | idx, n;
+    for (n = *c++; n; n--, c += 4)
+        if (((uint32_t)c[0] << 8 | c[1]) == key) {
+            if (c[3] & 0x80u) {
+                if (t->eng_req != ENGI_DRUM)
+                    continue;
+                t->p[P_E0] = (int16_t)(DK_USR1 + ((c[3] >> 5) & 3u));
+            }
+            trk_note_on(t, c[2], (c[3] & 31u) << 2 | 3u);
+        }
+}
 /* the automation a track plays: its slot's while a song plays (song_chain.c lanes; 0: a silent lane, none) */
 static const motion_store_t *chain_motion(const track_t *t)
 {
@@ -1345,8 +1363,8 @@ static __attribute__((noinline)) void seq_play(track_t *t, uint32_t idx, uint32_
         t->rskip_n = 0;
     }
     seq_step(t, s, idx, period, skip);
-    if (chain.running && arv_cur)                   /* EDDA OS 2.0: the song's cues of this step (arrival.c) */
-        arv_cue(t, idx);
+    if (chain.running && chain.cues)                /* EDDA OS 2.0: the song's cues of this step */
+        seq_cue(t, idx);
 }
 
 /* QUANTIZE ON: step seq_idx plays on its start, or (1.5.6, #213) late by the matrix's TIME (not inlined, as seq_play) */
@@ -1407,11 +1425,16 @@ static __attribute__((noinline)) void seq_nd_start(track_t *t, uint32_t period, 
 }
 
 /* step seq_idx starts (seq_tick; top: PLAY's or a SONG section's first): a loop's first counts it (seq_cond_miss), a
- * recorded note held ties into it (not inlined: once a step, off the audio ISR's loop) */
+ * recorded note held ties into it (not inlined: once a step, off the audio ISR's loop). EDDA OS 2.0: a row of a
+ * song with cues (chain.cues: THE ARRIVAL's, built from its record) counts its passes round its REPS: a pass more of
+ * it (the SONG page's ONE MORE) is its first again, the steps' conditions and the song's cues (seq_cue) with it.
+ * Every other song counts on, as Felucca does */
 static __attribute__((noinline)) void seq_enter(track_t *t, uint32_t top, uint32_t len)
 {
-    if (!t->seq_idx)
-        t->cond_loop = (uint8_t)(top || t->cond_loop + 1u >= COND_LOOPS ? 0u : t->cond_loop + 1u);
+    if (!t->seq_idx) {
+        uint32_t n = chain.running && chain.cues ? chain.config.row[chain.row].repeat : COND_LOOPS;
+        t->cond_loop = (uint8_t)(top || t->cond_loop + 1u >= n ? 0u : t->cond_loop + 1u);
+    }
     rec_hold(t, t->seq_idx, len);
 }
 

@@ -390,8 +390,8 @@ def oya_come():
         ],                                                     # is the whole record, its bass with it)
         arrangement=rows,
         cues=cues,
-        pack=dict(name=man["name"], slots=15, mute=0b0110),    # (without the pack: no chords, no voice)
-    )
+        pack=dict(name=man["name"], slots=15, mute=0b0111),    # (without the pack: the drums alone, on EDDA's kit:
+    )                                                          # an empty slot's bass is a sine, its log drum a beep)
 
 
 # ========================================================== 4 WHERE YOU SLEEP === #
