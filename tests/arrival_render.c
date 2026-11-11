@@ -8,8 +8,10 @@
  * STEMS 1 each track alone too (NN_NAME_Tk.wav); OUTDIR "-": no files. Prints per song: the length, the peak, the
  * loudness (RMS, dBFS), the voices given up (the shared budget of 8: by track, the audible ones, the held notes
  * cut), the master limiter's work, the voices sounding. MASTER_Q12 (env): the MASTER (4096 full; 512 for
- * tests/arrival_check.py's stems, under the limiter). ARRIVAL_CHECK=1 (env, tests/run_tests.sh): each song must
- * play 2 to 4 minutes and sound, clip nowhere, cut no held note and ask the limiter for at most 8 dB; exit 1 if not. */
+ * tests/arrival_check.py's stems, under the limiter). ARRIVAL_PACK (env): a directory of user sample slot images
+ * (usr1.bin .. usr4.bin: a song's sound pack, loaded before the songs). ARRIVAL_CHECK=1 (env, tests/run_tests.sh): each song must
+ * play 2 to 4 minutes and sound, clip nowhere, cut no held note and ask the limiter for at most 8 dB, and with its
+ * sound pack in the slots give up none of its voice's phrases; exit 1 if not. */
 #include <stdio.h>
 #include <stdint.h>
 /* which voices the shared budget gives up: per track, and how loud they still were (env_out, Q15) */
@@ -82,6 +84,21 @@ int main(int argc, char **argv)
     uint32_t stems = argc > 4 ? (uint32_t)atoi(argv[4]) : 0u, pass;
     uint32_t n, bad = 0, checked = 0;
     int nowav = !strcmp(dir, "-"), check = getenv("ARRIVAL_CHECK") && atoi(getenv("ARRIVAL_CHECK"));
+    if (getenv("ARRIVAL_PACK"))                         /* 2.0: a sound pack in the user sample slots, as the installer
+                                                         * page loads it: ARRIVAL_PACK/usr1.bin .. usr4.bin (the slots'
+                                                         * images, tools/arrival_pack.py) */
+        for (n = 0; n < SMP_USER_SLOTS; n++) {
+            char path[512];
+            FILE *f;
+            snprintf(path, sizeof path, "%s/usr%u.bin", getenv("ARRIVAL_PACK"), n + 1u);
+            f = fopen(path, "rb");
+            if (f) {
+                size_t got = fread((uint8_t *)host_slots + n * SMP_USER_SIZE, 1, smp_user_size(n), f);
+                fclose(f);
+                smp_user_scan(n);
+                printf("arrival: pack slot %u: %u B, %u zones\n", n + 1u, (unsigned)got, usr_nz[n]);
+            }
+        }
     for (pass = 0; pass < (stems ? 5u : 1u); pass++)
     for (n = 0; n < arv_count(); n++) {
         uint32_t max = maxs * FS, frames = 0, started = 0, clipped = 0, kills0, rc, i, tail = 0, limited = 0;
@@ -159,9 +176,13 @@ int main(int argc, char **argv)
         if (check && !pass) {                           /* the song as the album needs it */
             double secs = frames / (double)FS - 2.0, gr = lim_max > LIM_T ? 20.0 * log10((double)lim_max / LIM_T) : 0.0;
             uint32_t held = kill_held[0] + kill_held[1] + kill_held[2] + kill_held[3];
-            int ok = secs >= 120.0 && secs <= 240.0 && peak > 8192 && !clipped && !held && gr <= 8.0;
-            printf("arrival: %02u %-18s %5.1f s, peak %5.1f dBFS, limiter at most %.1f dB, %u held notes cut, %u clipped: %s\n",
-                   n + 1u, arv_song(n)->name, secs, 20.0 * log10(peak / 32768.0), gr, held, clipped, ok ? "ok" : "FAIL");
+            uint32_t phr = arv_song(n)->cue && arv_pack_ok(arv_song(n)) && arv_song(n)->pack ? kill_trk[2] : 0u;   /* (2.0:
+                                                         * a phrase of the voice cut short: the budget took its voice) */
+            int ok = secs >= 120.0 && secs <= 240.0 && peak > 8192 && !clipped && !held && gr <= 8.0 && !phr;
+            printf("arrival: %02u %-18s %5.1f s, peak %5.1f dBFS, limiter at most %.1f dB, %u held notes cut, %u clipped%s: %s\n",
+                   n + 1u, arv_song(n)->name, secs, 20.0 * log10(peak / 32768.0), gr, held, clipped,
+                   arv_song(n)->pack ? (arv_pack_ok(arv_song(n)) ? (phr ? ", a phrase cut" : ", its pack: no phrase cut") : ", no pack")
+                                     : "", ok ? "ok" : "FAIL");
             bad += !ok;
             checked++;
         }

@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  EDDA_VERSION: 1.7.5-EDDA          # --release: one digit each (X.Y.Z-suffix); MENU > SYSTEM > INFO shows v1.7.5-EDDA
+  EDDA_VERSION: 2.0.0-EDDA          # --release: one digit each (X.Y.Z-suffix); MENU > SYSTEM > INFO shows v2.0.0-EDDA
 
 jobs:
   build:

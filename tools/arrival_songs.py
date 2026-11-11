@@ -12,6 +12,9 @@ part is a row of steps per lane (drum: K kick, S snare, C clap, H shaker, O caba
 high; the pads L low conga, E ekwe, Q high conga, U udu, W claves, G bottle, Z low shaker, A ogene low), '.' rest,
 'o' ghost, 'x' hit, 'X' accent, '1'..'9' a level.
 """
+import json
+from pathlib import Path
+
 from gen_arrival import (DT_4D, DT_8D, KIT_EDDA, SET_FLUTE, SET_LOG, SET_PIANO, SET_SAX, cat, drum, mel, nn, rep, sound)
 
 V_POLY, V_MONO, V_LEGATO = 0, 1, 2
@@ -250,60 +253,144 @@ def we_outside():
 # last bars: B4, D5, C#5 held over the loop). Opens on "Oya, come." (The album's first version, D minor at 113 with
 # the log drum, piano stabs and a flute-grain pad, was written before the record.)
 def oya_come():
+    """2.0: OYA COME from its record. Its own sounds are a sound pack in the user sample slots (tools/arrival_pack.py,
+    the recipe tools/packs/oya_come.py; the pack's layout, without the audio: tools/packs/oya_come.json): the record's
+    kick and a bar of its congas and shaker cut where the strokes start as T4's kit (DRUM KIT USR4), its bass's wave
+    and a beat of each chord as SAMPLE sets (T1, T2: USR1), its voice in phrases (T3: a DRUM kit whose pads are
+    phrases, started by the song's cues where the record sings them). 64 bars as the record's: rows of four bars,
+    each track on its own pattern (the lanes); bars 40..47 are one row played twice, the second time without its
+    last two bars' drums and bass (the steps there play on a row's first pass only: the break before the last hook)."""
+    man = json.loads((Path(__file__).resolve().parent / "packs" / "oya_come.json").read_text())
+    zone = {z["name"]: z for z in man["zones"]}
     B = 11
-    ch = {"G": ("A3", "B4", "F#5"), "Bm": ("C#4", "D5", "A5"), "A": ("B3", "C#5", "G#5")}   # 9th, 3rd, 7th
+    SET_USR1, KIT_USR1 = 5, 12                                 # SAMPLE SET USR1, DRUM KIT USR1 (USR4: + 3)
+    N = {k: zone[k]["root"] for k in ("kick", "kick_b", "hi", "lo", "long", "end_one", "end_down", "hi_dull", "lo_dull",
+                                      "long_dull", "shaker_1", "shaker_2")}
+    assert all(zone[k]["slot"] == 3 for k in N) and (N["kick"], N["lo"], N["shaker_1"]) == (36, 45, 42)
+    FIRST = 102                                                # the condition 1:2: a row's first pass (core.h)
 
-    def figure(bars):
-        """the keys: each bar (chord, next): 9th 3rd 7th on every beat's 2nd .. 4th sixteenth; with a next chord, the
-        last beat's 3rd and 7th are already the next chord's (the push)"""
-        ev = []
-        for b, (c, nxt) in enumerate(bars):
-            for beat in range(4):
-                s = b * 16 + beat * 4
-                hi = ch[nxt] if nxt and beat == 3 else ch[c]
-                ev += [(s + 1, ch[c][0], 1, "v84"), (s + 2, hi[1], 1, "v104"), (s + 3, hi[2], 1, "v88")]
-        return mel(16 * len(bars), ev)
+    def beat(rows, first=False):
+        """a bar of the kit: {pad: a row of levels ('.', 1..9)}; the pads that are a lane's own note (the kick, the
+        low conga's cut, the first shaker) are that lane's hits, so the bar plays on any kit. A step's notes share
+        its level (the loudest), a lane's hit at 9 is its accent. first: the bar plays on a row's first pass only"""
+        st = [None] * 16
+        lane = {36: 0, 45: 5, 42: 3}
+        for i in range(16):
+            hit = acc = 0
+            nts, vel = [], []
+            for pad, row in rows.items():
+                c = row.replace(" ", "")[i]
+                if c == ".":
+                    continue
+                if N[pad] in lane:
+                    hit |= 1 << lane[N[pad]]
+                    if c == "9":
+                        acc |= 1 << lane[N[pad]]
+                        continue
+                else:
+                    nts.append(N[pad])
+                vel.append(20 + (int(c) - 1) * 107 // 8)
+            if hit or nts:
+                st[i] = dict(time=0, notes=nts, vel=max(vel) if vel else 100, hit=hit, acc=acc, flags=0,
+                             prob=FIRST if first else 0)
+        return st
 
-    keys = figure([("G", None), ("G", "Bm"), ("Bm", "A"), ("A", "G")])
-    bass = mel(64, [(0, "G1", 30), (30, "B1", 16), (46, "A1", 16), (62, "G1", 2)], vel=110)
-    bass_brk = mel(64, [(0, "G1", 30)], vel=110)               # (out with the Bm: bars 46..47)
-    chant = []                                                 # "Oya, come": eighths, each change on the and of 4
-    for b, (note, nxt) in enumerate([("B3", "B3"), ("B3", "D4"), ("D4", "C#4"), ("C#4", "B3")]):
-        chant += [(b * 16 + s, nxt if s == 14 else note, 2, "A" if s in (0, 8) else "") for s in range(0, 16, 2)]
-    hook_v = mel(64, chant, vel=100)
-    verse_v = mel(64, [(1, "B3", 2), (8, "B3", 2), (10, "E4", 2), (12, "D4", 2), (14, "C#4", 2),
-                       (16, "B3", 3), (24, "F#4", 2), (26, "E4", 3), (29, "D4", 5),
-                       (44, "E4", 1), (45, "D4", 3),
-                       (48, "C#4", 2), (50, "B3", 2), (52, "C#4", 3), (55, "C#4", 2), (57, "E4", 3), (60, "F#4", 1),
-                       (61, "E4", 1), (62, "D4", 1), (63, "C#4", 1)], vel=96)
-    high_v = mel(64, [(3, "B4", 27), (35, "D5", 11), (46, "C#5", 16), (62, "B4", 2)], vel=92)
-    K4 = "x... x... x... x..."
-    intro = drum(16, {"K": K4, "H": "...o ...o ...o ...o", "T": "..o. ..o. ..o. ...."})
-    hook = drum(16, {"K": K4, "S": "...x ..x. ..x. ..x.", "H": "x.x. ..x. ..x. ..x.", "L": "...o .... .... ...."})
-    verse = drum(16, {"K": K4, "S": "...x ..x. ..x. ..x.", "H": SH_AND, "O": ".... .... ...x ....",
-                      "T": "..x. .x.. ..x. .x.x"})
-    claps = drum(32, {"C": "..x. .... ..x. x.x. x.x. x... ..x. ..X."})
+    # the drums. The kick on every beat (the downbeat's has the click). The bar of congas and shaker in its cuts,
+    # each on the step it was cut at (2, 5, 9), and from 13 the bar's end through the next downbeat (which is
+    # struck differently on every other bar: the cut into an odd bar, the cut into an even one), all at the
+    # record's own level. Before the first verse the record plays the congas behind a low-pass and no click on the
+    # kick, and brings the shaker in over them at bar 8
+    cuts = {"hi": "..9. .... .... ....", "lo": ".... .9.. .... ....", "long": ".... .... .9.. ...."}
+    dull = {"hi_dull": "..9. .... .... ....", "lo_dull": ".... .9.. .... ....", "long_dull": ".... .... .9.. ...."}
+    K = dict(kick="9... .... .... ....", kick_b=".... 9... 9... 9...")
+    a_bar = dict(end_one=".... .... .... .9..", **K, **cuts)       # (an even bar: into the odd one's downbeat)
+    b_bar = dict(end_down=".... .... .... .9..", **K, **cuts)
+    air = {"shaker_2": ".2.4 ...3 ...2 ...3", "shaker_1": ".... ..4. ..4. ..3."}     # (the shaker over the cuts)
+    a_bar, b_bar = dict(a_bar, **air), dict(b_bar, **air)
+    main = cat(beat(a_bar), beat(b_bar), beat(a_bar, True), beat(b_bar, True))
+    extra = {"shaker_2": ".4.5 ...5 ...4 ...5", "shaker_1": ".... ..5. ..5. ..5."}   # (the hooks: more of it)
+    hook = cat(beat(dict(a_bar, **extra)), beat(dict(b_bar, **extra)), beat(dict(a_bar, **extra)), beat(dict(b_bar, **extra)))
+    KB = "9... 9... 9... 9..."
+    intro = rep(beat(dict(kick_b=KB, shaker_2="...2 ...2 ...2 ...2", **dull)), 4)
+    dull = {k: v.replace("9", "8") for k, v in dull.items()}   # (bars 8..15: the congas further back)
+    pre = rep(beat(dict(kick_b=KB, shaker_2="4335 4334 4334 4334", shaker_1=".... ..4. ..4. ..4.", **dull)), 3) + \
+        beat(dict(kick_b=KB, shaker_2="4335 4334 4334 4...", shaker_1=".... ..4. ..4. ....", end_down=".... .... .... .9..", **dull))
+
+    # the bass: G for two bars, B, A, the low B under its end; the B comes an eighth early, and before the A it
+    # stops for the log drum's two strokes. (c1: a row's first pass only, with the drums.) The verses': shorter
+    # notes, the second bar empty
+    LOG = zone["log"]["root"]                                  # (the log drum's B2, on the bass's keys far up)
+    bass_full = mel(64, [(0, "G1", 30), (30, "B1", 12, "c1"), (42, LOG, 1, "c1v100"), (45, LOG, 3, "c1v127"),
+                         (48, "A1", 10, "c1"), (58, "B0", 6, "c1")], vel=84)
+    bass_verse = mel(64, [(0, "G1", 9), (35, "B1", 6), (54, "A1", 3), (58, "B0", 6)], vel=76)
+    bass_g = mel(64, [(0, "G1", 30)], vel=84)                  # (bars 8..9)
+
+    def chords(notes, vel, opt=""):
+        g, bm, a = notes
+        return mel(64, [(0, g, 30), (30, bm, 16, opt), (46, a, 16, opt), (62, g, 2, opt)], vel=vel)   # G . Bm A (G)
+
+    pad_loud = chords((48, 50, 52), 60)
+    pad_dark = chords((48, 50, 52), 27)                        # (the first verse: behind a filter, the slot's FILT)
+    pad_soft = chords((48, 50, 52), 23, "c1")                  # (bars 4..7, the second verse, the bridge; c1: out
+    pad_end = chords((53, 55, 57), 60)                         # for the break) (.. the record's last eight bars)
+    none = [None] * 64
+
+    rows = [                                                   # ((bass, chords, voice, drums), passes) of four bars
+        ((None, None, "VERSE", "INTRO"), 1),                   # 0: the hook's first line, behind a closed filter
+        ((None, "INTRO", "PRE", "INTRO"), 1),                  # 4: the filter opens, the chords come in
+        (("PRE", "PRE", "HOOK", "PRE"), 1),                    # 8: the shaker, the chords in front
+        ((None, "PRE", "HOOK", "PRE"), 1),                     # 12
+        (("VERSE", "VERSE", "HOOK", "VERSE"), 1), (("VERSE", "VERSE", "HOOK", "VERSE"), 1),   # 16, 20: the first verse
+        (("HOOK", None, "HOOK", "HOOK"), 1), (("HOOK", None, "HOOK", "HOOK"), 1),             # 24, 28: the hook
+        (("VERSE", "INTRO", "HOOK", "VERSE"), 1), (("VERSE", "INTRO", "HOOK", "VERSE"), 1),   # 32, 36: the second verse
+        (("HOOK", "INTRO", "INTRO", "VERSE"), 2),              # 40, 44: twice; the second ends on the break
+        (("HOOK", None, "HOOK", "HOOK"), 1), (("HOOK", None, "HOOK", "HOOK"), 1),             # 48, 52: the hook
+        (("HOOK", "HOOK", "HOOK", "HOOK"), 1),                 # 56: without the voice
+        ((None, "HOOK", "HOOK", None), 1),                     # 60: the chords alone, the last line
+    ]
+    where = {}                                                 # bar -> (row, pass)
+    bar = 0
+    for r, (_lanes, n) in enumerate(rows):
+        for ps in range(n):
+            for k in range(4):
+                where[bar + k] = (r, ps, k * 16)
+            bar += 4
+    assert bar == 64
+    # the voice: every phrase where the record sings it (the pack's play list: bar, step, phrase). The last hook's
+    # are 3 dB down, as the record has them
+    cues = []
+    for b, step, name in man["play"]:
+        z = zone["vox_" + name]
+        r, ps, base = where[b]
+        cues.append((r, ps, 2, base + step, z["root"], 72 if 48 <= b < 56 else 100, z["slot"]))
     return dict(
-        name="OYA COME", mix=[98, 90, 71, 85], chant="UZO", line="OYA, COME.", bpm=114, cam="10A",
-        tracks=[sound("ANALOG", "SUB BASS", role="bass", E0=1, E1=0, E2=0, E3=0, E4=26, E5=0, E6=20, E7=64, ATK=0,
-                      DEC=127, SUS=127, REL=24, VOICE=V_MONO, GLIDE=0, DIST=10, CHOR=0, DLY=0, REV=0, ROOT=B, SCALE=MIN,
-                      QUANT=1, SLCR=SL_GATE, SLPAT=13, SLRATE=0, SLDEPTH=44),
-                rhodes(B, level=100, pan=8, rev=26, dly=14, cho=24, dist=18, SGATE=72),
-                sound("VOICE", "VOX LEAD", role="lead", E0=95, E1=0, E2=18, E3=0, E4=84, E5=14, E6=72, E7=0, ATK=4,
-                      DEC=70, SUS=112, REL=30, VOICE=V_MONO, GLIDE=0, PAN=0, CHOR=12, DLY=22, REV=40, ROOT=B,
-                      SCALE=MIN, QUANT=1, SGATE=40),
-                kit(shaker=74, conga=80, snare=90, clap=94, rev=12)],
+        name="OYA COME", chant="UZO", line="OYA, COME.", bpm=114, cam="10A",
+        tracks=[sound("SAMPLE", "PIANO", role="bass", E0=SET_USR1, E1=0, E2=0, E3=1, E4=127, E6=0, ATK=0, DEC=0, SUS=127,
+                      REL=16, VOICE=V_MONO, GLIDE=0, LEVEL=100, PAN=0, DIST=0, CHOR=0, DLY=0, REV=0, ROOT=B, SCALE=MIN,
+                      QUANT=0, SGATE=127, SLCR=SL_GATE, SLPAT=13, SLRATE=0, SLDEPTH=36),
+                sound("SAMPLE", "PIANO", role="pad", E0=SET_USR1, E1=0, E2=0, E3=1, E4=127, E6=0, ATK=4, DEC=0, SUS=127,
+                      REL=30, VOICE=V_MONO, GLIDE=0, LEVEL=100, PAN=0, DIST=0, CHOR=10, DLY=0, REV=30, ROOT=B, SCALE=MIN,
+                      QUANT=0, SGATE=127),
+                sound("DRUM", "DRUM KIT", role="lead", E0=KIT_USR1, E1=64, E2=127, E3=127, E4=64, E5=0, E6=0, E7=0,
+                      LEVEL=106, PAN=0, DIST=0, CHOR=0, DLY=0, REV=20, ED_FX=19, ROOT=B, SCALE=MIN, QUANT=0,
+                      LN0=127, LN1=127, LN2=127, LN3=127, LN4=127, LN5=127, LN6=127, LN7=127),
+                sound("DRUM", "DRUM KIT", role="kit", E0=KIT_USR1 + 3, E1=64, E2=127, E3=127, E4=64, E5=0, E6=0, E7=0,
+                      LEVEL=100, PAN=0, DIST=0, CHOR=0, DLY=0, REV=6, LN0=127, LN1=127, LN2=127, LN3=55, LN4=127,
+                      LN5=127, LN6=127, LN7=127)],
         globals=dict(DTIME=DT_8D, DFDBK=32, DCOLOR=60, DMIX=46, RSIZE=84, RDAMP=60, RTYPE=0),
         sections=[
-            ("INTRO", dict(tracks=[bass, keys, hook_v, rep(intro, 4)])),
-            ("VERSE", dict(tracks=[bass, keys, verse_v, rep(verse, 4)],
-                           motion=[(2, 0, "E0", 32), (2, 0, "E1", 95), (2, 0, "E2", 40)])),
-            ("HOOK", dict(tracks=[bass, keys, hook_v, rep(hook, 4)])),
-            ("BREAK", dict(tracks=[bass_brk, keys, high_v, cat(hook, hook, claps)],
-                           motion=[(2, 0, "E0", 95), (2, 0, "E1", 127), (2, 0, "E2", 60)])),
-        ],
-        arrangement=[("INTRO", 2), ("VERSE", 4), ("HOOK", 2), ("VERSE", 2), ("HOOK", 1), ("BREAK", 1), ("HOOK", 3),
-                     ("BREAK", 1)],
+            ("HOOK", dict(tracks=[bass_full, pad_end, none, hook])),
+            ("VERSE", dict(tracks=[bass_verse, pad_dark, none, main],
+                           motion=[(2, 0, "ED_FX", -42), (2, 16, "ED_FX", -20),      # (the voice's filter, bars 0..3)
+                                   (1, 0, "ED_FX", -38)])),                           # (the first verse's chords: closed)
+            ("PRE", dict(tracks=[bass_g, pad_loud, none, pre],
+                         motion=[(2, 0, "ED_FX", -20), (2, 16, "ED_FX", 19)])),      # (.. it opens on bar 5)
+            ("INTRO", dict(tracks=[none, pad_soft, none, intro],
+                           motion=[(2, 0, "ED_FX", 0)])),      # (bars 40..47: the voice's track unfiltered: the break
+        ],                                                     # is the whole record, its bass with it)
+        arrangement=rows,
+        cues=cues,
+        pack=dict(name=man["name"], slots=15, mute=0b0110),    # (without the pack: no chords, no voice)
     )
 
 

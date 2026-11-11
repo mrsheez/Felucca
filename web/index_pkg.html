@@ -37,6 +37,10 @@
   <p class="small"><span data-t="brick"></span>
     <a href="https://github.com/kurogedelic/FM-1-transporter" target="_blank" rel="noopener" style="color:inherit">FM-1-transporter</a></p>
   <p><button id="go" disabled data-t="install"></button></p>
+  <div id="pack" hidden>
+    <p data-t="packIntro"></p>
+    <p><button id="pack-go" disabled data-t="packGo"></button></p>
+  </div>
   <details style="margin-top:24px">
     <summary data-t="stockTitle"></summary>
     <p class="small" data-t="back"></p>
@@ -90,6 +94,11 @@ const TEXT = {
     badpkg: "インストールするファイルが壊れています。ページを再読み込みしてください。",
     leave: "書き込み中です。ページを閉じないでください。",
     license: "GPL-3.0、無保証。ソース:",
+    packIntro: "インストール後：この曲はレコードの音そのもので鳴ります。音は FM-1 の 4 つのサンプルスロット（USR1〜4）に入り、今ある内容と置き換わります。",
+    packGo: "曲の音を読み込む",
+    packConfirm: "FM-1 の USR1〜USR4 のサンプルを置き換えます。続けますか？",
+    packNeed: "先にこのページでインストールしてから、音を読み込んでください。FM-1 の現在のバージョン: ",
+    packWrite: "音を読み込み中 ", packDone: "音を読み込みました。FM-1 で SAVE > ARRIVAL から曲を選び、PLAY を押してください。",
   },
   en: {
     intro: "Connect the FM-1 by USB. (Works in Chrome or Edge.)",
@@ -121,15 +130,21 @@ const TEXT = {
     badpkg: "The file to install is damaged. Reload the page.",
     leave: "Writing. Do not close the page.",
     license: "GPL-3.0, no warranty. Source:",
+    packIntro: "After installing: the song plays the record's own sounds. They load into the FM-1's four sample slots (USR1 to USR4) and replace what is there.",
+    packGo: "Load the song's sounds",
+    packConfirm: "This replaces the samples in USR1 to USR4 on the FM-1. Continue?",
+    packNeed: "Install from this page first, then load the sounds. The FM-1 reports: ",
+    packWrite: "Loading the sounds ", packDone: "Sounds loaded. On the FM-1: SAVE > ARRIVAL, pick the song, PLAY.",
   },
 };
 let lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
 const t = (k) => TEXT[lang][k];
-let lastKey = null, lastArg = "";
+let lastKey = null, lastArg = "", packSong = "";
 function applyLang() {
   document.documentElement.lang = lang;
   document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = t(e.dataset.t); });
   $("lang").textContent = t("other");
+  if (packSong) $("pack-go").textContent = `${t("packGo")}: ${packSong}`;
   if (lastKey) $("status").textContent = t(lastKey) + lastArg;
 }
 $("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; applyLang(); });
@@ -141,7 +156,8 @@ let image = null;
 const meta = /*META*/;
 
 let writing = false, stock = null, stockFileEpoch = 0;
-const lockInstaller = (on) => { writing = on; $("go").disabled = on || !image; $("stock-go").disabled = on || !stock; $("stock-file").disabled = on; $("stock-recovery").disabled = on; };
+let pack = null;                                  /* EDDA OS 2.0: a song's sound pack in the page (meta.pack) */
+const lockInstaller = (on) => { writing = on; $("go").disabled = on || !image; $("stock-go").disabled = on || !stock; $("stock-file").disabled = on; $("stock-recovery").disabled = on; $("pack-go").disabled = on || !pack; };
 window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault(); e.returnValue = t("leave"); } });
 
 if (meta.name) { document.title = meta.name; document.querySelector("h1").textContent = meta.name; }
@@ -194,6 +210,42 @@ $("go").addEventListener("click", async () => {
     log(String(e && e.stack || e));
   }
   lockInstaller(false);
+});
+
+/* EDDA OS 2.0: the sound pack of a song built from its record (tools/arrival_pack.py; make_site.py --onefile puts it
+ * in the page). Loaded after the install, over the editor's sample commands, into the four user sample slots. */
+if (meta.pack) {
+  try {
+    pack = { ...meta.pack, slots: meta.pack.slots.map((b) => (b ? Uint8Array.from(atob(b), (c) => c.charCodeAt(0)) : null)) };
+    pack.slots.forEach((b, k) => { if (b) checkPackSlot(b, k); });
+    $("pack").hidden = false;
+    $("pack-go").disabled = false;
+    packSong = pack.song || "";
+    applyLang();
+  } catch (e) { pack = null; log(String(e)); }
+}
+$("pack-go").addEventListener("click", async () => {
+  if (!pack || writing) return;
+  lockInstaller(true);
+  let link = null;
+  try {
+    let midi;
+    try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch (e) { sayK("denied"); return; }
+    const up = new Updater(midi, log);
+    const device = await up.find((id) => !/^ota-/i.test(id.model));
+    if (!device) { sayK("notfound"); return; }
+    if (device.id.text !== meta.product) { device.link.close(); sayK("packNeed", device.id.text); return; }
+    if (!confirm(t("packConfirm"))) { device.link.close(); return; }
+    const input = device.link.input, output = device.link.output; device.link.close();
+    link = new BackupConnection(input, output);
+    $("bar").value = 0;
+    await loadPack((r, o) => link.request(r, o), pack.slots, (done, total) => {
+      $("bar").value = (done / Math.max(1, total)) * 100; sayK("packWrite", `${Math.round(done / Math.max(1, total) * 100)}%`); });
+    $("bar").value = 100; sayK("packDone");
+  } catch (e) {
+    if (e && e.code && TEXT[lang][e.code]) sayK(e.code, e.detail || ""); else sayK("error", e && e.message);
+    log(String(e && e.stack || e));
+  } finally { if (link) link.close(); lockInstaller(false); }
 });
 
 $("stock-file").addEventListener("change", async () => {

@@ -17,6 +17,11 @@ Written here as music (note names, drum rows, chords), encoded compactly (arriva
   patterns  [n] then n x (bar lo, bar hi, transpose): up to four bars (64 steps)
   params    [n] then n x (id, value + 64): a track's sound over its preset, the song's globals
   motion    [n] then n x (track << 6 | step, param id, value + 64): a section's automation (core.h motion_event_t)
+
+2.0 (a song built from its record, tools/arrival_pack.py): a row of the arrangement may give each track its own section
+((bass, keys, lead, drums) names, None: it rests), `cues` are notes of one row's one step beside the patterns
+(row, pass, track, step, note, velocity, kit: the pack's slot 0..3 a DRUM track's KIT is set to, or None), `pack` the
+sound pack the song plays (name: 7 characters, slots: which user slots, mute: the tracks that rest without it).
 """
 import json
 import re
@@ -60,6 +65,7 @@ KIT_EDDA = 16                                                         # DRUM KIT
 DT_8D, DT_16D, DT_4D = 10, 11, 12
 # a fill-only step: the FILL condition in the chance byte (core.h COND_FIRST + COND_FILL - 1; 1.1.5: flag 32)
 COND_FILL_PROB = 102 + 10 - 1
+COND_PROB = 101                           # condition c (1 1:2 .. 9 4:4): the chance byte COND_PROB + c
 DIV = {"1/4": 0, "1/8": 1, "1/16": 2, "1/32": 3, "8T": 4, "16T": 5}
 
 NOTE = {"C": 0, "C#": 1, "Db": 1, "D": 2, "D#": 3, "Eb": 3, "E": 4, "F": 5, "F#": 6, "Gb": 6, "G": 7, "G#": 8, "Ab": 8,
@@ -97,13 +103,14 @@ SF_ACCENT, SF_SLIDE = 1, 2
 
 def mel(length, events, vel=100):
     """a melodic pattern of `length` steps: events (step, notes, steps held[, opts]); opts: 'A' accent, 'S' slide
-    into the next note, 'F' fill-only, 'vNN' velocity, 'rN' ratchet (N hits), 'pNN' chance %"""
+    into the next note, 'F' fill-only, 'vNN' velocity, 'rN' ratchet (N hits), 'pNN' chance %, 'cN' condition N
+    (core.h: 1 1:2, 2 2:2, 3 1:3 .. 9 4:4: the loop of its pattern it plays on)"""
     st = empty(length)
     for ev in events:
         s, nts, ln = ev[0], ev[1], ev[2]
         opts = ev[3] if len(ev) > 3 else ""
         v, fl, pr = vel, 0, 0
-        for o in re.findall(r"[ASF]|v\d+|r\d|p\d+", opts):
+        for o in re.findall(r"[ASF]|v\d+|r\d|p\d+|c\d+", opts):
             if o == "A":
                 fl |= SF_ACCENT
             elif o == "S":
@@ -116,6 +123,8 @@ def mel(length, events, vel=100):
                 fl |= (int(o[1:]) - 1) << 3
             elif o[0] == "p":
                 pr = int(o[1:])
+            elif o[0] == "c":
+                pr = COND_PROB + int(o[1:])
         if not 0 <= s < length:
             raise ValueError(f"step {s} outside {length}")
         if st[s] is not None and st[s]["time"] == 0:
@@ -270,6 +279,20 @@ class Bank:
             out += [trk << 6 | s, pid, v + 64]
         return self.put(out)
 
+    def cues(self, cues):
+        """(row, pass, track, step, note, velocity, kit or None) -> [n] n x 4 bytes (arrival.c arv_cue)"""
+        if not cues:
+            return 0
+        if len(cues) > 255:
+            raise ValueError("more than 255 cues")
+        out = [len(cues)]
+        for row, ps, trk, st, note, vel, kit in sorted(cues, key=lambda c: (c[0], c[1], c[3], c[2], c[4])):
+            if not (0 <= row < 16 and 0 <= ps < 16 and 0 <= trk < 4 and 0 <= st < 64 and 0 <= note < 128):
+                raise ValueError(f"cue {(row, ps, trk, st, note)}")
+            v5 = max(0, min(31, (vel - 3 + 2) // 4))
+            out += [row << 4 | ps, trk << 6 | st, note, v5 | (0 if kit is None else 0x80 | (kit & 3) << 5)]
+        return self.put(out)
+
 
 def sound(engine, preset, role="", **over):
     """a track's sound: the engine's factory preset and overrides by parameter name (P_ED_FX= or ED_FX=); role:
@@ -323,17 +346,29 @@ def encode(songs, out_h, out_json=None):
         if not 1 <= len(arr) <= 16:
             raise ValueError(f"{sg['name']}: {len(arr)} arrangement rows")
         secidx = {name: i for i, (name, *_r) in enumerate(secs)}
-        chain = [(secidx[n], r) for n, r in arr]
+        chain = []                                      # (each track's section 0..3 or 4: it rests, the repeats)
+        for n, r in arr:
+            lanes = [secidx[n]] * 4 if isinstance(n, str) else [4 if x is None else secidx[x] for x in n]
+            if len(lanes) != 4 or all(x == 4 for x in lanes):
+                raise ValueError(f"{sg['name']}: a row of {n!r}")
+            chain.append((lanes, r))
         if any(not 1 <= r <= 16 for _, r in chain):
             raise ValueError(f"{sg['name']}: a repeat outside 1..16")
         glob = bank.params([(G["G_" + k], v) for k, v in sg.get("globals", {}).items()])
-        rows.append((sg, snd, secs, chain, glob))
+        cue = bank.cues(sg.get("cues") or [])
+        pk = sg.get("pack")
+        if pk and (len(pk["name"]) != 7 or not 0 < pk["slots"] < 16 or not 0 <= pk["mute"] < 16):
+            raise ValueError(f"{sg['name']}: its pack {pk!r}")
+        pack = bank.put([pk["slots"], pk["mute"]] + list(pk["name"].encode("ascii"))) if pk else 0
+        rows.append((sg, snd, secs, chain, glob, cue, pack))
         bars, t, timeline = 0, 0.0, []
         step_s = 60.0 / sg["bpm"] / 4
-        for n, rr in arr:
-            ln = secs[secidx[n]][2][0]
+        for (lanes, rr), (n, _r) in zip(chain, arr):
+            clk = next(k for k in range(4) if lanes[k] < 4)   # (song_chain.c chain_clock: the first track that plays)
+            ln = secs[lanes[clk]][2][clk] * {0: 4, 1: 2, 2: 1, 3: 0.5, 4: 4 / 3, 5: 2 / 3}[secs[lanes[clk]][3][clk]]
             dt = rr * ln * step_s
-            timeline.append(dict(section=n, repeat=rr, start=round(t, 4), end=round(t + dt, 4)))
+            name = n if isinstance(n, str) else secs[lanes[clk]][0]
+            timeline.append(dict(section=name, repeat=rr, start=round(t, 4), end=round(t + dt, 4)))
             t += dt
             bars += rr * ln / 16
         meta.append(dict(name=sg["name"], bpm=sg["bpm"], cam=sg["cam"], bars=bars, seconds=round(t, 2),
@@ -358,21 +393,21 @@ def encode(songs, out_h, out_json=None):
         L.append("    " + ", ".join(map(str, offs[i:i + 16])) + ",")
     L.append("};")
     L.append("static const arv_song_t ARV_SONGS[ARV_NSONGS] = {")
-    for sg, snd, secs, chain, glob in rows:
+    for sg, snd, secs, chain, glob, cue, pack in rows:
         cam = sg["cam"]
         camv = (int(cam[:-1]) - 1) * 2 + (cam[-1] == "B") + 1
         short = sg.get("short") or sg["name"]
         if len(sg["name"]) > 19 or len(short) > 12 or len(sg["chant"]) > 10 or len(sg["line"]) > 23:
             raise ValueError(f"{sg['name']}: a name too long (title 19, short 12, chant 10, line 23)")
         L.append(f"    {{{C(sg['name'])}, {C(short)}, {C(sg['chant'])}, {C(sg['line'])}, {sg['bpm']}, {camv}, {len(secs)}, {len(chain)}, "
-                 f"{1 if sg.get('half') else 0}, {glob},")
+                 f"{1 if sg.get('half') else 0}, {glob}, {cue}, {pack},")
         L.append("     {" + ", ".join(f"{{{e}, {p}, {o}}}" for e, p, o in snd) + "},")
         sl = []
         for name, pats, lens, divs, mot in secs:
             sl.append(f"{{{{{', '.join(map(str, pats))}}}, {{{', '.join(map(str, lens))}}}, "
                       f"{{{', '.join(map(str, divs))}}}, {mot}, {C(name)}}}")
         L.append("     {" + ", ".join(sl) + "},")
-        L.append("     {" + ", ".join(f"{{{a}, {r}}}" for a, r in chain) + "}},")
+        L.append("     {" + ", ".join(str(sum(x << 3 * k for k, x in enumerate(a)) | (r - 1) << 12) for a, r in chain) + "}},")
     L.append("};")
     Path(out_h).write_text("\n".join(L) + "\n")
     total = len(data) + len(offs) * 2

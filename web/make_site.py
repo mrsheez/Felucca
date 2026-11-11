@@ -11,11 +11,14 @@
   src/                        not touched
 
   web/make_site.py build/felucca-X.Y.fwsc X.Y OUT_DIR
-  web/make_site.py --onefile build/felucca-X.Y.fwsc X.Y OUT.html [NAME]
+  web/make_site.py --onefile build/felucca-X.Y.fwsc X.Y OUT.html [NAME] [PACK_DIR]
                               EDDA OS: the installer as one file with the package inside it (base64): opened
                               from the disk in Chrome or Edge it installs with no site and no server. Its links
                               that point into the site (the editor, the licences) point at the fork instead
-                              (EDDA_REPO, default mrsheez/Felucca: its source, its Pages site)
+                              (EDDA_REPO, default mrsheez/Felucca: its source, its Pages site). PACK_DIR (2.0): a
+                              song's sound pack (tools/arrival_pack.py: usr1.bin .. usr4.bin, manifest.json) goes
+                              into the page too, with a second button that loads it into the FM-1's sample slots.
+                              A pack is a record's audio: it is in the file handed over, never on the site
 
 The package must be one made by tools/fm1pkg_make.py (Felucca's own loader, no vendor files).
 Its identity (FM-1_9xx) is read from the package; the device must report it after
@@ -60,13 +63,19 @@ def installer_html(raw, pkg, version, meta_extra):
     return product, html.replace("/*LIB*/", lib).replace("/*META*/", meta)
 
 
-def onefile(pkg, version, out, title="EDDA OS"):
+def onefile(pkg, version, out, title="EDDA OS", pack_dir=None):
     """EDDA OS: the installer page as one file, the package inside it: no site, no server, no fetch (a page
     opened from the disk may not fetch); Chrome and Edge allow Web MIDI to a file opened from the disk"""
     import base64
     import os
     raw = Path(pkg).read_bytes()
-    product, html = installer_html(raw, pkg, version, {"name": title, "b64": base64.b64encode(raw).decode()})
+    extra = {"name": title, "b64": base64.b64encode(raw).decode()}
+    if pack_dir:                                    # 2.0: a song's sound pack, each slot's image (empty: left alone)
+        man = json.loads((Path(pack_dir) / "manifest.json").read_text())
+        slots = [(Path(pack_dir) / f"usr{k + 1}.bin").read_bytes() for k in range(4)]
+        extra["pack"] = {"song": man.get("song", ""), "name": man["name"],
+                         "slots": [base64.b64encode(b).decode() if b else None for b in slots]}
+    product, html = installer_html(raw, pkg, version, extra)
     repo = os.environ.get("EDDA_REPO", "mrsheez/Felucca")
     user, name = repo.split("/")
     src = f"https://github.com/{repo}"
@@ -82,7 +91,8 @@ def onefile(pkg, version, out, title="EDDA OS"):
                       'style="color:inherit">github.com/hugelton/Felucca</a>)')):
         html = html.replace(rel, url)                # (a file opened from the disk has no site around it)
     Path(out).write_text(html, encoding="utf-8")
-    print(f"one-file installer: {out} ({len(html)} B): {title} {version}, {product}, package {len(raw)} B")
+    print(f"one-file installer: {out} ({len(html)} B): {title} {version}, {product}, package {len(raw)} B"
+          + (f", sound pack {extra['pack']['name']} ({sum(len(b) for b in slots)} B)" if pack_dir else ""))
 
 
 def main(pkg, version, out):
@@ -122,7 +132,7 @@ def main(pkg, version, out):
 
 if __name__ == "__main__":
     if len(sys.argv) >= 5 and sys.argv[1] == "--onefile":
-        onefile(*sys.argv[2:6])
+        onefile(*sys.argv[2:7])
     elif len(sys.argv) != 4:
         sys.exit(__doc__)
     else:

@@ -187,6 +187,9 @@
 #                   song, CLEAR SONG; then each song played through the firmware's audio: 2 to 4 minutes, sounding, no
 #                   clipping, no held note cut by the voice budget, the master limiter at most 8 dB. WAVs and stems:
 #                   build/host/arrival_render build/arrival [SONG] [SECONDS] [STEMS]; the balance: tests/arrival_check.py.
+#                   2.0, a song built from its record (OYA COME): its rows' lanes, its cues, its sound pack: without the
+#                   pack (the chords and the voice rest, the kit is EDDA's), with a stand-in of it in the slots (every
+#                   cue a voice on a pad of the pack, the row played twice, no phrase cut by the voice budget).
 # ROBUST (tests/robust_test.c): damaged or crafted stored data and editor requests: a SLICE scan bounded by the slot,
 #                   a slot that fails its check leaves no zone, engine numbers past the last refused, a retained older
 #                   RAM project bounded, user preset patterns inside their fields, malformed requests never stop PLAY.
@@ -326,13 +329,18 @@ if [ -f build/gen/felucca_tables.h ]; then
     # EDDA, the GLO keys, the FM6 voice bank, the user drum kits on a kit built by tests/edda_kit.py, the 4th slot
     mkdir -p build/edda_demo
     python3 tests/edda_kit.py build/edda_demo/kit >/dev/null
+    # 2.0: OYA COME's sound pack as the tests have it: the real one's layout (tools/packs/oya_come.json) filled with
+    # tones (a record's audio is not in the repository)
+    python3 tools/arrival_pack.py --stand-in tools/packs/oya_come.json build/edda_demo/pack >/dev/null
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/edda_test" tests/edda_test.c -lm
-    run "EDDA OS: Camelot key, the bank, run / stop / fill / MUTATE / REVEAL, cues, MENU > EDDA, GLO keys, FM6 voices, user kits, USR4, THE ARRIVAL" \
-        "$OUT/edda_test" build/edda_demo/kit
+    run "EDDA OS: Camelot key, the bank, run / stop / fill / MUTATE / REVEAL, cues, MENU > EDDA, GLO keys, FM6 voices, user kits, USR4, THE ARRIVAL, a song on its sound pack" \
+        "$OUT/edda_test" build/edda_demo/kit build/edda_demo/pack
     # EDDA OS: THE ARRIVAL's thirteen songs played through the firmware's audio (tests/arrival_render.c, no files written)
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/arrival_render" tests/arrival_render.c -lm
     run "THE ARRIVAL: each song 2 to 4 minutes, sounding, no clipping, no held note cut, the limiter at most 8 dB" \
         env ARRIVAL_CHECK=1 "$OUT/arrival_render" -
+    run "THE ARRIVAL with OYA COME's sound pack in the slots: the same, and none of the voice's phrases cut" \
+        env ARRIVAL_CHECK=1 ARRIVAL_PACK=build/edda_demo/pack "$OUT/arrival_render" - 3
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/theme_test" tests/theme_test.c -lm
     run "themes: contrast, text blending and font metrics" "$OUT/theme_test"
     $CC -O1 -w -Ibuild/gen -Ifirmware/src -o "$OUT/text_ref_test" tests/text_ref_test.c -lm

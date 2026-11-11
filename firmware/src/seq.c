@@ -1312,6 +1312,8 @@ static __attribute__((noinline)) uint32_t seq_time(track_t *t, uint32_t idx, uin
     return mod_time(t, s->n ? s->note[0] : DRUM_LANE_NOTE[__builtin_ctz(s->hit) & (NLANE - 1u)], vel, period);
 }
 
+static uint8_t arv_cur;                             /* (ui.c, arrival.c: the song the music is, + 1) */
+static void arv_cue(track_t *t, uint32_t idx);      /* (arrival.c) */
 /* the automation a track plays: its slot's while a song plays (song_chain.c lanes; 0: a silent lane, none) */
 static const motion_store_t *chain_motion(const track_t *t)
 {
@@ -1343,6 +1345,8 @@ static __attribute__((noinline)) void seq_play(track_t *t, uint32_t idx, uint32_
         t->rskip_n = 0;
     }
     seq_step(t, s, idx, period, skip);
+    if (chain.running && arv_cur)                   /* EDDA OS 2.0: the song's cues of this step (arrival.c) */
+        arv_cue(t, idx);
 }
 
 /* QUANTIZE ON: step seq_idx plays on its start, or (1.5.6, #213) late by the matrix's TIME (not inlined, as seq_play) */

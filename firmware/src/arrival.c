@@ -18,7 +18,18 @@
  *             notes, then with EXT the flags and the chance; 0xFF ends the bar. ARV_BAR[id]: where bar id starts
  *   pattern   [n] then n x (bar id lo, hi, transposition): up to four bars, the melodic notes transposed
  *   params    [n] then n x (id, value + 64): a track's sound over its preset (P_*), the song's globals (G_*)
- *   motion    [n] then n x (track << 6 | step, id, value + 64): a section's automation (motion_event_t) */
+ *   motion    [n] then n x (track << 6 | step, id, value + 64): a section's automation (motion_event_t)
+ *
+ * 2.0, the song engine's second form (a song built from its record: OYA COME):
+ *   rows      each track plays its own section (the chain's lanes, song_chain.c): three bits a track (0..3 A..D, 4: it
+ *             rests), the repeats - 1 above them. A song has four patterns a TRACK now, combined freely row by row
+ *   cues      [n] then n x (row << 4 | pass, track << 6 | step, note, vel5 | kit << 5 | KIT << 7): a note of one row's
+ *             one pass's one step, played beside the track's pattern (arv_cue, from seq_play): what happens once in a
+ *             song and not every time its pattern comes round (a phrase of the record's voice, a fill). KIT: the
+ *             track's DRUM KIT is set to USR1 + kit first: the slot of the sound pack the phrase is in
+ *   pack      [slots, mute, 7 x name]: the song plays a sound pack: user sample slots (bit k of slots: USR k + 1) named
+ *             <name><k + 1> (tools/arrival_pack.py cuts it from the record; the installer page loads it). Without it
+ *             (arv_pack_ok) the tracks of mute rest, a DRUM track left plays KIT EDDA, and LOAD says so */
 typedef struct {
     uint8_t engine, preset;      /* the base sound: the engine's factory preset */
     uint16_t par;                /* its overrides (params), 0 none */
@@ -29,12 +40,13 @@ typedef struct {
     uint16_t mot;                /* the section's automation, 0 none */
     char name[7];                /* "INTRO", "DROP" (the SONG page) */
 } arv_sec_t;
-typedef struct { uint8_t slot, repeat; } arv_row_t;   /* a row of the arrangement: a section (all four tracks on it) */
+typedef uint16_t arv_row_t;      /* a row of the arrangement: each track's section, 3 bits (4: rests) | repeats - 1 << 12 */
 typedef struct {
     char name[20], shrt[13], chant[11], line[24];   /* the title (SAVE > ARRIVAL), the music's name once loaded (a
                                                    * project's 12), the Igbo chant word, the line it opens on */
     uint8_t bpm, cam, nsec, nrow, half;   /* cam: the Camelot key (edda.h: 1 1A .. 24 12B); half: a half-time feel */
     uint16_t glob;                        /* global overrides (params: G_* ids) */
+    uint16_t cue, pack;                   /* 2.0: its cues, its sound pack (0 none) */
     arv_snd_t snd[NTRK];
     arv_sec_t sec[4];
     arv_row_t row[CHAIN_ROWS];
@@ -190,6 +202,45 @@ static int arv_info(uint32_t s, char *b, uint16_t *len48, uint32_t *den, uint8_t
     return 1;
 }
 
+/* 2.0: the song's sound pack is in the user sample slots: every slot it needs holds a sample set named for it */
+static int arv_pack_ok(const arv_song_t *sg)
+{
+    const uint8_t *q = &ARV_DATA[sg->pack];
+    uint32_t k, i;
+    if (!sg->pack)
+        return 1;
+    for (k = 0; k < SMP_USER_SLOTS; k++)
+        if ((q[0] >> k) & 1u) {
+            const smp_user_hdr_t *h = (const smp_user_hdr_t *)smp_user_xip(k);
+            if (!usr_nz[k] || h->name[7] != (char)('1' + k))
+                return 0;
+            for (i = 0; i < 7u; i++)
+                if ((uint8_t)h->name[i] != q[2u + i])
+                    return 0;
+        }
+    return 1;
+}
+
+/* 2.0: the cues of the song playing for track t's step idx of this row's pass (seq.c seq_play, after the step's own
+ * notes; the audio ISR, once a step). A track whose engine is no longer the song's plays none (a cue's note means its
+ * sound); a muted one plays none (trk_note_on). A cue's note has no note-off: a kit's hit ends with its sound */
+static __attribute__((noinline)) void arv_cue(track_t *t, uint32_t idx)
+{
+    const arv_song_t *sg = &ARV_SONGS[(arv_cur - 1u) % ARV_NSONGS];
+    const uint8_t *c = &ARV_DATA[sg->cue];
+    uint32_t k = trk_index(t), n;
+    uint32_t key = (uint32_t)chain.row << 12 | (uint32_t)(chain.config.row[chain.row].repeat - chain.remaining) << 8 |
+                   k << 6 | idx;
+    if (!sg->cue || sg->snd[k].engine != t->eng_req)
+        return;
+    for (n = *c++; n; n--, c += 4)
+        if (((uint32_t)c[0] << 8 | c[1]) == key) {
+            if (c[3] & 0x80u)
+                t->p[P_E0] = (int16_t)(DK_USR1 + ((c[3] >> 5) & 3u));
+            trk_note_on(t, c[2], (c[3] & 31u) << 2 | 3u);
+        }
+}
+
 /* the globals a song sets (the sound of the room, the tempo); the others (the clock, MIDI, the tuning) are the
  * player's: a song never changes them */
 static int arv_glob_ok(uint32_t id)
@@ -204,7 +255,7 @@ static void arv_load(uint32_t n)
 {
     const arv_song_t *sg = arv_song(n);
     chain_pattern_t *a = &chain.source[0];              /* (the chain's: stopped, it is free; a chain play fills it) */
-    uint32_t i, k;
+    uint32_t i, k, pack = arv_pack_ok(sg);
     transport_req = 2;
     panic_req = (1u << NTRK) - 1u;
     fm1_irq_off();                                      /* the audio ISR must not see half a song */
@@ -214,9 +265,12 @@ static void arv_load(uint32_t n)
     arv_section(n, 0, a);                               /* section A: the tracks' steps, LEN DIV, the automation */
     memset(&chain_config, 0, sizeof chain_config);
     chain_config.count = (uint8_t)(sg->nrow < CHAIN_ROWS ? sg->nrow : CHAIN_ROWS);
-    for (i = 0; i < CHAIN_ROWS; i++)                    /* (a section: the four tracks on its slot, song_chain.c) */
-        chain_config.row[i] = chain_row_of(i < chain_config.count ? sg->row[i].slot & 3u : 0u,
-                                           i < chain_config.count ? (uint32_t)clamp(sg->row[i].repeat, 1, 16) : 1u);
+    for (i = 0; i < CHAIN_ROWS; i++) {                  /* (a section: each track's slot, song_chain.c's lanes) */
+        uint32_t v = i < chain_config.count ? sg->row[i] : 0u;
+        for (k = 0; k < NTRK; k++, v >>= 3)
+            chain_config.row[i].slot[k] = (uint8_t)((v & 7u) < CHAIN_SILENT ? v & 7u : CHAIN_SILENT);
+        chain_config.row[i].repeat = (uint8_t)(v + 1u);
+    }
     motion = a->motion;
     memset(motion_active, 0, sizeof motion_active);
     motion_base_valid = 0;
@@ -256,6 +310,13 @@ static void arv_load(uint32_t n)
                 t->p[id] = (int16_t)((int32_t)ARV_DATA[sd->par + 2u + 2u * i] - 64);
         }
         memcpy(&t->p[P_SLEN], a->timing[k], sizeof a->timing[k]);
+        if (!pack) {                                    /* 2.0: its sound pack is not in the slots: the tracks that are
+                                                         * nothing without it rest, a kit left plays EDDA's */
+            if ((ARV_DATA[sg->pack + 1u] >> k) & 1u)
+                t->p[P_MUTE] = 1;
+            else if (e == ENGI_DRUM)
+                t->p[P_E0] = DK_EDDA;
+        }
         for (i = 0; i < P_COUNT; i++)                    /* every value inside its range */
             t->p[i] = (int16_t)param_fit(param_desc_of(e, i), t->p[i]);
         memcpy(t->step, a->step[k], sizeof t->step);
@@ -276,7 +337,8 @@ static void arv_load(uint32_t n)
     sync_reload = 1;
     ui.force = 1;
     ui_say("LOADED ", sg->name);
-    str_cpy(ui.msg2, sg->line, sizeof ui.msg2);         /* then the line the song opens on: the voice's cue */
+    str_cpy(ui.msg2, pack ? sg->line : "ITS SOUNDS: NOT LOADED", sizeof ui.msg2);   /* then the line the song opens
+                                                         * on: the voice's cue (2.0: or that its pack is missing) */
     edda.song = arv_cur;                                /* (SHOW CUES: CC 27 the song, CC 24 its key) */
     edda_ui(ED_RQ_CUE_SONG);
     memset(snd_said, 0, sizeof snd_said);

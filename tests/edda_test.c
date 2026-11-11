@@ -97,6 +97,26 @@ static int kit_load(const char *prefix, uint32_t slot)   /* the built kit (.hdr 
     smp_user_scan(slot);
     return n > 0 && usr_nz[slot] == 16u;
 }
+static void slots_clear(void)                         /* the four user slots empty, scanned */
+{
+    uint32_t k;
+    memset(host_slots, 0, sizeof host_slots);
+    for (k = 0; k < SMP_USER_SLOTS; k++)
+        smp_user_scan(k);
+}
+static int pack_load(const char *dir)                 /* a sound pack's slot images (DIR/usr1.bin .. usr4.bin), scanned */
+{
+    uint32_t k, n = 0;
+    for (k = 0; k < SMP_USER_SLOTS; k++) {
+        char path[512];
+        uint8_t *img = (uint8_t *)host_slots + k * SMP_USER_SIZE;
+        memset(img, 0, SMP_USER_SIZE);
+        snprintf(path, sizeof path, "%s/usr%u.bin", dir, k + 1u);
+        n += load_file(path, img, (long)smp_user_size(k)) > (long)SMP_USER_DATA;
+        smp_user_scan(k);
+    }
+    return n == SMP_USER_SLOTS;
+}
 static voice_t *kvoice(track_t *t, uint32_t note)
 {
     uint32_t i;
@@ -345,7 +365,7 @@ int main(int argc, char **argv)
 {
     uint32_t i, j, k, n[3], m0;
     char nm[4];
-    const char *kit = argc > 1 ? argv[1] : 0;
+    const char *kit = argc > 1 ? argv[1] : 0, *pack = argc > 2 ? argv[2] : 0;
     /* ------------------------------------------------------------- Camelot */
     {
         static const uint8_t RA[12] = {8, 3, 10, 5, 0, 7, 2, 9, 4, 11, 6, 1};   /* 1A..12A: G#m Ebm Bbm Fm Cm Gm Dm Am Em Bm F#m C#m */
@@ -1617,7 +1637,8 @@ int main(int argc, char **argv)
             {"RING ME", "7A", 116}, {"JAPA AND COME BACK", "1A", 115}};
         static chain_pattern_t cp;
         uint32_t n, s, k, r, j, shortest = ~0u, longest = 0;
-        int ok = arv_count() == 13u, dec = 1, arr = 1, keyed = 1, kits = 1;
+        int ok = arv_count() == 13u, dec = 1, arr = 1, keyed = 1, kits = 1, cued = 1;
+        slots_clear();                                      /* (no sound pack in the user slots) */
         for (n = 0; n < arv_count() && ok; n++) {
             const arv_song_t *sg = arv_song(n);
             char nm[20], info[8], key[4];
@@ -1632,26 +1653,33 @@ int main(int argc, char **argv)
                     dec &= cp.timing[k][0] >= 1 && cp.timing[k][0] <= NSTEP;
                     for (i = 0; i < NSTEP; i++) {
                         const step_t *st = &cp.step[k][i];
-                        dec &= st->n <= 4u && st->time <= ST_REST && st->probability <= 101u;
+                        dec &= st->n <= 4u && st->time <= ST_REST && st->probability < COND_FIRST + NCOND;   /* (2.0: a
+                                                         * chance, or a condition: OYA COME's first-pass-only steps) */
                         for (j = 0; j < st->n; j++)
                             dec &= st->note[j] >= 12u && st->note[j] <= 108u;
                     }
                 }
             }
-            for (r = 0; r < sg->nrow; r++)
-                arr &= sg->row[r].slot < sg->nsec && sg->row[r].repeat >= 1u && sg->row[r].repeat <= 16u;
+            for (r = 0; r < sg->nrow; r++) {                /* (2.0: each track's section, or its rest) */
+                uint32_t v = sg->row[r], q;
+                for (q = 0; q < NTRK; q++, v >>= 3)
+                    arr &= (v & 7u) < sg->nsec || (v & 7u) == CHAIN_SILENT;
+            }
             reset();
             arv_load(n);
             for (k = 0; k < NTRK; k++) {                    /* the synth tracks in the song's key; T4 the EDDA kit */
                 const track_t *t = &trk[k];
                 if (k == 3u)
-                    kits &= t->eng_req == ENGI_DRUM && t->p[P_E0] == DK_EDDA;
-                else
+                    kits &= t->eng_req == ENGI_DRUM && t->p[P_E0] == DK_EDDA;   /* (OYA COME: with no pack in the slots) */
+                else                                        /* (2.0, OYA COME: its tracks play the record's sounds by
+                                                             * key: the key is the song's, the notes are not snapped) */
                     keyed &= t->p[P_ROOT] == (int16_t)edda_cam_root(sg->cam) &&
-                             t->p[P_SCALE] == (int16_t)edda_cam_scale(sg->cam) && t->p[P_QUANT] != QN_OFF;
+                             t->p[P_SCALE] == (int16_t)edda_cam_scale(sg->cam) && (t->p[P_QUANT] != QN_OFF) == (n != 2u);
             }
-            kits &= n == 5u || n == 2u ? ENGINES[trk[0].eng_req] == &ENG_ANALOG
-                            : trk[0].eng_req == ENGI_SAMPLE && trk[0].p[P_E0] == (int16_t)SMP_XSET_LOG + SMP_XBASE;
+            kits &= n == 5u ? ENGINES[trk[0].eng_req] == &ENG_ANALOG
+                    : n == 2u ? trk[0].eng_req == ENGI_SAMPLE && trk[0].p[P_E0] == (int16_t)SMP_NSETS
+                    : trk[0].eng_req == ENGI_SAMPLE && trk[0].p[P_E0] == (int16_t)SMP_XSET_LOG + SMP_XBASE;
+            cued &= (sg->cue != 0u) == (n == 2u) && (sg->pack != 0u) == (n == 2u);
             {   /* played through: the sequencer's own clock from the chain's start to its end */
                 uint32_t nb = 0, sec10;
                 ok &= chain_prepare() == 0u;
@@ -1669,10 +1697,112 @@ int main(int argc, char **argv)
         ck("THE ARRIVAL: every section decodes in range (LEN, at most 4 notes C0..C8, ties, chances), named", dec);
         ck("THE ARRIVAL: every arrangement row names a section of its song, 1..16 repeats", arr);
         ck("THE ARRIVAL: loaded, the synth tracks in the song's key (ROOT SCALE, quantised), the key lock on it", keyed);
-        ck("THE ARRIVAL: T4 the EDDA kit, T1 the log drum (SAMPLE SET LOG; I DEY WAKA the 808, OYA COME the bass: ANALOG)", kits);
+        ck("THE ARRIVAL: T4 the EDDA kit, T1 the log drum (SAMPLE SET LOG; I DEY WAKA the 808; OYA COME its record's bass: USR1)", kits);
+        ck("THE ARRIVAL: OYA COME alone has cues and a sound pack (2.0)", cued);
         printf("edda: THE ARRIVAL played through: %u.%u .. %u.%u s\n", shortest / 10u, shortest % 10u, longest / 10u,
                longest % 10u);
         ck("THE ARRIVAL: each song plays 2 to 4 minutes, then stops", shortest >= 1200u && longest <= 2400u);
+    }
+    {   /* 2.0: a song built from its record (OYA COME, arrival.c): its rows give each track its own section (the
+         * lanes), its cues play the record's phrases where it sings them, its sound pack is the user sample slots'
+         * (here a stand-in in the real one's layout: tools/arrival_pack.py --stand-in, argv[2]) */
+        const arv_song_t *sg = arv_song(2);
+        uint32_t ncue = sg->cue ? ARV_DATA[sg->cue] : 0u, r, lanes = 0;
+        int ok;
+        slots_clear();
+        reset();
+        arv_load(2);
+        ok = sg->pack && ncue >= 20u && !arv_pack_ok(sg) && trk[1].p[P_MUTE] && trk[2].p[P_MUTE] && !trk[0].p[P_MUTE] &&
+             !trk[3].p[P_MUTE] && trk[3].p[P_E0] == DK_EDDA && str_eq(ui.msg2, "ITS SOUNDS: NOT LOADED") &&
+             msg_is("LOADED OYA COME");
+        ck("2.0: OYA COME without its sound pack: the chords and the voice rest, the kit is EDDA's, LOAD says so", ok);
+        for (r = 0; r < chain_config.count; r++)
+            lanes |= chain_config.row[r].slot[0] != chain_config.row[r].slot[3] || chain_config.row[r].slot[1] == CHAIN_SILENT;
+        ck("2.0: its rows give each track its own section or its rest (the lanes); bars 40..47 are one row, twice",
+           lanes && chain_valid(&chain_config) && chain_config.count == sg->nrow && chain_config.row[10].repeat == 2u);
+        if (pack) {
+            static uint32_t age[NTRK][NVOICE];
+            uint32_t starts[NTRK] = {0}, brk[NTRK] = {0}, first[NTRK] = {0}, zoned = 0, nb = 0, kitted = 1;
+            ok = pack_load(pack) && usr_nz[0] && usr_nz[3];
+            reset();
+            arv_load(2);
+            ok &= arv_pack_ok(sg) && !trk[1].p[P_MUTE] && !trk[2].p[P_MUTE] && trk[3].p[P_E0] == DK_USR4 &&
+                  trk[2].p[P_E0] == DK_USR1 && trk[0].eng_req == ENGI_SAMPLE && trk[0].p[P_E0] == (int16_t)SMP_NSETS &&
+                  trk[1].eng_req == ENGI_SAMPLE && str_eq(ui.msg2, sg->line);
+            ck("2.0: with its pack in the slots (named for it): every track its own sound, the song's line", ok);
+            {   /* a slot of the pack under another name: not the pack */
+                smp_user_hdr_t *h = (smp_user_hdr_t *)((uint8_t *)host_slots + 2u * SMP_USER_SIZE);
+                char c = h->name[0];
+                h->name[0] = 'X';
+                ok = !arv_pack_ok(sg);
+                h->name[0] = c;
+                ck("2.0: a slot of it renamed (another sample set loaded there): the pack is not there", ok && arv_pack_ok(sg));
+            }
+            /* played through, the audio running: every cue starts one voice of the voice's track on a pad of the
+             * pack, the kit it names set first; the row played twice plays its last two bars' drums and bass the
+             * first time only */
+            memset(age, 0, sizeof age);
+            ok = chain_prepare() == 0u;
+            while ((chain.armed || chain.running || song.playing) && nb < 300u * FS / CTL) {
+                int32_t o[2 * CTL];
+                uint32_t row = chain.row, pass = chain.config.row[row % CHAIN_ROWS].repeat - chain.remaining, v;
+                mix_block(o, CTL);
+                nb++;
+                for (k = 0; k < NTRK; k++)
+                    for (v = 0; v < NVOICE; v++) {
+                        const voice_t *vc = &trk[k].v[v];
+                        if (!vc->active || vc->age == age[k][v])
+                            continue;
+                        age[k][v] = vc->age;
+                        starts[k]++;
+                        if (k == 2u) {
+                            zoned += vc->s[6] == 1 && ((uint32_t)vc->s[5] & 0x8000u) &&
+                                     (((uint32_t)vc->s[5] >> 5) & 3u) == (uint32_t)(trk[2].p[P_E0] - DK_USR1);
+                            kitted &= trk[2].p[P_E0] >= DK_USR1 && trk[2].p[P_E0] <= DK_USR4;
+                        }
+                        if (row == 10u && trk[k].seq_idx >= 32u) {
+                            if (pass == 1u)
+                                brk[k]++;
+                            else
+                                first[k]++;
+                        }
+                    }
+            }
+            printf("edda: OYA COME with its pack: voices started %u %u %u %u (%u cues, %u on the pack's pads); the row played "
+                   "twice, bars 3..4: first pass %u %u %u %u, second %u %u %u %u\n", starts[0], starts[1], starts[2], starts[3],
+                   ncue, zoned, first[0], first[1], first[2], first[3], brk[0], brk[1], brk[2], brk[3]);
+            ck("2.0: played through with its pack: every cue starts a voice on a pad of the pack, its kit set first",
+               ok && starts[2] == ncue && zoned == ncue && kitted && !chain.running);
+            ck("2.0: the row played twice (bars 40..47): its last two bars' drums, bass and chords the first time only",
+               first[0] && first[3] && !brk[0] && !brk[1] && !brk[3] && brk[2]);
+            voices_off();
+            stop_transport();
+            reset();                                        /* a track whose engine is no longer the song's: none of
+                                                             * its cues */
+            arv_load(2);
+            trk[2].eng_req = trk[2].engine = 0;
+            memset(age, 0, sizeof age);
+            starts[2] = 0;
+            ok = chain_prepare() == 0u;
+            for (nb = 0; nb < 8u * FS / CTL; nb++) {
+                int32_t o[2 * CTL];
+                uint32_t v;
+                mix_block(o, CTL);
+                for (v = 0; v < NVOICE; v++)
+                    if (trk[2].v[v].active && trk[2].v[v].age != age[2][v]) {
+                        age[2][v] = trk[2].v[v].age;
+                        starts[2]++;
+                    }
+            }
+            ck("2.0: a track given another engine plays none of the song's cues", ok && chain.running && !starts[2]);
+            stop_transport();
+            transport_req = 2;
+            blocks(2);
+            voices_off();
+        } else {
+            printf("edda: no sound pack given (argv[2]): OYA COME's pack checks skipped\n");
+        }
+        slots_clear();
     }
     {   /* SAVE > ARRIVAL: KNOB 1 picks, OCT+ loads (the sounds, section A, the rows, the tempo, the key, the name),
          * PLAY plays the arrangement; the SONG page's rows are the song's sections; a project keeps it; CLEAR SONG ends it */

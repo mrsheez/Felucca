@@ -150,6 +150,55 @@ export async function restoreBackup(request, file, onProgress = () => {}) {
   return archive;
 }
 
+// EDDA OS 2.0: a song's sound pack (tools/arrival_pack.py: the user sample slots as the flash holds them, the header
+// at 0 and the ADPCM at 512) into the slots, the way a backup's samples are restored: BEGIN, the data in 256-byte
+// writes, END with the header (the device checks the data's CRC before it writes it). Every slot image is checked
+// before the first one is touched. slots: Uint8Array or null (a slot the pack leaves alone), by slot number.
+const PACK_RC = {
+  11: { 1: "The FM-1 could not stop and erase the slot. Stop playback and try again." },
+  12: { 1: "The FM-1 refused a write (offset).", 2: "Flash erase failed.", 3: "Flash write failed.", 4: "The slot is in use." },
+  13: { 1: "The FM-1 could not stop. Stop playback and try again.", 2: "The FM-1 refused the sound's header.",
+        3: "The sounds did not arrive whole (checksum). Try again.", 4: "Flash write failed.", 5: "The FM-1 cannot use the slot." },
+};
+export function checkPackSlot(bytes, slot) {
+  const max = slot === 3 ? 73728 : 81920;
+  if (bytes.length < 513 || bytes.length > max) throw new Error(`Sound pack: slot ${slot + 1} has the wrong size`);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), length = view.getUint32(16, true), count = bytes[6];
+  if (view.getUint32(0, true) !== 0x504d5346 || view.getUint16(4, true) !== 1 || !count || count > 16 ||
+      length !== bytes.length - 512 || bkCrc(bytes.subarray(512)) !== view.getUint32(20, true))
+    throw new Error(`Sound pack: slot ${slot + 1} is damaged`);
+  for (let z = 0; z < count; z++) {
+    const off = 32 + z * 28, start = view.getUint32(off, true), n = view.getUint32(off + 4, true),
+      ls = view.getUint32(off + 8, true), le = view.getUint32(off + 12, true), rate = view.getUint32(off + 16, true);
+    if (!n || start > length || Math.ceil(n / 2) > length - start || n > 163840 || ls > le || le >= n ||
+        !rate || rate > 262144 || bytes[off + 24] > 88 || bytes[off + 25] > bytes[off + 26])
+      throw new Error(`Sound pack: slot ${slot + 1} holds a zone the FM-1 would refuse`);
+  }
+  return String.fromCharCode(...bytes.subarray(8, 16)).replace(/\0+$/, "");
+}
+export async function loadPack(request, slots, onProgress = () => {}) {
+  slots.forEach((b, k) => { if (b && b.length) checkPackSlot(b, k); });
+  const total = slots.reduce((n, b) => n + (b ? b.length : 0), 0); let done = 0;
+  const ask = async (cmd, slot, args) => {
+    const a = await request([cmd, [slot, ...args]], { timeout: 8000, retries: 0 });
+    if (a[0] !== slot) throw new Error("Unexpected sample reply");
+    const rc = a.at(-1);
+    if (rc) throw new Error((PACK_RC[cmd] || {})[rc] || `Sample error ${cmd}/${rc}`);
+  };
+  for (let slot = 0; slot < slots.length; slot++) {
+    const bytes = slots[slot];
+    if (!bytes || !bytes.length) continue;
+    await ask(11, slot, []);
+    for (let off = 512; off < bytes.length; off += BACKUP_CHUNK) {
+      const chunk = bytes.subarray(off, off + BACKUP_CHUNK);
+      await ask(12, slot, [off & 127, off >>> 7 & 127, off >>> 14 & 127, ...bkPack(chunk)]);
+      done += chunk.length; onProgress(done, total);
+    }
+    await ask(13, slot, bkPack(bytes.subarray(0, 480)));
+    done += 512; onProgress(done, total);
+  }
+}
+
 // Installer connection: no editor page or watcher owns this input simultaneously.
 export class BackupConnection {
   constructor(input, output) {
