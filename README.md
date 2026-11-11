@@ -1,7 +1,8 @@
 # Felucca
 
 > **This branch is EDDA OS 2.0.0**, the Mr. Sheez performance fork of Felucca 1.7.0 (GPL-3.0): the thirteen songs of
-> *EDDA: The Arrival* ready to play and cue live, with their own recorded kit and log drum; the true tempo (the BPM
+> *EDDA: The Arrival* ready to play and cue live, with their own recorded kit and log drum, OYA COME from its
+> record's own sounds (a sound pack the installer loads); the true tempo (the BPM
 > shown is the BPM played) and a deck's pitch bend; 16-WAV drum kits, a 4th sample slot, CHORD+, a DJ filter per
 > track, the sequencer out over MIDI with clock, the Camelot key lock and the EDDA set tools, on top of everything
 > Felucca 1.7.0 does. What it adds and how to install it (one HTML file, Chrome or Edge):

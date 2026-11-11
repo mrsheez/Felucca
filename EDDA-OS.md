@@ -9,21 +9,45 @@ documentation says unless a section below says otherwise.
 
 | | |
 | --- | --- |
-| Version | 1.7.5-EDDA (OYA COME rebuilt from its record; at power-on Powered by COSMIC YOU and "Press any key to continue"; MENU > SYSTEM > INFO shows `v1.7.5-EDDA`; the package identity FM-1_917) |
+| Version | 2.0.0-EDDA (OYA COME played from its record's own sounds, which the installer loads as a sound pack; at power-on Powered by COSMIC YOU and "Press any key to continue"; MENU > SYSTEM > INFO shows `v2.0.0-EDDA`; the package identity FM-1_920) |
 | Base | Felucca 1.7.0 (hugelton/Felucca `main` at 65b21d3, merged) with Felucca 1.8's flash and FM6 fixes, felucca-bsp (MPL-2.0) and Felucca-Engines (MIT) as submodules; EDDA OS's commits on top |
 | Licence | GPL-3.0-only, as Felucca |
-| Verified | every host suite passes: 7,732 checks in `tests/run_host_only.sh`, 7,871 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
-| Built | with JieLi's compiler on GitHub: 580,384 of the 581,564-byte app slot (1,180 spare), RAM 61,284 of 73,728 bytes, the pool 329,448 of 368,640 |
-| On the FM-1 | 1.7.1 installed on Obi's FM-1 on 9 November 2026: it starts, the EDDA palette shows, SAVE > ARRIVAL lists and plays the songs (section 7) |
-| Install | one HTML file, Chrome or Edge, the FM-1 on USB (section 1.1) |
+| Verified | every host suite passes: 7,743 checks in `tests/run_host_only.sh`, 7,883 in CI's `tests/run_tests.sh` against the package (sanitizers, fuzzers and build variants included); the static cost check names EDDA's two known functions (section 7) |
+| Built | with JieLi's compiler on GitHub: 581,344 of the 581,564-byte app slot (220 spare), RAM 61,284 of 73,728 bytes, the pool 329,448 of 368,640 |
+| On the FM-1 | 1.7.1 and 1.7.4 installed on Obi's FM-1 on 9 November 2026: it starts, the EDDA palette shows, SAVE > ARRIVAL lists and plays the songs; 2.0.0 and its sound pack have run on the host and a simulated FM-1 only (section 7) |
+| Install | one HTML file, Chrome or Edge, the FM-1 on USB: Install, then Load the song's sounds (section 1.1) |
 
-## 0. What 1.7.2 to 1.7.5 add
+## 0. What 2.0.0 adds
 
-- **OYA COME from the record** (1.7.5, 2.21). Taken off Oya Come 3 itself: 114 BPM in B minor (the record
-  113.8), its one loop Gmaj7 – Gmaj7 – Bm9 – Amaj7 with every change pushed an eighth early, the four-on-the-floor
-  kick and the snare on the offbeats, the held bass, the keys' figure on every beat, and the hook, "Oya, come",
-  sung by the VOICE engine; 64 bars, 2:15, arranged as the record is. The old OYA COME (D minor, 113, written
-  before the record) is gone; JAPA AND COME BACK and the other songs are unchanged.
+2.0 is the first stage of the rebuild: the songs from their records. OYA COME is done; the other twelve are as 1.7.5
+had them until their records are here.
+
+- **OYA COME plays its record's own sounds** (2.21). Oya Come 3 was separated into its voice, drums, bass and
+  chords, and the FM-1 plays those: the voice in twenty phrases, each started where the record sings it; the
+  record's kick; a bar of its congas and shaker, cut where the strokes start; a beat of each chord, looped; a
+  log-drum stroke; the break before the last hook exactly as the record has it. The bass alone is built, not cut: a
+  wave with the record's bass's harmonics. 64 bars at 114 BPM in B minor, 2:15, bar for bar.
+- **A sound pack.** Those sounds are 41 samples, 68 seconds, 316 KB: they fill the FM-1's four user sample slots
+  (USR1 to USR4). The one-file installer has a second button, **Load the song's sounds: OYA COME**, that writes
+  them after the install (1.1). It replaces whatever is in USR1 to USR4, after asking. Without the pack the song
+  still loads: the top bar says ITS SOUNDS: NOT LOADED and only its drum pattern plays, on EDDA's kit.
+- **The song engine's second form.** A row of a song now gives each track its own pattern (four patterns a track,
+  combined row by row: fifteen rows carry the record's 64 bars), and a song has cues: single notes of one row's one
+  pass, which is how a phrase of the voice starts on its bar. The twelve other songs are stored as before and play
+  sample for sample as in 1.7.5.
+- **How close it is**, measured on the firmware's own audio code against the record: every section within about
+  1 dB of the record's level and each band up to 1 kHz within about 3 dB. The top is what is lost: around 2.5 kHz
+  it is 1 to 4 dB under the record, above 4 kHz 3 to 12 dB under. The cause is the voice: 68 seconds fit the slots
+  only at 7.6 to 10 kHz, so the voice carries up to about 4 kHz in the verses and 5 kHz in the hooks and the
+  record's air is not there. Also not there: the record's fills other than the log-drum stroke, and the intro's 808
+  slides.
+
+## 0.1 What 1.7.2 to 1.7.5 added
+
+- **OYA COME from the record** (1.7.5; replaced by 2.0's). Taken off Oya Come 3 itself: 114 BPM in B minor (the
+  record 113.8), its one loop Gmaj7 – Gmaj7 – Bm9 – Amaj7 with every change pushed an eighth early, played by the
+  FM-1's own engines with the hook sung by the VOICE engine. The old OYA COME (D minor, 113, written before the
+  record) is gone; JAPA AND COME BACK and the other songs are unchanged.
 - **Powered by COSMIC YOU at power-on** (2.24). Cosmic You's own lockup: "Powered by", COSMIC YOU in Cinzel Black
   with its blue glow, and the orange rule under it, as cosmicyou.me's pages and the playlist cards set it. The
   firmware draws it from Chrome's rendering of that CSS, and the host tests hold the two within one step of the
@@ -37,7 +61,7 @@ documentation says unless a section below says otherwise.
   again, a button's tap or hold does not act (HOME does not go to MIXER or open the menu, SAVE does not open its
   page), and knob turns made while it shows are dropped. USB MIDI, the web editor and the installer work meanwhile.
 
-## 0.1 What 1.7.1-EDDA fixes
+## 0.2 What 1.7.1-EDDA fixes
 
 - **Newer FM-1s.** Units sold from about autumn 2026 carry a UCUN UC25HQ80 flash (JEDEC ID B3 60 14) instead of Puya's
   P25Q80H (85 60 14): both 1 MiB, the same commands. Felucca up to 1.8.1, and so EDDA OS 1.7.0, trusted only the Puya
@@ -57,7 +81,7 @@ documentation says unless a section below says otherwise.
   limit, kmplngj/Felucca #619). FM1-GM's installer added a pinned V16 return on 8 November (tested on hardware); ask
   me before trying a way back.
 
-## 0.2 What 1.7.0-EDDA changes
+## 0.3 What 1.7.0-EDDA changes
 
 **Felucca 1.7.0 underneath** (EDDA OS 1.1.5 had Felucca 1.1.5.1): step conditions (1:2 … 4:4, FILL, !FILL) and
 SEQ > DETAIL (each step's CHANCE, RATCH, NUDGE, VEL on the knobs); NUDGE (a step up to half a step early or 7/16 late,
@@ -97,8 +121,8 @@ and the kit uploads happen on the laptop (Windows, macOS or Linux).
 
 ### 1.1 The one-file installer (recommended)
 
-`EDDA-OS-Installer-1.7.5.html` is the whole installer with the package inside it: no site, no download, no
-account.
+`EDDA-OS-Installer-2.0.0.html` is the whole installer with the package and OYA COME's sounds inside it: no site,
+no download, no account.
 
 1. Connect the FM-1 to the laptop with a USB **data** cable and switch it on. Close every app that uses MIDI
    (DAWs, rekordbox's MIDI settings, an editor tab).
@@ -107,12 +131,18 @@ account.
    update mode, writes EDDA OS and restarts it: a few minutes, the bar to 100 % and the page says **Done**.
    Do not unplug meanwhile. If anything stops it, press Install again: the update mode resumes where it was.
 4. The FM-1 starts EDDA OS: Powered by COSMIC YOU and "Press any key to continue"; press one, and HOME comes (MENU >
-   SYSTEM > INFO shows `v1.7.5-EDDA`). SAVE → turn to **ARRIVAL** for the songs.
+   SYSTEM > INFO shows `v2.0.0-EDDA`). SAVE → turn to **ARRIVAL** for the songs.
 5. Check that it stores: MENU, change one setting (say LEDS), switch off, switch on: the setting stayed. If a save
-   says FLASH ERROR, stop and tell me (section 0.1: the newer flash part).
+   says FLASH ERROR, stop and tell me (section 0.2: the newer flash part).
+6. **Load the song's sounds: OYA COME** (the second button, same page, the FM-1 still connected and stopped). It
+   asks first: the sounds replace the samples in **USR1 to USR4**, so anything of yours there goes (keep the WAVs,
+   or back the FM-1 up from the web editor first). A minute or two to 100 %, then: "Sounds loaded". SAVE >
+   ARRIVAL, OYA COME, OCT+, PLAY. The button refuses an FM-1 that is not on this version yet (Install first).
 
-The installer writes only the FM-1's app area. It never writes the flash that holds your projects, samples and
-presets, or the unit's own radio calibration and Bluetooth address.
+Install writes only the FM-1's app area: never the flash that holds your projects, samples and presets, or the
+unit's own radio calibration and Bluetooth address. Load the song's sounds writes the four user sample slots and
+nothing else. Loading other samples into USR1 to USR4 later takes OYA COME's sounds away (the song then says ITS
+SOUNDS: NOT LOADED and plays its drum pattern alone); this page's second button puts them back.
 
 ### 1.2 Route A — GitHub builds it and hosts the installer
 
@@ -143,7 +173,8 @@ files of the first delivery: `edda-os.bundle` (the git history), or `edda-os-for
 
 Every later push to `edda` rebuilds and republishes. The package is also kept with each run under
 **Artifacts → edda-os-fwsc** for the command-line installer (1.4), and `python3 web/make_site.py --onefile
-felucca-1.7.5-EDDA.fwsc 1.7.5-EDDA EDDA-OS-Installer-1.7.5.html` makes the one-file installer from it.
+felucca-2.0.0-EDDA.fwsc 2.0.0-EDDA EDDA-OS-Installer-2.0.0.html` makes the one-file installer from it (a sound
+pack's folder as one more argument puts the pack and its button in: 2.21).
 
 ### 1.3 Route B — build on the Windows laptop (WSL2)
 
@@ -155,8 +186,8 @@ WSL2 runs Ubuntu inside Windows 10/11, and JieLi's toolchain runs there natively
    ```
    sudo apt update && sudo apt install -y git python3-pil python3-fonttools python3-numpy curl xz-utils
    git clone --recurse-submodules -b edda https://github.com/mrsheez/Felucca edda-os
-   cd edda-os && sh edda-build.sh --release 1.7.5-EDDA   # -> build/felucca-1.7.5-EDDA.fwsc
-   python3 web/make_site.py build/felucca-1.7.5-EDDA.fwsc 1.7.5-EDDA /tmp/edda-site
+   cd edda-os && sh edda-build.sh --release 2.0.0-EDDA   # -> build/felucca-2.0.0-EDDA.fwsc
+   python3 web/make_site.py build/felucca-2.0.0-EDDA.fwsc 2.0.0-EDDA /tmp/edda-site
    cd /tmp/edda-site && python3 -m http.server 8000
    ```
 
@@ -171,7 +202,7 @@ For a package from Route A's artifact or Route B: install Python 3 from python.o
 
 ```
 py -m pip install mido python-rtmidi
-py tools\fm1_install.py felucca-1.7.5-EDDA.fwsc
+py tools\fm1_install.py felucca-2.0.0-EDDA.fwsc
 ```
 
 Close every other app that uses MIDI first (DAWs, the editor tab).
@@ -179,7 +210,7 @@ Close every other app that uses MIDI first (DAWs, the editor tab).
 ### 1.5 Going back
 
 - **To Felucca:** install it from `hugelton.github.io/Felucca`. EDDA OS keeps Felucca's update loader (it
-  answers as `FM-1_900`), its release identity (`FM-1_917` for 1.7.x) and its flash layout, so either installs
+  answers as `FM-1_900`), its release identity (`FM-1_920` for 2.0; 1.7.x was `FM-1_917`) and its flash layout, so either installs
   over the other. Projects, presets and user samples stay (EDDA's 4th sample slot sits in flash Felucca leaves
   unused); Felucca 1.7 opens EDDA projects (FUN10 is its own format) and reads a value it does not have as its last
   one: KIT USR1–4 and EDDA as PERC, SAMPLE's USR4, EKIT and LOG as USR3. It keeps the settings it does not know.
@@ -198,13 +229,13 @@ turn Pages on: **Settings → Pages → Build and deployment → Source: GitHub 
 Run workflow** (branch `main`), and the installer is at `https://mrsheez.github.io/Felucca/webapp/installer/`.
 
 Without Pages, the latest run's package is at
-`https://github.com/mrsheez/Felucca/raw/ci-out/felucca-1.7.5-EDDA.fwsc` (its SHA-256 in the run's summary). Install
+`https://github.com/mrsheez/Felucca/raw/ci-out/felucca-2.0.0-EDDA.fwsc` (its SHA-256 in the run's summary). Install
 it with the one-file installer, the command-line installer (1.4), or serve the installer page from the laptop: with
 Python 3 on Windows, download the repository (**Code → Download ZIP**, branch `edda`), put the package in its folder,
 and run there
 
 ```
-py web\make_site.py felucca-1.7.5-EDDA.fwsc 1.7.5-EDDA site
+py web\make_site.py felucca-2.0.0-EDDA.fwsc 2.0.0-EDDA site
 cd site
 py -m http.server 8000
 ```
@@ -310,6 +341,10 @@ on each pad (or click it) → name it → **Upload**. **From a terminal:**
 pad is trimmed of trailing silence and holds up to 4 s; a slot holds 80 KiB (USR4 72 KiB), and when the kit does
 not fit the longest pads drop to 11025 Hz until it does.
 
+**The slots and OYA COME.** OYA COME's sound pack (2.21) fills all four slots. A kit or sample set of yours in one
+of them and OYA COME's own sounds are one or the other: the installer's second button puts the pack back, the
+editor or the uploader your kit.
+
 ### 2.9 A fourth sample slot (USR4)
 SAMPLE SET 8, GRAIN SRC 8, SLICE SRC USR4, KIT USR4, the editor's 4th slot, and the backup. 72 KiB (about 6.6 s at
 22,050 Hz) at 0xEA000–0xFC000: flash Felucca does not use, above Felucca's FM6 voice bank (0xE7000) and the two
@@ -406,13 +441,14 @@ KEY lives on in the project (ROOT and SCALE); ACT starts from 1.
 ### 2.21 THE ARRIVAL — the album's thirteen songs (SAVE > ARRIVAL)
 The first thirteen songs of *EDDA: The Arrival* live in the firmware as music the FM-1 plays: every song's
 instrumental, arranged start to finish, in its tempo and key, on four tracks. The voice is yours: each song
-leaves the room for the Igbo line it opens on.
+leaves the room for the Igbo line it opens on. OYA COME is the exception: it plays its record's own sounds, the
+voice with them (below).
 
 | # | Song | BPM | Key | Opens on | T1 | T2 | T3 | Length |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 01 | UP NEPA | 116 | 8A | Any moment now. (IHE) | log drum | highlife guitar stabs | tenor sax | 3:26 |
 | 02 | WE OUTSIDE | 115 | 6A | One more. (ABALI) | log drum | Rhodes | string drone | 3:28 |
-| 03 | OYA COME | 114 | 10A | Oya, come. (UZO) | bass | Rhodes figure | the voice, "Oya, come" | 2:15 |
+| 03 | OYA COME | 114 | 10A | Oya, come. (UZO) | the record's bass | the record's chords | the record's voice | 2:15 |
 | 04 | WHERE YOU SLEEP | 112 | 1A | The night still young. (NZUZO) | log drum | organ | flute (the oja) | 3:34 |
 | 05 | E GO BE | 116 | 5A | E go be. (NDIDI) | log drum | grand piano | highlife guitar riff | 3:31 |
 | 06 | I DEY WAKA | 139 half | 3A | the flute, then Nwayo… nwayo… (NWAYO) | 808 | flute grains | flute (the oja) | 3:06 |
@@ -424,9 +460,9 @@ leaves the room for the Igbo line it opens on.
 | 12 | RING ME | 116 | 7A | Ring am first. (OGENE) | log drum | the ogene | a choir hum | 3:26 |
 | 13 | JAPA AND COME BACK | 115 | 1A | I go come back. (IJE) | log drum | Rhodes | tenor sax | 3:28 |
 
-T4 is THE ARRIVAL's kit in every song. Each song has its sections (INTRO, GROOVE, the RUN, the DROP; DO AM
-AGAIN and TURN AM UP: BREAK, BUILD, DROP; OYA COME: INTRO, VERSE, HOOK, BREAK) and its arrangement as the SONG
-page's rows.
+T4 is THE ARRIVAL's kit in every song but OYA COME, whose drums are its record's. Each song has its sections
+(INTRO, GROOVE, the RUN, the DROP; DO AM AGAIN and TURN AM UP: BREAK, BUILD, DROP; OYA COME: HOOK, VERSE, PRE,
+INTRO, which its rows combine track by track) and its arrangement as the SONG page's rows.
 
 **Playing one.** SAVE, turn to **ARRIVAL**: KNOB 1 (or PRESETS) picks the song, **OCT+** loads it, **PLAY**
 plays it from its first row (on another song than the one loaded, PLAY loads it first); PLAY again stops. A
@@ -468,27 +504,60 @@ left to the voice. The shared budget of 8 voices never cuts a held note in any s
 part of notes now gives up its own release tail first, a kit's hits go before a held note, and a kit's lowest
 hit — the kick — rings out as a part's bass does.
 
-**OYA COME from the record (1.7.5).** OYA COME is no longer written from the album's plan: it was taken off the
-record itself (Oya Come 3, the LANDR master) and rebuilt on the FM-1 bar for bar. Measured from the audio: 113.8 BPM
-(the FM-1 plays 114, its nearest whole tempo: the 2:15 song ends 0.3 s early), B minor (Camelot 10A), 64 bars of one
-four-bar loop, Gmaj7 – Gmaj7 – Bm9 – Amaj7, every change pushed an eighth note early (on the and of the bar's last
-beat). The tracks follow what is in it: T1 a held bass on the roots (G1 B1 A1; ANALOG, a square wave low-passed, the odd
-harmonics the record's bass has; the SLICER eases it under every beat as the record's kick ducks it); T2 the keys' figure, the chord's 9th, 3rd and 7th on every beat's 2nd, 3rd and 4th sixteenths (A3 B4 F#5
-on G, C#4 D5 A5 on Bm, B3 C#5 G#5 on A; FM6 EDDA EP); T3 the voice (VOICE, VOX LEAD) singing the hook in eighths, B3
-for two bars, then D4, then C#4, each note gliding o → a (*o-ya*); T4 a four-on-the-floor kick, the snare on 3, 6, 10
-and 14 (afrobeats' 3-3-4-4-2 without its downbeat), the shaker on the ands. The arrangement is the record's: the
-hook as the intro (bars 1–8: the kick, the shaker and a conga), the verse (9–24), the hook (25–32), the verse (33–40),
-the hook (41–44), the break (45–48: the kick and the bass out for its last two bars, as the record's 47–48), the hook
-three times (49–60) and the break to close. What the FM-1 cannot hold: the words (the voice is a sung vowel on the
-melody), the verse beyond its first four bars as sung (bars 17–20; the second verse sings it too), the high "ooh"
-over bars 41–44 (the hook's chant there) and the record's ending with the drums out for all four bars (two here):
-four sections a song are all the SONG page has. JAPA AND COME BACK and the other eleven songs are as 1.7.4 had them.
+**OYA COME from its record's sounds (2.0).** The record itself (Oya Come 3, the LANDR master) was separated into
+its voice, its drums, its bass and the rest, measured (113.77 BPM, B minor, 64 bars of one loop, G – G – Bm – A, every
+change an eighth note early) and cut into a **sound pack**: 41 samples, 68 seconds, 316,357 of the 317,440 bytes the
+four user sample slots hold. Every sample is cut for 114 BPM, the FM-1's nearest whole tempo, so nothing drifts inside
+the song; against the record the 2:15 ends 0.3 s early. The four tracks:
+
+- **T1, the bass** (SAMPLE, SET USR1). The one sound that is built and not cut: four cycles of a wave with the
+  harmonics measured in the record's bass (a sub: the 2nd and 3rd 12 dB under the fundamental, the 4th 17), played
+  where the record plays it: G1 for two bars, B1 an eighth early, A1, the low B0 under the bar's end; shorter notes in
+  the verses, none where the record has none. The SLICER eases it under every beat, as the record's kick ducks it.
+  The record's log-drum stroke before the A is on the same track's top keys.
+- **T2, the chords** (SAMPLE, SET USR1). One beat of each chord cut from the record and looped (G, Bm, A, and a
+  second set from the record's last eight bars), held as the record holds them: behind the track's filter in the
+  first verse, out in the hooks.
+- **T3, the voice** (DRUM, KIT USR1 to USR4: a kit whose pads are phrases). Twenty phrases of up to two bars, each
+  started where the record sings it (the hook's lines come round: 47 starts in the song), the last hook's 3 dB down
+  as the record has them; the first five bars behind the low-pass filter the record's intro has. The break before the
+  last hook (two bars: a gated chord, a fall, a gap) is one more pad, cut from the whole record.
+- **T4, the drums** (DRUM, KIT USR4). The record's kick (the downbeat's with its click, the other beats' without);
+  the bar of congas and shaker in its own cuts, each on the step it was cut at (the strokes with their grace notes
+  as played), the bar's end running into the next downbeat in the record's two forms; two shaker strokes over them,
+  more in the hooks. Before the first verse the congas are dulled and the kick has no click, as the record's intro.
+
+The arrangement is the record's 64 bars as fifteen rows of four: each row gives every track its own pattern (HOOK,
+VERSE, PRE, INTRO, or a rest), and bars 41–48 are one row played twice, the second time without its last two bars'
+drums, bass and chords: the break. On the SONG page, PAT shows each track's pattern for the row selected. The live
+cues work as in any song (a row is the section its first sounding track plays); ONE MORE plays a row again from its
+first bar, the voice's lines with it.
+
+Measured on the firmware's own audio code against the record: every section within about 1 dB of the record's
+level, each band up to 1 kHz within about 3 dB, never more than four voices on a track and nothing cut by the budget
+of eight. What is lost is the top: the voice is stored at 7.6 to 10 kHz (that is what 68 seconds cost in 317 KB), so
+it carries up to about 4 kHz in the verses and 5 kHz in the hooks; around 2.5 kHz the song is 1 to 4 dB under the
+record, above 4 kHz 3 to 12 dB under. Of the record's fills only the log-drum stroke is in; the intro's 808 slides
+are not.
+
+**The pack on the FM-1.** The installer's second button writes it (1.1): USR1 to USR4, named OYACOME1 to OYACOME4,
+which is how the song knows its sounds are there. They are ordinary sample slots: any project can play them
+(SAMPLE's SETs and DRUM's KITs USR1 to USR4), and a sample set or kit of yours loaded into one of the four replaces
+that part of the pack. Without the whole pack OYA COME still loads and plays: the top bar says ITS SOUNDS: NOT LOADED,
+the bass, the chords and the voice rest, and the record's drum pattern plays on EDDA's kit. JAPA AND COME BACK and
+the other eleven songs use none of it and are as 1.7.5 had them.
 
 **Their tempo is the deck's.** With the true tempo (2.22) a song at 116 plays at 116.00: set the deck's tempo to the
 song's and they stay together; GLO + G#4 / A#4 (2.23) pull them into phase.
 
 **Changing them.** The music is `tools/arrival_songs.py`, a score in Python (notes by name, drum rows as
-strings); `tools/gen_arrival.py` encodes it into 12 KB of `build/gen/edda_arrival.h` at build time.
+strings); `tools/gen_arrival.py` encodes it into 13 KB of `build/gen/edda_arrival.h` at build time. A song built
+from its record has a recipe beside it: `tools/arrival_pack.py tools/packs/oya_come.py OUT STEMS` cuts the pack
+from the record's stems (each sample at a rate the FM-1 plays exactly, a multiple of 172.27 Hz; the tempo's
+ratio; the player's treble droop equalised; `tools/adpcm_xq.c`, an ADPCM encoder that searches 16 paths a
+sample) and writes the four slots and `tools/packs/oya_come.json`, the pack's layout, which the score reads.
+The record's audio is not in the repository: the pack travels only inside the one-file installer
+(`web/make_site.py --onefile PACKAGE VERSION OUT.html "EDDA OS" PACK_DIR`).
 `build/host/arrival_render build/arrival` renders all thirteen to WAV (`[SONG] [SECONDS] [STEMS]`), and
 `tests/arrival_check.py` reports the balance per section and track and the LEVELs that would put each track in
 its place.
@@ -608,7 +677,7 @@ West African pattern bank, the voice bank; and Felucca 1.7.0's step conditions, 
 
 ```
 git submodule update --init         # firmware/bsp (felucca-bsp), firmware/engines (Felucca-Engines)
-sh edda-build.sh --release 1.7.5-EDDA   # Linux x86-64 (or WSL2): the toolchain, the SDK files -> build/felucca-1.7.5-EDDA.fwsc
+sh edda-build.sh --release 2.0.0-EDDA   # Linux x86-64 (or WSL2): the toolchain, the SDK files -> build/felucca-2.0.0-EDDA.fwsc
 SANITIZE=1 sh tests/run_tests.sh    # every suite against build/felucca.fwsc; tests/run_host_only.sh without a package
 ```
 
@@ -626,7 +695,7 @@ is Route A's build.
 ## 7. What is verified, and what is not
 
 **Verified on the host** (gcc, Felucca's own harness with the real sequencer, UI, MIDI and audio code, under
-ASan/UBSan): 7,732 checks pass in `tests/run_host_only.sh`, 7,871 in `tests/run_tests.sh` against the package. Felucca 1.7.0's suites run against EDDA OS as they are, except where EDDA changes what
+ASan/UBSan): 7,743 checks pass in `tests/run_host_only.sh`, 7,883 in `tests/run_tests.sh` against the package. Felucca 1.7.0's suites run against EDDA OS as they are, except where EDDA changes what
 they check (FILL on A4, MIDI LEARN on F5, the kits after PERC, FM6's EDDA presets before the bank, SELECT's ALL, the
 DJ FILTER page, USR4's 72 KiB, the exact grid's step starts): those checks test EDDA's behaviour instead. They keep
 Felucca's nominal tempo (`-DEDDA_TRUE_TEMPO=0`), so their timings stay Felucca's, bit for bit; Felucca's 104 golden
@@ -641,22 +710,31 @@ two at 97 and 173, the ARP, MIDI clock out's pulse 6k in step k's block for ten 
 trip, the device's build without the visualisers, and THE ARRIVAL: titles, tempi, keys, sections, arrangements,
 the load, SAVE > ARRIVAL, the live cues and their show cues; then every song is played through the firmware's audio
 (2 to 4 minutes each, sounding, nothing clipped, no held note cut by the voice budget, the master limiter at most
-8 dB). Every screen, in every palette, passes Felucca's layout lint. The web editor's protocol (the slots' own sizes
-included), the kit builder, the backup and the one-file installer (onto a simulated FM-1: stock → update loader →
-EDDA OS, every byte it asks for checked) pass.
+8 dB). 2.0's own: a row's tracks each on their pattern, OYA COME without its pack (the message, what rests, EDDA's
+kit), with a pack in the slots (every cue starts a voice on the pack's pad, no phrase cut short), with a slot
+renamed, with the voice's track on another engine, the row that is played twice (its break), and ONE MORE in the
+middle of a row (the pass's other lines still sung, the row then played again from its first bar). The pack these
+run on is a stand-in, tones in the real pack's layout: the record's audio is not in the repository. The real pack
+is rendered on the build machine by the same code and compared with the record (2.21's figures). Every screen, in
+every palette, passes Felucca's layout lint. The web editor's protocol (the slots' own sizes included), the kit
+builder, the backup and the one-file installer (onto a simulated FM-1: stock → update loader → EDDA OS, every byte
+it asks for checked; then the sound pack over the editor's sample commands, refused before the install, the four
+slots byte for byte the pack's after) pass.
 
-**Built with JieLi's compiler** (GitHub Actions, run 42708200086, commit d5a0a25): the image is 580,384 bytes of the 581,564-byte app slot (1,180 spare; Powered by COSMIC YOU took 3,416, dropping the splash gave back 132, the prompt with the wait for a key took 308, and OYA COME from its record 156), RAM (.data + .bss) 61,284 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). The package, `felucca-1.7.5-EDDA.fwsc`, is 610,286 bytes, SHA-256
-`292937cf199f8337d0710a715073576ff19abe5516e709a672ed6c14fa5a152c`. Register access in `hal/` and the BSP only. The
+**Built with JieLi's compiler** (GitHub Actions, run 42981191514, commit 87d6ae9): the image is 581,344 bytes of the 581,564-byte app slot (220 spare: 2.0's rows, cues, pack check and OYA COME's score took 960), RAM (.data + .bss) 61,284 of 73,728 bytes, the pool 329,448 of 368,640 bytes (the build requires 8,192 spare). The package, `felucca-2.0.0-EDDA.fwsc`, is 610,286 bytes, SHA-256
+`054e21d48ed6d26c71d0c9b932f56d4d7ab6971482ea80ae43a28095b914c1a6`. Register access in `hal/` and the BSP only. The
 package carries JieLi's own AC79NN_SDK_V1.2.1 files, fetched from gitee and checked against `tools/build.py`'s
-SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_917, every byte it asks for checked), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (1.6 % of real time for a heavy song). The one exception is the static cost check below.
+SHA-256s, so it is put together exactly as Felucca's are. On the same runner the whole suite passes against the real package: the update loader and the M-UPGRADE entry, the command-line installer, the one-file installer (onto a simulated FM-1: stock, then the update loader, then FM-1_920, every byte it asks for checked; the same with a sound pack and its load), sanitizers and fuzzers, THE ARRIVAL's render check, and the browser emulator built to WebAssembly (1.6 % of real time for a heavy song). The one exception is the static cost check below.
 
 **On the FM-1:** 1.7.1 went onto Obi's FM-1 on 9 November 2026 with the one-file installer: it starts, MENU > DISPLAY >
 COLOR takes EDDA, SAVE > ARRIVAL lists the thirteen songs and plays them. 1.7.4 went on the same day, its start-up
-screen with it (Obi: "success"). OYA COME as rebuilt in 1.7.5 has been played by the firmware's code on the host only
-(the render, against the record: tests/arrival_render.c).
-**Not yet:** a measured check on the device of the rest. These are worth a minute: MENU > SYSTEM > INFO's
-`v1.7.5-EDDA`; SAVE > ARRIVAL, OYA COME, OCT+, PLAY against the record (the tempo, the key, the hook); a setting
-survives a power cycle (the flash part, section 0.1); and the true tempo: at 120 BPM against a metronome app or a
+screen with it (Obi: "success").
+**Not yet:** 2.0.0 on the device. Its firmware, OYA COME from its pack and the pack's load have run on the host and
+against a simulated FM-1 only (the load uses the editor's sample commands, the ones Felucca's backup restore writes
+samples with). These are worth a minute: MENU > SYSTEM > INFO's `v2.0.0-EDDA`; Load the song's sounds reaches 100 %
+and says Sounds loaded; SAVE > ARRIVAL, OYA COME, OCT+: the top bar says OYA, COME. and not ITS SOUNDS: NOT LOADED;
+PLAY against the record (the voice on its bars, the break before the last hook, nothing cut or late); a setting
+survives a power cycle (the flash part, section 0.2); and the true tempo: at 120 BPM against a metronome app or a
 DAW at 120.00, the FM-1 should hold the click for ten minutes (Felucca's count gains 0.24 s in that time, half a
 beat). `tests/target_budget.py`, a static count of the audio code's loop instructions from JieLi's disassembly,
 reports the functions EDDA OS works in beyond Felucca's figures (`drum_render` +400 %: the user kits' sample voice inside it, its per-sample loop with no divides; `perf_begin` +29 %: the exact grid's 1/16 clock. The audio interrupt is within its budget (+4 %) and `slicer_track` under it (−13 %)); the host CPU check, which times the
@@ -667,13 +745,20 @@ tests/target_budget.py build/felucca.dis tests/target_budget.txt` re-bases the s
 
 ## 8. Frontier
 
-Next, in the order they pay on stage (the research behind them: `docs/fm1-landscape-2026-10.md`):
+The rebuild goes on in stages, an installer a stage (the research behind them: `docs/fm1-landscape-2026-10.md`):
 
+- **The other twelve songs from their records**, as OYA COME: each needs its record. The four sample slots hold one
+  song's sounds at a time (OYA COME's 68 seconds fill them), so either one such song is loaded from the laptop at a
+  time, or the packs get smaller (a hook, a kit and the chords without the verses' voice) and two or three share
+  the slots. OYA COME's own gaps first, if they matter on a system: its fills, the intro's 808 slides.
+- **Room in the app slot.** 2.0 leaves a few hundred bytes of it: nothing below fits until room is made (the largest
+  parts are Felucca's factory samples, 172 KB, and the UI).
 - **Tempo to a hundredth, and a tap that sets the phase.** The tempo in 0.01 BPM steps (shown to two decimals) for
-  records off the whole number, and taps that also fix where the one is, so PLAY lands on the record's next downbeat.
+  records off the whole number (OYA COME's is 113.77), and taps that also fix where the one is, so PLAY lands on the
+  record's next downbeat.
 - **Mix-in / mix-out macros**: the run's subtraction as a timed handover, phrase-aligned (8 / 16 / 32 bars).
 - **Log-drum tools**: the slide and the "tsk" as per-step locks, the log drum's pitch envelope on a knob.
-- **The visualisers back** on the device, once 5 KB more of the app slot is found.
+- **The visualisers back** on the device, once 12 KB of the app slot is found.
 - **Ableton Link over the AC791N's Wi-Fi** (the chip has a radio Felucca does not use), BLE MIDI (~45 KB: not beside
   everything else), the chant lane and the set file as before.
 
